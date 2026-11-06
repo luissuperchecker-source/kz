@@ -288,10 +288,12 @@ function tryShoot(now) {
   camera.updateMatrixWorld();
   const origin = camera.getWorldPosition(_o.clone());
   camera.matrixWorld.extractBasis(_r, _u, _f); _f.negate();
-  // Auf dem Moped: Schuss kommt aus der Waffe des Fahrers (Kamera ist hinter ihm)
-  const mz = riding ? new THREE.Vector3(me.pos.x, me.pos.y + 1.38, me.pos.z).addScaledVector(_f, 0.75).addScaledVector(_r, 0.12)
+  // Auf dem Moped von hinten gesehen: Schuss kommt aus der Waffe des Fahrers (Kamera ist hinter ihm)
+  const tp = riding && (ride.fp || 0) < 0.5;
+  if (riding) me.rideAimT = now;
+  const mz = tp ? new THREE.Vector3(me.pos.x, me.pos.y + 1.38, me.pos.z).addScaledVector(_f, 0.75).addScaledVector(_r, 0.12)
     : muzzle.getWorldPosition(new THREE.Vector3());
-  if (riding) { const back = origin.distanceTo(mz); origin.addScaledVector(_f, Math.max(0, back - 0.3)); }   // nicht den eigenen Fahrer treffen
+  if (tp) { const back = origin.distanceTo(mz); origin.addScaledVector(_f, Math.max(0, back - 0.3)); }   // nicht den eigenen Fahrer treffen
   const parts = avatarParts(), dmgBy = {}, ends = [];
   let anyHead = false, anyHit = false;
   for (let i = 0; i < w.pellets; i++) {
@@ -323,7 +325,7 @@ function tryShoot(now) {
   me.kick = 1;
   sndShot(me.weapon, 0.5);
   puff(mz, 0xcfcfcf, 0.12, 0.5, _f.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, 0.4, 0)), { opacity: 0.3, grow: 2.5 });
-  if (riding) {   // Mündungsfeuer an der Waffe des Fahrers
+  if (tp) {   // Mündungsfeuer an der Waffe des Fahrers
     const fl = new THREE.Sprite(flashMat.clone()); fl.position.copy(mz); fl.scale.set(0.6, 0.6, 1); fl.material.rotation = Math.random() * 6;
     scene.add(fl); effects.push({ o: fl, life: 0.06, max: 0.06 });
     me.rideAimT = now;

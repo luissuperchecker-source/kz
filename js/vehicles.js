@@ -26,7 +26,22 @@ const MOPED = {
   chain: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.8 }),
   mirror: new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.02, metalness: 1 }),
   dial: new THREE.MeshStandardMaterial({ color: 0xf0f0e8, emissive: 0x404038, roughness: 0.4 }),
+  hose: new THREE.MeshStandardMaterial({ color: 0x0c0c0c, roughness: 0.75, bumpMap: TREAD_TEX, bumpScale: 0.003 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x2c2c2e, roughness: 0.55, metalness: 0.6 }),
 };
+// Schriftzüge (Tank „SIMSON“, Seitendeckel „S51“) als Aufkleber
+function decalMat(text, font, w, h) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = h * 0.12; g.strokeStyle = 'rgba(20,20,20,.9)'; g.strokeText(text, w / 2, h / 2 + 2);
+  g.fillStyle = '#f4f1e6'; g.fillText(text, w / 2, h / 2 + 2);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  return new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.25, metalness: 0.1, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+}
+const DECAL_TANK = decalMat('SIMSON', 'italic 900 92px Arial', 512, 128);
+const DECAL_S51 = decalMat('S51', 'italic 900 100px Arial', 256, 128);
+const mDecal = (mat, w, h, x, y, z, side, tilt = 0) => ({ geo: new THREE.PlaneGeometry(w, h), mat, p: [x, y, z], r: [0, side > 0 ? 0 : Math.PI, tilt * side] });
 // Bausteine: gebogene Rohre, Spiralfedern, geformte Teile
 const tube = (pts, r, mat, seg = 32, radial = 10) => ({ geo: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, radial, false), mat, p: [0, 0, 0], r: [0, 0, 0] });
 class HelixCurve extends THREE.Curve {
@@ -63,7 +78,7 @@ function makeMoped(paint) {
     halfW: curve([[-1, 0.1], [0, 0.125], [1, 0.115]], u), p: 3.2 }), 8), mat: P.seat, p: [0, 0, 0], r: [0, 0, 0] };
   const body = [
     tank, seat,
-    B(0.16, 0.08, 0.012, P.rubber, 0.12, 0.8, 0.142), B(0.16, 0.08, 0.012, P.rubber, 0.12, 0.8, -0.142),        // Knieschutz
+    B(0.1, 0.055, 0.01, P.rubber, 0.02, 0.785, 0.133), B(0.1, 0.055, 0.01, P.rubber, 0.02, 0.785, -0.133),        // Knieschutz
     tube([[-0.05, 0.93, 0], [0.18, 0.95, 0], [0.38, 0.9, 0]], 0.006, CHROME, 12, 5),                                 // Zierleiste
     CY(0.028, 0.02, CHROME, 0.25, 0.935, 0, 18),                                                                       // Tankdeckel
     tube([[-0.86, 0.79, 0.12], [-0.46, 0.79, 0.128], [-0.07, 0.79, 0.118]], 0.008, CHROME, 12, 5),                 // Sitzbank-Zierleiste
@@ -72,7 +87,15 @@ function makeMoped(paint) {
     tube([[0.43, 0.98, 0], [0.32, 0.86, 0], [0.12, 0.7, 0], [-0.04, 0.56, 0], [-0.06, 0.4, 0]], 0.03, pt),
     tube([[-0.04, 0.6, 0.09], [-0.35, 0.74, 0.1], [-0.84, 0.8, 0.1]], 0.017, pt), tube([[-0.04, 0.6, -0.09], [-0.35, 0.74, -0.1], [-0.84, 0.8, -0.1]], 0.017, pt),
     B(0.34, 0.2, 0.3, pt, -0.27, 0.66, 0),                                                                            // Seitendeckel
-    ...[0, 1, 2, 3].map(i => B(0.2, 0.012, 0.31, P.rubber, -0.27, 0.62 + i * 0.03, 0)),                               // Lüftungsschlitze
+    ...[0, 1].map(i => B(0.2, 0.012, 0.31, P.rubber, -0.27, 0.6 + i * 0.03, 0)),                                      // Lüftungsschlitze
+    mDecal(DECAL_S51, 0.12, 0.06, -0.27, 0.705, 0.152, 1), mDecal(DECAL_S51, 0.12, 0.06, -0.27, 0.705, -0.152, -1),
+    mDecal(DECAL_TANK, 0.16, 0.04, 0.26, 0.845, 0.1465, 1, 0.08), mDecal(DECAL_TANK, 0.16, 0.04, 0.26, 0.845, -0.1465, -1, 0.08),
+    // Sitzbank-Haltegurt, Benzinhahn + Spritschlauch, Zündkerzenstecker + Kabel, Hupe, Zündschloss
+    tube([[-0.36, 0.84, -0.128], [-0.36, 0.925, -0.09], [-0.36, 0.947, 0], [-0.36, 0.925, 0.09], [-0.36, 0.84, 0.128]], 0.007, P.rubber, 14, 4),
+    CY(0.012, 0.04, CHROME, 0.03, 0.69, -0.075, 8), tube([[0.03, 0.67, -0.075], [0.06, 0.62, -0.08], [0.05, 0.58, -0.07]], 0.006, P.hose, 8, 5),
+    CY(0.014, 0.045, P.rubber, 0.285, 0.73, 0, 10), tube([[0.285, 0.75, 0], [0.3, 0.8, 0.03], [0.2, 0.74, 0.07], [0.05, 0.7, 0.08]], 0.005, P.rubber, 14, 5),
+    C(0.038, 0.038, 0.03, P.dark, 0.5, 0.8, 0, 18), C(0.022, 0.022, 0.032, CHROME, 0.5, 0.8, 0, 14),
+    CY(0.012, 0.015, CHROME, 0.5, 1.03, 0.04, 10),
     // Gepäckträger aus Rohr
     tube([[-0.6, 0.86, 0.11], [-0.92, 0.88, 0.11], [-0.94, 0.88, 0], [-0.92, 0.88, -0.11], [-0.6, 0.86, -0.11]], 0.008, CHROME, 24, 6),
     tube([[-0.68, 0.87, 0.11], [-0.68, 0.87, -0.11]], 0.006, CHROME, 4, 5), tube([[-0.8, 0.875, 0.11], [-0.8, 0.875, -0.11]], 0.006, CHROME, 4, 5),
@@ -114,9 +137,10 @@ function makeMoped(paint) {
     limbPart([-0.55, 0.36, 0.125], [-0.64, 0.82, 0.125], 0.012, 0.012, CHROME), limbPart([-0.55, 0.36, -0.125], [-0.64, 0.82, -0.125], 0.012, 0.012, CHROME),
     spring(-0.565, 0.42, 0.125, 0.33, 0.19, CHROME), spring(-0.565, 0.42, -0.125, 0.33, 0.19, CHROME),
     CY(0.03, 0.04, P.rubber, -0.555, 0.39, 0.125, 14), CY(0.03, 0.04, P.rubber, -0.555, 0.39, -0.125, 14),
-    C(0.06, 0.06, 0.008, P.chain, 0.04, 0.38, -0.12, 20), C(0.1, 0.1, 0.008, P.chain, -0.6, WHEEL_R, -0.12, 24),
-    tube([[0.04, 0.44, -0.12], [-0.6, 0.4, -0.12]], 0.006, P.chain, 4, 5), tube([[0.04, 0.32, -0.12], [-0.6, 0.2, -0.12]], 0.006, P.chain, 4, 5),
-    B(0.6, 0.07, 0.03, P.rubber, -0.3, 0.42, -0.145, 0, 0, 0.05),
+    // vollgekapselte Kette wie bei der S51: Ritzelgehäuse + zwei Gummi-Kettenschutzschläuche
+    C(0.075, 0.075, 0.045, P.alu, 0.04, 0.38, -0.135, 20), C(0.125, 0.125, 0.045, P.dark, -0.6, WHEEL_R, -0.145, 28),
+    tube([[0.04, 0.45, -0.15], [-0.2, 0.43, -0.155], [-0.45, 0.41, -0.155], [-0.6, 0.41, -0.15]], 0.02, P.hose, 16, 8),
+    tube([[0.04, 0.31, -0.15], [-0.2, 0.27, -0.155], [-0.45, 0.21, -0.155], [-0.6, 0.19, -0.15]], 0.02, P.hose, 16, 8),
     // Rücklicht, Kennzeichen, hintere Blinker, Fußrasten, Bremspedal, Kickstarter
     B(0.08, 0.07, 0.11, P.rubber, -0.92, 0.79, 0), B(0.02, 0.05, 0.09, P.rear, -0.965, 0.79, 0), B(0.012, 0.13, 0.17, P.plate, -0.97, 0.62, 0),
     limbPart([-0.88, 0.8, 0.07], [-0.88, 0.8, 0.17], 0.006, 0.006, CHROME, 6), limbPart([-0.88, 0.8, -0.07], [-0.88, 0.8, -0.17], 0.006, 0.006, CHROME, 6),
@@ -161,7 +185,7 @@ function toggleRide() {
 }
 function startRide(i) {
   const v = vehicles[i]; if (!v) return;
-  ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0;
+  ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
@@ -207,27 +231,37 @@ function updateRide(dt) {
   me.vel.set(ride.vel.x, 0, ride.vel.z); me.onGround = true;
   const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean;
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
-  if (performance.now() - ride.lastMouse > 1500 && sp > 3) {
+  const aiming = riderAiming();
+  if (performance.now() - ride.lastMouse > 1500 && sp > 3 && !aiming) {
     let d = (ride.yaw - Math.PI / 2) - me.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     me.yaw += d * Math.min(1, dt * 2.5); me.pitch += (-0.15 - me.pitch) * Math.min(1, dt * 2);
   }
+  // Zielen (Schießen / Rechtsklick) = Ego-Ansicht mit der Waffe direkt neben dir, sonst Ansicht von hinten
+  ride.fp = (ride.fp || 0) + ((aiming ? 1 : 0) - (ride.fp || 0)) * Math.min(1, dt * 11);
+  const fpK = ride.fp * ride.fp * (3 - 2 * ride.fp);
   const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55, ride.pos.z);
   const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
   let dist = 4.2;
   const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(0.6, hit.dist - 0.3);   // nicht durch Wände schauen
   camera.position.copy(target).addScaledVector(back, dist);
-  camera.rotation.set(me.pitch, me.yaw, 0);
-  // Schießen und Nachladen während der Fahrt; Rechtsklick = näher ranzoomen
+  const eye = new THREE.Vector3(me.pos.x + Math.cos(ride.yaw) * 0.08, me.pos.y + 1.5 + Math.sin(performance.now() / 45) * 0.003 * Math.min(1, sp / 4), me.pos.z - Math.sin(ride.yaw) * 0.08);
+  camera.position.lerp(eye, fpK);
+  camera.rotation.set(me.pitch, me.yaw, ride.lean * 0.45 * fpK);
+  // Schießen und Nachladen während der Fahrt
   const w = WEAPONS[me.weapon], now = performance.now() / 1000;
+  me.drawT = Math.max(0, me.drawT - dt); me.inspectT = 0; me.landT = 0; me.shake = Math.max(0, me.shake - dt * 1.6);
+  if (me.pumpT > 0) { const b = me.pumpT; me.pumpT = Math.max(0, me.pumpT - dt); if (b > 0.3 && me.pumpT <= 0.3) sndClick(0.08, 0.7); }
+  if (me.boltT > 0) { const b = me.boltT; me.boltT = Math.max(0, me.boltT - dt); if (b > 0.55 && me.boltT <= 0.55) sndClick(0.08, 0.9); }
   if (me.reloading > 0) { me.reloading -= dt; if (me.reloading <= 0) { me.reloading = 0; me.ammo[me.weapon] = w.mag; } }
   if (me.trigger && (w.auto || !me.firedPress)) tryShoot(now);
   me.recoilP *= Math.exp(-9 * dt); me.recoilY *= Math.exp(-9 * dt);
   camera.rotation.x += me.recoilP; camera.rotation.y += me.recoilY;
-  if (me.scoped) { camera.position.lerp(target, 0.45); }
-  const targetFov = me.scoped ? (w.scope ? w.zoom : 52) : fovBase + Math.min(10, sp * 0.6);
-  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
+  const targetFov = ride.fp > 0.5 ? (me.scoped ? w.zoom : fovBase + Math.min(4, sp * 0.25)) : fovBase + Math.min(10, sp * 0.6);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix();
   engineSound(true, ride.speed, thr);
-  viewGun.visible = false; viewKnife.visible = false; viewNade.visible = false;
+  viewKnife.visible = false; viewNade.visible = false;
+  if (ride.fp > 0.6) { me.bob += dt * sp * 0.6; animateViewModel(dt, w); }   // Waffe in der Hand wie zu Fuß
+  else viewGun.visible = false;
 }
 document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse = performance.now(); });
 
@@ -255,6 +289,7 @@ function updateVehicles(dt) {
   }
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
   if (myRider && ride.v >= 0) {
+    myRider.g.visible = (ride.fp || 0) < 0.45;   // in der Ego-Ansicht eigene Figur ausblenden
     myRider.g.position.copy(me.pos); myRider.g.rotation.set(0, ride.yaw - Math.PI / 2, ride.lean * 0.8);
     const aiming = riderAiming();
     myRider.flags = 8 | (aiming ? 16 : 0);
