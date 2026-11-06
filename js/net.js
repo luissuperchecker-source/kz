@@ -132,6 +132,7 @@ function hostHandle(from, m) {
     p.x = m.p[0]; p.y = m.p[1]; p.z = m.p[2]; p.ry = m.r[0]; p.rx = m.r[1];
     if (m.w !== undefined) p.w = m.w;
     p.f = m.f || 0;
+    if (m.ay !== undefined) p.ay = m.ay;
     // Fahrer schickt die Position seines Mopeds mit
     if (m.vs && vehicles[m.vs[0]] && vehicles[m.vs[0]].d === from) {
       const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5];
@@ -410,8 +411,9 @@ function netTick(now) {
   if (!me.alive) return;
   const riding = ride.v >= 0;
   const msg = { t: 's', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)],
-    r: riding ? [+(ride.yaw - Math.PI / 2).toFixed(3), -0.3] : [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
-    w: me.weapon, f: riding ? 8 : (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) };
+    r: riding ? [+(ride.yaw - Math.PI / 2).toFixed(3), riderAiming() ? +me.pitch.toFixed(3) : -0.3] : [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
+    w: me.weapon, f: riding ? 8 | (riderAiming() ? 16 : 0) : (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) };
+  if (riding) msg.ay = +me.yaw.toFixed(3);   // Zielrichtung des Fahrers
   if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2)];
   net.send(msg);
 }

@@ -1,27 +1,52 @@
 'use strict';
 /* ======================= Mopeds (im Stil der Simson S51) – fahrbar ======================= */
-// Farben wie bei den klassischen Mopeds aus der DDR
+// Farben wie bei den klassischen Mopeds aus der DDR – glänzender Klarlack
 const MOPED_PAINTS = [0x2a6fb5, 0xc0262b, 0x2f8f4a, 0xe8a92a, 0xd9c9a0, 0x1c1c1c, 0x6d8fb0, 0xd25a1e]
-  .map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.28, metalness: 0.45, envMapIntensity: 1.2 }));
+  .map(c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.3, metalness: 0.25, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 1.3 }));
+// Texturen: Reifenprofil, genarbtes Sitzbank-Leder
+const TREAD_TEX = canvasTex((g, s) => {
+  g.fillStyle = '#808080'; g.fillRect(0, 0, s, s);
+  for (let x = 0; x < s; x += 8) { g.fillStyle = '#202020'; g.fillRect(x, 0, 3, s * 0.45); g.fillRect(x + 4, s * 0.55, 3, s * 0.45); }
+}, 64);
+TREAD_TEX.repeat.set(10, 1);
+const SEAT_TEX = canvasTex((g, s) => {
+  g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 10) { g.fillStyle = '#3a3a3a'; g.fillRect(0, y, s, 2); }
+  speckle(g, s, 3000, '0,0,0', 0.25, 1.2);
+}, 64);
 const MOPED = {
-  seat: new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.55 }),
-  alu: new THREE.MeshStandardMaterial({ map: GUN_TEX, color: 0xe8e8ea, roughness: 0.45, metalness: 0.8 }),
+  seat: new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5, bumpMap: SEAT_TEX, bumpScale: 0.004 }),
+  alu: new THREE.MeshStandardMaterial({ map: GUN_TEX, color: 0xeeeef0, roughness: 0.38, metalness: 0.85 }),
   rubber: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 }),
-  lens: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3d0, emissiveIntensity: 0.9, roughness: 0.1 }),
-  rear: new THREE.MeshStandardMaterial({ color: 0x660000, emissive: 0xff2020, emissiveIntensity: 0.8 }),
+  tire: new THREE.MeshStandardMaterial({ color: 0x161616, roughness: 0.9, bumpMap: TREAD_TEX, bumpScale: 0.01 }),
+  lens: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff3d0, emissiveIntensity: 0.9, roughness: 0.05 }),
+  rear: new THREE.MeshStandardMaterial({ color: 0x770000, emissive: 0xff2020, emissiveIntensity: 0.7, roughness: 0.1 }),
+  blink: new THREE.MeshStandardMaterial({ color: 0xcc6a00, emissive: 0xff8a00, emissiveIntensity: 0.4, roughness: 0.1 }),
   plate: new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 }),
+  chain: new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5, metalness: 0.8 }),
+  mirror: new THREE.MeshStandardMaterial({ color: 0xe8eef2, roughness: 0.02, metalness: 1 }),
+  dial: new THREE.MeshStandardMaterial({ color: 0xf0f0e8, emissive: 0x404038, roughness: 0.4 }),
 };
+// Bausteine: gebogene Rohre, Spiralfedern, geformte Teile
+const tube = (pts, r, mat, seg = 32, radial = 10) => ({ geo: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, radial, false), mat, p: [0, 0, 0], r: [0, 0, 0] });
+class HelixCurve extends THREE.Curve {
+  constructor(r, h, turns) { super(); this.rad = r; this.h = h; this.turns = turns; }
+  getPoint(u, t = new THREE.Vector3()) { const a = u * this.turns * Math.PI * 2; return t.set(Math.cos(a) * this.rad, u * this.h, Math.sin(a) * this.rad); }
+}
+const spring = (x, y, z, h, tilt, mat) => ({ geo: new THREE.TubeGeometry(new HelixCurve(0.028, h, 8), 80, 0.0055, 5, false), mat, p: [x, y, z], r: [0, 0, tilt] });
 const WHEEL_R = 0.3;
-function makeWheel() {
+function makeWheel(front) {
   const g = new THREE.Group();
   const parts = [
-    { geo: new THREE.TorusGeometry(WHEEL_R - 0.045, 0.045, 10, 26), mat: MOPED.rubber, p: [0, 0, 0], r: [0, 0, 0] },   // Reifen
-    { geo: new THREE.TorusGeometry(WHEEL_R - 0.085, 0.012, 6, 26), mat: CHROME, p: [0, 0, 0], r: [0, 0, 0] },        // Felge
-    C(0.065, 0.065, 0.09, MOPED.alu, 0, 0, 0, 16),                                                                      // Trommelbremse/Nabe
+    { geo: new THREE.TorusGeometry(WHEEL_R - 0.046, 0.046, 12, 40), mat: MOPED.tire, p: [0, 0, 0], r: [0, 0, 0] },        // Reifen mit Profil
+    { geo: new THREE.TorusGeometry(WHEEL_R - 0.088, 0.011, 6, 40), mat: CHROME, p: [0, 0, 0], r: [0, 0, 0] },             // Felge
+    { geo: new THREE.CylinderGeometry(WHEEL_R - 0.078, WHEEL_R - 0.078, 0.03, 40, 1, true), mat: CHROME, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+    C(0.07, 0.07, 0.08, MOPED.alu, 0, 0, 0, 20), C(0.075, 0.075, 0.012, MOPED.alu, 0, 0, front ? 0.042 : -0.042, 20),     // Trommelbremse
+    C(0.022, 0.022, 0.13, CHROME, 0, 0, 0, 10),                                                                           // Achse
   ];
-  for (let i = 0; i < 16; i++) {   // Speichen (abwechselnd links/rechts an der Nabe)
-    const a = i / 16 * Math.PI * 2, s = i % 2 ? 1 : -1;
-    parts.push(limbPart([Math.cos(a + 0.3) * 0.05, Math.sin(a + 0.3) * 0.05, s * 0.035], [Math.cos(a) * (WHEEL_R - 0.09), Math.sin(a) * (WHEEL_R - 0.09), 0], 0.003, 0.003, CHROME, 4));
+  for (let i = 0; i < 28; i++) {   // 28 gekreuzte Speichen
+    const a = i / 28 * Math.PI * 2, s = i % 2 ? 1 : -1, o = s * 0.5;
+    parts.push(limbPart([Math.cos(a + o) * 0.055, Math.sin(a + o) * 0.055, s * 0.035], [Math.cos(a) * (WHEEL_R - 0.09), Math.sin(a) * (WHEEL_R - 0.09), 0], 0.0025, 0.0025, CHROME, 4));
   }
   g.add(partsToGroup(parts, true));
   return g;
@@ -30,52 +55,84 @@ function makeWheel() {
 function makeMoped(paint) {
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
   const P = MOPED, pt = paint;
-  // Schutzblech-Bogen über dem Rad (Winkel: π/2 = vorne, π = oben, 3π/2 = hinten)
-  const fenderGeo = (start, len) => new THREE.CylinderGeometry(WHEEL_R + 0.04, WHEEL_R + 0.04, 0.11, 18, 1, true, start, len);
+  const fender = (cx, start, len, w) => ({ geo: new THREE.CylinderGeometry(WHEEL_R + 0.045, WHEEL_R + 0.045, w, 24, 1, true, start, len), mat: pt, p: [cx, WHEEL_R, 0], r: [Math.PI / 2, 0, 0] });
+  // Tank: geformt, unten breiter, mit Knieschutz und Chromleiste
+  const tank = { geo: loftGeo(24, 20, u => ({ x: 0.17 + u * 0.26, bottom: 0.71 + 0.03 * u, top: curve([[-1, 0.86], [-0.4, 0.935], [0.5, 0.93], [1, 0.87]], u),
+    halfW: curve([[-1, 0.1], [-0.3, 0.145], [0.6, 0.14], [1, 0.09]], u), p: 2.5 }), 6), mat: pt, p: [0, 0, 0], r: [0, 0, 0] };
+  const seat = { geo: loftGeo(24, 18, u => ({ x: -0.46 + u * 0.4, bottom: 0.79, top: curve([[-1, 0.875], [-0.6, 0.93], [0.6, 0.94], [1, 0.9]], u),
+    halfW: curve([[-1, 0.1], [0, 0.125], [1, 0.115]], u), p: 3.2 }), 8), mat: P.seat, p: [0, 0, 0], r: [0, 0, 0] };
   const body = [
-    // Rahmen, Tank, Sitzbank, Seitendeckel
-    limbPart([0.42, 0.95, 0], [-0.02, 0.55, 0], 0.035, 0.035, pt),
-    B(0.46, 0.2, 0.27, pt, 0.16, 0.82, 0, 0, 0, -0.15),                               // Tank
-    B(0.1, 0.04, 0.12, CHROME, 0.2, 0.93, 0, 0, 0, -0.15),                           // Tankdeckel-Zierleiste
-    B(0.78, 0.09, 0.25, P.seat, -0.38, 0.86, 0, 0, 0, 0.04),                         // Sitzbank
-    B(0.34, 0.22, 0.32, pt, -0.26, 0.66, 0),                                         // Seitendeckel
-    limbPart([-0.05, 0.62, 0.1], [-0.78, 0.84, 0.1], 0.02, 0.02, pt), limbPart([-0.05, 0.62, -0.1], [-0.78, 0.84, -0.1], 0.02, 0.02, pt),
-    B(0.32, 0.015, 0.2, CHROME, -0.76, 0.92, 0),                                     // Gepäckträger
-    // Gabel, Scheinwerfer, Tacho, Lenker
-    limbPart([0.62, 0.3, 0.075], [0.43, 0.98, 0.075], 0.022, 0.024, CHROME), limbPart([0.62, 0.3, -0.075], [0.43, 0.98, -0.075], 0.022, 0.024, CHROME),
-    limbPart([0.6, 0.38, 0.075], [0.55, 0.56, 0.075], 0.03, 0.03, P.rubber), limbPart([0.6, 0.38, -0.075], [0.55, 0.56, -0.075], 0.03, 0.03, P.rubber),
-    CX(0.088, 0.13, pt, 0.5, 0.95, 0, 22),                                            // Scheinwerfergehäuse
-    { geo: new THREE.CylinderGeometry(0.075, 0.075, 0.012, 22), mat: P.lens, p: [0.566, 0.95, 0], r: [0, 0, Math.PI / 2] },
-    { geo: new THREE.TorusGeometry(0.08, 0.008, 6, 22), mat: CHROME, p: [0.565, 0.95, 0], r: [0, Math.PI / 2, 0] },
-    CY(0.035, 0.03, CHROME, 0.47, 1.05, 0, 16),                                       // Tacho
-    limbPart([0.38, 1.08, -0.32], [0.4, 1.06, 0], 0.012, 0.012, CHROME), limbPart([0.4, 1.06, 0], [0.38, 1.08, 0.32], 0.012, 0.012, CHROME),
-    limbPart([0.38, 1.08, -0.33], [0.38, 1.08, -0.24], 0.018, 0.018, P.rubber), limbPart([0.38, 1.08, 0.24], [0.38, 1.08, 0.33], 0.018, 0.018, P.rubber),
-    // Schutzbleche
-    { geo: fenderGeo(Math.PI * 0.62, Math.PI * 0.72), mat: pt, p: [0.62, WHEEL_R, 0], r: [Math.PI / 2, 0, 0] },
-    { geo: fenderGeo(Math.PI * 0.85, Math.PI * 0.8), mat: pt, p: [-0.6, WHEEL_R, 0], r: [Math.PI / 2, 0, 0] },
-    // Motor mit Kühlrippen, Auspuff
-    B(0.32, 0.24, 0.24, P.alu, 0.0, 0.42, 0),
-    ...[0, 1, 2, 3, 4, 5].map(i => B(0.17, 0.012, 0.19, P.alu, 0.18 + i * 0.012, 0.5 + i * 0.026, 0, 0, 0, -0.55)),
-    limbPart([0.26, 0.5, 0.06], [0.2, 0.26, 0.15], 0.022, 0.022, CHROME),
-    limbPart([0.2, 0.26, 0.15], [-0.35, 0.3, 0.16], 0.022, 0.022, CHROME),
-    { geo: new THREE.CylinderGeometry(0.045, 0.05, 0.48, 16), mat: CHROME, p: [-0.6, 0.33, 0.16], r: [0, 0, Math.PI / 2 - 0.06] },
-    // Schwinge, Federbeine, Kettenschutz, Rücklicht, Kennzeichen, Fußrasten, Ständer
-    limbPart([-0.08, 0.42, 0.11], [-0.6, WHEEL_R, 0.11], 0.022, 0.02, pt), limbPart([-0.08, 0.42, -0.11], [-0.6, WHEEL_R, -0.11], 0.022, 0.02, pt),
-    limbPart([-0.54, 0.34, 0.12], [-0.64, 0.82, 0.12], 0.025, 0.025, CHROME), limbPart([-0.54, 0.34, -0.12], [-0.64, 0.82, -0.12], 0.025, 0.025, CHROME),
-    limbPart([-0.56, 0.45, 0.12], [-0.61, 0.68, 0.12], 0.034, 0.034, P.rubber), limbPart([-0.56, 0.45, -0.12], [-0.61, 0.68, -0.12], 0.034, 0.034, P.rubber),
-    B(0.55, 0.06, 0.035, P.rubber, -0.33, 0.33, -0.12),
-    B(0.06, 0.05, 0.09, P.rear, -0.93, 0.78, 0), B(0.012, 0.12, 0.17, P.plate, -0.95, 0.63, 0),
-    limbPart([-0.05, 0.33, 0.12], [-0.05, 0.33, 0.24], 0.012, 0.012, P.rubber), limbPart([-0.05, 0.33, -0.12], [-0.05, 0.33, -0.24], 0.012, 0.012, P.rubber),
+    tank, seat,
+    B(0.16, 0.08, 0.012, P.rubber, 0.12, 0.8, 0.142), B(0.16, 0.08, 0.012, P.rubber, 0.12, 0.8, -0.142),        // Knieschutz
+    tube([[-0.05, 0.93, 0], [0.18, 0.95, 0], [0.38, 0.9, 0]], 0.006, CHROME, 12, 5),                                 // Zierleiste
+    CY(0.028, 0.02, CHROME, 0.25, 0.935, 0, 18),                                                                       // Tankdeckel
+    tube([[-0.86, 0.79, 0.12], [-0.46, 0.79, 0.128], [-0.07, 0.79, 0.118]], 0.008, CHROME, 12, 5),                 // Sitzbank-Zierleiste
+    tube([[-0.86, 0.79, -0.12], [-0.46, 0.79, -0.128], [-0.07, 0.79, -0.118]], 0.008, CHROME, 12, 5),
+    // Rohrrahmen (gebogen)
+    tube([[0.43, 0.98, 0], [0.32, 0.86, 0], [0.12, 0.7, 0], [-0.04, 0.56, 0], [-0.06, 0.4, 0]], 0.03, pt),
+    tube([[-0.04, 0.6, 0.09], [-0.35, 0.74, 0.1], [-0.84, 0.8, 0.1]], 0.017, pt), tube([[-0.04, 0.6, -0.09], [-0.35, 0.74, -0.1], [-0.84, 0.8, -0.1]], 0.017, pt),
+    B(0.34, 0.2, 0.3, pt, -0.27, 0.66, 0),                                                                            // Seitendeckel
+    ...[0, 1, 2, 3].map(i => B(0.2, 0.012, 0.31, P.rubber, -0.27, 0.62 + i * 0.03, 0)),                               // Lüftungsschlitze
+    // Gepäckträger aus Rohr
+    tube([[-0.6, 0.86, 0.11], [-0.92, 0.88, 0.11], [-0.94, 0.88, 0], [-0.92, 0.88, -0.11], [-0.6, 0.86, -0.11]], 0.008, CHROME, 24, 6),
+    tube([[-0.68, 0.87, 0.11], [-0.68, 0.87, -0.11]], 0.006, CHROME, 4, 5), tube([[-0.8, 0.875, 0.11], [-0.8, 0.875, -0.11]], 0.006, CHROME, 4, 5),
+    // Gabel: Gabelbrücke, Standrohre, Faltenbälge, Tauchrohre
+    B(0.07, 0.04, 0.2, pt, 0.43, 0.99, 0),
+    limbPart([0.47, 0.84, 0.075], [0.43, 0.99, 0.075], 0.019, 0.019, CHROME), limbPart([0.47, 0.84, -0.075], [0.43, 0.99, -0.075], 0.019, 0.019, CHROME),
+    ...[0, 1, 2, 3, 4, 5, 6].flatMap(i => { const y = 0.6 + i * 0.033, x = 0.555 - i * 0.008; return [0.075, -0.075].map(z => ({ geo: new THREE.TorusGeometry(0.024, 0.009, 6, 14), mat: P.rubber, p: [x, y, z], r: [Math.PI / 2, 0, 0.25] })); }),
+    limbPart([0.62, WHEEL_R, 0.075], [0.56, 0.58, 0.075], 0.024, 0.026, P.alu), limbPart([0.62, WHEEL_R, -0.075], [0.56, 0.58, -0.075], 0.024, 0.026, P.alu),
+    // Scheinwerfer: Gehäuse, Chromring, Glas; Tacho; Blinker
+    SPH(0.095, pt, 0.49, 0.94, 0, 0.75, 1, 1), { geo: new THREE.TorusGeometry(0.083, 0.01, 8, 28), mat: CHROME, p: [0.56, 0.94, 0], r: [0, Math.PI / 2, 0] },
+    { geo: new THREE.CircleGeometry(0.078, 28), mat: P.lens, p: [0.562, 0.94, 0], r: [0, Math.PI / 2, 0] },
+    CY(0.038, 0.035, P.rubber, 0.45, 1.06, 0, 20), { geo: new THREE.CircleGeometry(0.032, 20), mat: P.dial, p: [0.45, 1.078, 0], r: [-Math.PI / 2 + 0.3, 0, 0] },
+    limbPart([0.48, 0.94, 0.08], [0.48, 0.94, 0.17], 0.006, 0.006, CHROME, 6), limbPart([0.48, 0.94, -0.08], [0.48, 0.94, -0.17], 0.006, 0.006, CHROME, 6),
+    SPH(0.025, P.blink, 0.49, 0.94, 0.19, 1.3, 1, 1), SPH(0.025, P.blink, 0.49, 0.94, -0.19, 1.3, 1, 1),
+    // Lenker (hochgezogen), Griffe, Hebel, Spiegel
+    tube([[0.36, 1.1, -0.33], [0.39, 1.09, -0.2], [0.44, 1.03, -0.07], [0.44, 1.03, 0.07], [0.39, 1.09, 0.2], [0.36, 1.1, 0.33]], 0.011, CHROME, 30, 8),
+    limbPart([0.36, 1.1, -0.34], [0.37, 1.1, -0.23], 0.017, 0.017, P.rubber), limbPart([0.37, 1.1, 0.23], [0.36, 1.1, 0.34], 0.017, 0.017, P.rubber),
+    limbPart([0.39, 1.1, -0.22], [0.42, 1.1, -0.33], 0.005, 0.005, P.alu, 6), limbPart([0.39, 1.1, 0.22], [0.42, 1.1, 0.33], 0.005, 0.005, P.alu, 6),
+    tube([[0.39, 1.1, -0.2], [0.38, 1.25, -0.26], [0.36, 1.33, -0.3]], 0.005, CHROME, 10, 5), tube([[0.39, 1.1, 0.2], [0.38, 1.25, 0.26], [0.36, 1.33, 0.3]], 0.005, CHROME, 10, 5),
+    C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, -0.31, 18), C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, 0.31, 18),
+    tube([[0.44, 1.05, 0.05], [0.4, 0.95, 0.1], [0.2, 0.72, 0.1], [0.05, 0.55, 0.08]], 0.004, P.rubber, 16, 4),       // Bowdenzug
+    // Schutzbleche + Streben + Schmutzfänger
+    fender(0.62, Math.PI * 0.62, Math.PI * 0.72, 0.1), fender(-0.6, Math.PI * 0.86, Math.PI * 0.82, 0.12),
+    limbPart([0.62, WHEEL_R, 0.065], [0.42, 0.52, 0.065], 0.005, 0.005, CHROME, 6), limbPart([0.62, WHEEL_R, -0.065], [0.42, 0.52, -0.065], 0.005, 0.005, CHROME, 6),
+    B(0.012, 0.12, 0.1, P.rubber, -0.97, 0.38, 0),
+    // Motor: Kurbelgehäuse, Seitendeckel, Zylinder mit Kühlrippen, Zylinderkopf, Kerze, Vergaser, Luftfilter
+    B(0.3, 0.22, 0.2, P.alu, 0.0, 0.42, 0), C(0.11, 0.11, 0.035, P.alu, -0.02, 0.42, 0.11, 24), C(0.095, 0.095, 0.03, P.alu, 0.06, 0.4, -0.11, 24),
+    { geo: new THREE.CylinderGeometry(0.045, 0.045, 0.2, 18), mat: P.alu, p: [0.17, 0.54, 0], r: [0, 0, -0.55] },
+    ...[0, 1, 2, 3, 4, 5, 6].map(i => ({ geo: new THREE.CylinderGeometry(0.085 - i * 0.002, 0.085 - i * 0.002, 0.007, 20), mat: P.alu, p: [0.13 + i * 0.016, 0.48 + i * 0.024, 0], r: [0, 0, -0.55] })),
+    { geo: new THREE.CylinderGeometry(0.06, 0.06, 0.04, 18), mat: P.alu, p: [0.255, 0.665, 0], r: [0, 0, -0.55] }, CY(0.006, 0.04, CHROME, 0.27, 0.7, 0),
+    C(0.025, 0.025, 0.07, P.alu, 0.05, 0.56, -0.07, 14), B(0.12, 0.1, 0.1, P.rubber, -0.08, 0.58, -0.07),
+    // Auspuff: gebogenes Krümmerrohr + Schalldämpfer mit Endkappe und Hitzeschutz
+    tube([[0.24, 0.53, 0.05], [0.33, 0.44, 0.09], [0.3, 0.3, 0.15], [0.12, 0.24, 0.17], [-0.25, 0.27, 0.18], [-0.38, 0.29, 0.18]], 0.022, CHROME, 40, 10),
+    { geo: new THREE.CylinderGeometry(0.045, 0.052, 0.5, 20), mat: CHROME, p: [-0.62, 0.32, 0.18], r: [0, 0, Math.PI / 2 - 0.06] },
+    { geo: new THREE.CylinderGeometry(0.03, 0.03, 0.02, 14), mat: P.rubber, p: [-0.875, 0.335, 0.18], r: [0, 0, Math.PI / 2 - 0.06] },
+    B(0.3, 0.02, 0.07, P.rubber, -0.58, 0.39, 0.19, 0, 0, -0.06),
+    // Schwinge, Federbeine mit echten Spiralfedern, Kette mit Ritzeln, Kettenschutz
+    tube([[-0.08, 0.42, 0.11], [-0.35, 0.36, 0.115], [-0.6, WHEEL_R, 0.115]], 0.019, pt, 12, 8), tube([[-0.08, 0.42, -0.11], [-0.35, 0.36, -0.115], [-0.6, WHEEL_R, -0.115]], 0.019, pt, 12, 8),
+    limbPart([-0.55, 0.36, 0.125], [-0.64, 0.82, 0.125], 0.012, 0.012, CHROME), limbPart([-0.55, 0.36, -0.125], [-0.64, 0.82, -0.125], 0.012, 0.012, CHROME),
+    spring(-0.565, 0.42, 0.125, 0.33, 0.19, CHROME), spring(-0.565, 0.42, -0.125, 0.33, 0.19, CHROME),
+    CY(0.03, 0.04, P.rubber, -0.555, 0.39, 0.125, 14), CY(0.03, 0.04, P.rubber, -0.555, 0.39, -0.125, 14),
+    C(0.06, 0.06, 0.008, P.chain, 0.04, 0.38, -0.12, 20), C(0.1, 0.1, 0.008, P.chain, -0.6, WHEEL_R, -0.12, 24),
+    tube([[0.04, 0.44, -0.12], [-0.6, 0.4, -0.12]], 0.006, P.chain, 4, 5), tube([[0.04, 0.32, -0.12], [-0.6, 0.2, -0.12]], 0.006, P.chain, 4, 5),
+    B(0.6, 0.07, 0.03, P.rubber, -0.3, 0.42, -0.145, 0, 0, 0.05),
+    // Rücklicht, Kennzeichen, hintere Blinker, Fußrasten, Bremspedal, Kickstarter
+    B(0.08, 0.07, 0.11, P.rubber, -0.92, 0.79, 0), B(0.02, 0.05, 0.09, P.rear, -0.965, 0.79, 0), B(0.012, 0.13, 0.17, P.plate, -0.97, 0.62, 0),
+    limbPart([-0.88, 0.8, 0.07], [-0.88, 0.8, 0.17], 0.006, 0.006, CHROME, 6), limbPart([-0.88, 0.8, -0.07], [-0.88, 0.8, -0.17], 0.006, 0.006, CHROME, 6),
+    SPH(0.024, P.blink, -0.88, 0.8, 0.19, 1.3, 1, 1), SPH(0.024, P.blink, -0.88, 0.8, -0.19, 1.3, 1, 1),
+    limbPart([-0.05, 0.33, 0.12], [-0.05, 0.33, 0.25], 0.014, 0.014, P.rubber, 8), limbPart([-0.05, 0.33, -0.12], [-0.05, 0.33, -0.25], 0.014, 0.014, P.rubber, 8),
+    limbPart([-0.42, 0.45, 0.13], [-0.42, 0.45, 0.22], 0.01, 0.01, P.rubber, 8), limbPart([-0.42, 0.45, -0.13], [-0.42, 0.45, -0.22], 0.01, 0.01, P.rubber, 8),
+    limbPart([0.0, 0.36, 0.13], [0.16, 0.3, 0.16], 0.008, 0.008, P.alu, 6), limbPart([-0.06, 0.45, -0.13], [-0.2, 0.38, -0.17], 0.008, 0.008, P.alu, 6),
   ];
   root.add(partsToGroup(body, true));
-  const stand = partsToGroup([limbPart([-0.12, 0.32, -0.12], [-0.2, 0.0, -0.26], 0.012, 0.012, P.rubber)], true);
+  const stand = partsToGroup([limbPart([-0.12, 0.32, -0.12], [-0.2, 0.0, -0.26], 0.012, 0.012, P.rubber), B(0.05, 0.01, 0.04, P.rubber, -0.2, 0.005, -0.26)], true);
   root.add(stand);
-  const wf = makeWheel(); wf.position.set(0.62, WHEEL_R, 0); root.add(wf);
-  const wr = makeWheel(); wr.position.set(-0.6, WHEEL_R, 0); root.add(wr);
+  const wf = makeWheel(true); wf.position.set(0.62, WHEEL_R, 0); root.add(wf);
+  const wr = makeWheel(false); wr.position.set(-0.6, WHEEL_R, 0); root.add(wr);
   scene.add(root);
   return { root, wf, wr, stand };
 }
-
 /* ---------- Zustand ---------- */
 // Für alle Spieler gleich (Abstellplätze aus der Karte); Host verteilt Position/Fahrer per Snapshot
 const vehicles = MAP_VEHICLES.map((v, i) => {
@@ -105,10 +162,10 @@ function toggleRide() {
 function startRide(i) {
   const v = vehicles[i]; if (!v) return;
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0;
-  me.scoped = false; me.trigger = false; me.reloading = 0; me.sprintTap = false;
+  me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
-  myRider.g.visible = true;
+  myRider.g.visible = true; setAvatarGun(myRider, me.weapon);
   engineSound(true);
   showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · E absteigen');
 }
@@ -160,8 +217,15 @@ function updateRide(dt) {
   const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(0.6, hit.dist - 0.3);   // nicht durch Wände schauen
   camera.position.copy(target).addScaledVector(back, dist);
   camera.rotation.set(me.pitch, me.yaw, 0);
-  const targetFov = fovBase + Math.min(10, sp * 0.6);
-  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 5); camera.updateProjectionMatrix();
+  // Schießen und Nachladen während der Fahrt; Rechtsklick = näher ranzoomen
+  const w = WEAPONS[me.weapon], now = performance.now() / 1000;
+  if (me.reloading > 0) { me.reloading -= dt; if (me.reloading <= 0) { me.reloading = 0; me.ammo[me.weapon] = w.mag; } }
+  if (me.trigger && (w.auto || !me.firedPress)) tryShoot(now);
+  me.recoilP *= Math.exp(-9 * dt); me.recoilY *= Math.exp(-9 * dt);
+  camera.rotation.x += me.recoilP; camera.rotation.y += me.recoilY;
+  if (me.scoped) { camera.position.lerp(target, 0.45); }
+  const targetFov = me.scoped ? (w.scope ? w.zoom : 52) : fovBase + Math.min(10, sp * 0.6);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
   engineSound(true, ride.speed, thr);
   viewGun.visible = false; viewKnife.visible = false; viewNade.visible = false;
 }
@@ -192,9 +256,22 @@ function updateVehicles(dt) {
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
   if (myRider && ride.v >= 0) {
     myRider.g.position.copy(me.pos); myRider.g.rotation.set(0, ride.yaw - Math.PI / 2, ride.lean * 0.8);
-    myRider.flags = 8; myRider.pivot.rotation.x = -0.3;
+    const aiming = riderAiming();
+    myRider.flags = 8 | (aiming ? 16 : 0);
+    setAvatarGun(myRider, me.weapon);
+    myRider.pivot.rotation.x = aiming ? me.pitch : -0.3;
     animateAvatar(myRider, dt);
+    riderTwist(myRider, aiming ? me.yaw : ride.yaw - Math.PI / 2, dt);
   }
+}
+
+// Fahrer zielt gerade (Abzug, Zoom oder vor kurzem geschossen)?
+function riderAiming() { return ride.v >= 0 && (me.trigger || me.scoped || performance.now() / 1000 - (me.rideAimT || -9) < 1.5); }
+// Oberkörper des Fahrers in Zielrichtung drehen (Beine bleiben auf dem Moped)
+function riderTwist(a, aimYaw, dt) {
+  let d = aimYaw - a.g.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
+  d = Math.max(-1.9, Math.min(1.9, d));
+  a.upper.rotation.y += (d - a.upper.rotation.y) * Math.min(1, dt * 12);
 }
 
 /* ---------- Motorgeräusch (Zweitakter: knatternd) ---------- */

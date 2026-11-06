@@ -275,7 +275,8 @@ function friendly(pid) {
 const _o = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3();
 function tryShoot(now) {
   const w = WEAPONS[me.weapon];
-  if (!me.alive || ride.v >= 0 || me.reloading > 0 || me.knifeT > 0 || me.throwT > 0 || me.drawT > 0.12 || now - me.lastShot < w.rate) return;
+  const riding = ride.v >= 0;
+  if (!me.alive || me.reloading > 0 || me.knifeT > 0 || me.throwT > 0 || (me.drawT > 0.12 && !riding) || now - me.lastShot < w.rate) return;
   if (me.ammo[me.weapon] <= 0) { startReload(); sndClick(0.05, 2); return; }
   me.lastShot = now; me.ammo[me.weapon]--; me.firedPress = true; me.inspectT = 0;
   const moving = Math.hypot(me.vel.x, me.vel.z) > 1.5;
@@ -283,10 +284,14 @@ function tryShoot(now) {
   if (me.crouch) spread *= 0.65; else if (me.sneak) spread *= 0.85;
   if (me.scoped) spread *= w.scope ? 0 : 0.5;
   if (w.scope && me.scoped && moving) spread = 0.02;
+  if (riding) spread = spread * 0.6 + 0.006 + Math.min(0.02, Math.abs(ride.speed) * 0.0012);   // vom fahrenden Moped etwas ungenauer
   camera.updateMatrixWorld();
   const origin = camera.getWorldPosition(_o.clone());
-  const mz = muzzle.getWorldPosition(new THREE.Vector3());
   camera.matrixWorld.extractBasis(_r, _u, _f); _f.negate();
+  // Auf dem Moped: Schuss kommt aus der Waffe des Fahrers (Kamera ist hinter ihm)
+  const mz = riding ? new THREE.Vector3(me.pos.x, me.pos.y + 1.38, me.pos.z).addScaledVector(_f, 0.75).addScaledVector(_r, 0.12)
+    : muzzle.getWorldPosition(new THREE.Vector3());
+  if (riding) { const back = origin.distanceTo(mz); origin.addScaledVector(_f, Math.max(0, back - 0.3)); }   // nicht den eigenen Fahrer treffen
   const parts = avatarParts(), dmgBy = {}, ends = [];
   let anyHead = false, anyHit = false;
   for (let i = 0; i < w.pellets; i++) {
@@ -316,9 +321,17 @@ function tryShoot(now) {
   me.pitch = Math.min(1.55, me.pitch + rk * 0.45);
   me.recoilP += rk * 0.9; me.recoilY += (Math.random() - 0.5) * w.kick * 0.6;
   me.kick = 1;
-  flashT = 0.05; flash.visible = true; flashMat.rotation = Math.random() * 6; flashLight.intensity = 2.5;
   sndShot(me.weapon, 0.5);
   puff(mz, 0xcfcfcf, 0.12, 0.5, _f.clone().multiplyScalar(0.6).add(new THREE.Vector3(0, 0.4, 0)), { opacity: 0.3, grow: 2.5 });
+  if (riding) {   // Mündungsfeuer an der Waffe des Fahrers
+    const fl = new THREE.Sprite(flashMat.clone()); fl.position.copy(mz); fl.scale.set(0.6, 0.6, 1); fl.material.rotation = Math.random() * 6;
+    scene.add(fl); effects.push({ o: fl, life: 0.06, max: 0.06 });
+    me.rideAimT = now;
+    if (me.weapon !== 1 && me.weapon !== 2 && me.weapon !== 5 && me.weapon !== 8) ejectShell(mz.clone().addScaledVector(_f, -0.4), _r.clone());
+    if (me.ammo[me.weapon] === 0) setTimeout(startReload, 250);
+    return;
+  }
+  flashT = 0.05; flash.visible = true; flashMat.rotation = Math.random() * 6; flashLight.intensity = 2.5;
   if (me.weapon === 1) me.pumpT = 0.55;
   else if (me.weapon === 2) me.boltT = 0.9;
   else if (me.weapon !== 5 && me.weapon !== 8) ejectShell(vm.eject.getWorldPosition(new THREE.Vector3()), _r.clone().add(_u.clone().multiplyScalar(0.3)));
@@ -632,6 +645,9 @@ function updateAvatars(dt) {
     a.baseY = a.g.position.y;
     a.flags = p.f || 0;
     animateAvatar(a, dt);
+    // Fahrer auf dem Moped: Oberkörper dreht in Zielrichtung
+    if (a.flags & 8) riderTwist(a, (a.flags & 16) && p.ay !== undefined ? p.ay : a.g.rotation.y, dt);
+    else a.upper.rotation.y *= Math.max(0, 1 - dt * 10);
     if (a.head) a.head.rotation.x = a.pivot.rotation.x * 0.7;
   }
 }
@@ -662,7 +678,7 @@ function animateAvatar(a, dt) {
   // Auf dem Moped: sitzen, Knie angewinkelt, nach vorne gebeugt, Hände am Lenker (Waffe weg)
   const riding = (a.flags & 8) ? 1 : 0;
   if (riding) { tL = tR = 1.35; kL = kR = -1.5; bob = 0; lean = -0.3; }
-  if (a.gunHolder) a.gunHolder.visible = !riding;
+  if (a.gunHolder) a.gunHolder.visible = !riding || (a.flags & 16) > 0;   // auf dem Moped: Waffe nur beim Zielen
   const s = 1 - Math.exp(-18 * dt);
   a.hipL.rotation.x += (tL - a.hipL.rotation.x) * s; a.hipR.rotation.x += (tR - a.hipR.rotation.x) * s;
   if (a.knees) { a.knees[0].rotation.x += (kL - a.knees[0].rotation.x) * s; a.knees[1].rotation.x += (kR - a.knees[1].rotation.x) * s; }
