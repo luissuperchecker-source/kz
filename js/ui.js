@@ -1,0 +1,245 @@
+'use strict';
+/* ======================= HUD ======================= */
+function updateSlots() {
+  $('slots').innerHTML = WEAPONS.map((w, i) => {
+    if (i >= BASE_WEAPONS && !me.owned[i]) return '';           // Ladenwaffen nur zeigen, wenn man sie hat
+    const key = i >= BASE_WEAPONS ? 5 : i + 1;
+    return `<span class="${i === me.weapon ? 'on' : (me.owned[i] ? '' : 'off')}">${key} ${w.short}</span>`;
+  }).join('');
+}
+const pColor = p => p.team >= 0 ? TEAM_COLORS[p.team] : p.color;
+function renderBoard() {
+  const all = Object.values(world.players).sort((a, b) => b.k - a.k || a.d - b.d);
+  const row = p => `<tr class="${p.id === myId ? 'me' : ''}"><td><span class="dot" style="background:${pColor(p)}"></span>${esc(p.name)}</td><td class="n">${p.k}</td><td class="n">${p.d}</td><td class="n">${p.d ? (p.k / p.d).toFixed(1) : p.k}</td></tr>`;
+  if (world.mode === 'tdm') {
+    let html = '';
+    for (const t of [0, 1]) {
+      const ps = all.filter(p => p.team === t), sc = ps.reduce((s, p) => s + p.k, 0);
+      html += `<tr class="teamRow"><td colspan="4" style="color:${TEAM_COLORS[t]}">TEAM ${TEAM_NAMES[t]} · ${sc}</td></tr>` + ps.map(row).join('');
+    }
+    $('boardBody').innerHTML = html;
+  } else $('boardBody').innerHTML = all.map(row).join('');
+}
+let hudT = 0;
+// Anzeige nur ändern, wenn sich der Wert wirklich ändert (spart Rechenzeit)
+const hudCache = {};
+function hudSet(id, prop, val) {
+  const key = id + prop;
+  if (hudCache[key] === val) return;
+  hudCache[key] = val;
+  const el = $(id);
+  if (prop === 'text') el.textContent = val; else if (prop === 'html') el.innerHTML = val; else el.style[prop] = val;
+}
+function updateHUD(dt) {
+  const w = WEAPONS[me.weapon];
+  const mine = world.players[myId];
+  if (mine) me.hp = mine.hp;
+  const hp = me.alive ? Math.max(0, Math.round(me.hp)) : 0;
+  hudSet('hpText', 'text', String(hp));
+  hudSet('hpFill', 'width', hp + '%');
+  hudSet('hpFill', 'background', hp > 50 ? 'linear-gradient(90deg,#3ddc5a,#a8ff60)' : hp > 25 ? 'linear-gradient(90deg,#e6a020,#ffd040)' : 'linear-gradient(90deg,#d02020,#ff6040)');
+  hudSet('lowHp', 'opacity', me.alive && hp < 35 ? String(0.25 + (35 - hp) / 60 + Math.sin(performance.now() / 180) * 0.08) : '0');
+  hudSet('wName', 'text', w.name);
+  hudSet('ammoText', 'html', `${me.ammo[me.weapon]} <small>/ ${w.mag}</small>`);
+  hudSet('nadeHud', 'html', `<span class="nd">G</span> ${'●'.repeat(me.nades)}${'○'.repeat(MAX_NADES - me.nades)} &nbsp; <span class="nd">V</span> Messer`);
+  hudSet('stance', 'text', !me.alive ? '' : me.slideT > 0 ? 'RUTSCHEN' : me.crouch ? 'GEDUCKT' : me.sneak ? 'SCHLEICHEN (lautlos)' : me.sprinting ? 'SPRINT' : '');
+  hudSet('reloadMsg', 'text', me.reloading > 0 ? 'Nachladen …' : (me.alive && me.ammo[me.weapon] === 0 ? 'R zum Nachladen' : ''));
+  const scoped = me.alive && me.scoped && w.scope && camera.fov < 40;
+  hudSet('scope', 'display', scoped ? 'block' : 'none');
+  // Fadenkreuz-Größe je nach Streuung
+  const moving = Math.hypot(me.vel.x, me.vel.z) > 1.5;
+  let spr = w.spread + (moving ? w.move : 0) + (me.onGround ? 0 : 0.04) + (me.sprinting ? 0.03 : 0);
+  if (me.crouch) spr *= 0.65; else if (me.sneak) spr *= 0.85;
+  const gap = Math.round(4 + spr * (me.scoped ? 0.5 : 1) * 260 + me.kick * 6);
+  const show = me.alive && !scoped && !(me.scoped && !w.scope && me.adsT > 0.8);
+  const c = [['c1', -1, 0], ['c2', 1, 0], ['c3', 0, -1], ['c4', 0, 1]];
+  for (const [id, x, y] of c) {
+    hudSet(id, 'display', show ? 'block' : 'none');
+    if (x) { hudSet(id, 'width', '10px'); hudSet(id, 'height', '2px'); hudSet(id, 'left', (x < 0 ? -gap - 10 : gap) + 'px'); hudSet(id, 'top', '-1px'); }
+    else { hudSet(id, 'width', '2px'); hudSet(id, 'height', '10px'); hudSet(id, 'top', (y < 0 ? -gap - 10 : gap) + 'px'); hudSet(id, 'left', '-1px'); }
+  }
+  hudT -= dt;
+  if (hudT <= 0) {
+    hudT = 0.25;
+    const ps = Object.values(world.players);
+    $('pCount').textContent = ps.filter(p => !p.bot).length;
+    if (world.mode === 'tdm') {
+      const s = [0, 1].map(t => ps.filter(p => p.team === t).reduce((a, p) => a + p.k, 0));
+      const myT = mine ? mine.team : 0;
+      $('topScore').innerHTML = `<b style="color:${TEAM_COLORS[0]}">ROT ${s[0]}</b> : <b style="color:${TEAM_COLORS[1]}">${s[1]} BLAU</b> <small>(bis ${TEAM_LIMIT}) · Dein Team: ${TEAM_NAMES[myT]}</small>`;
+    } else {
+      const lead = ps.slice().sort((a, b) => b.k - a.k)[0];
+      $('topScore').textContent = lead ? `Führung: ${lead.name} (${lead.k}/${KILL_LIMIT})  ·  Du: ${mine ? mine.k : 0}` : '';
+    }
+    const tl = world.timeLeft;
+    $('timer').textContent = tl === undefined ? '' : `${Math.floor(tl / 60)}:${String(tl % 60).padStart(2, '0')}`;
+    $('timer').classList.toggle('urgent', tl !== undefined && tl <= 30);
+    if (!$('board').classList.contains('hidden')) renderBoard();
+  }
+  drawRadar(dt);
+}
+
+/* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
+const RADAR = { img: null, x0: -62, z0: -62, w: 118, h: 124, ppm: 4, t: 0 };
+(function buildRadarMap() {
+  const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(40,46,40,0.9)'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = 'rgba(70,74,70,0.9)'; g.fillRect((-14 - RADAR.x0) * RADAR.ppm, 0, 8 * RADAR.ppm, c.height); g.fillRect(0, (-5 - RADAR.z0) * RADAR.ppm, c.width, 10 * RADAR.ppm);
+  g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((55.5 - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
+  const sorted = boxes.slice().sort((a, b) => a.max.y - b.max.y);
+  for (const b of sorted) {
+    if (b.max.y < 0.5 || b.max.x - b.min.x > 100 && b.max.y > 10) continue;
+    const l = Math.min(1, b.max.y / 10);
+    g.fillStyle = `rgb(${120 + l * 90 | 0},${125 + l * 90 | 0},${118 + l * 80 | 0})`;
+    g.fillRect((b.min.x - RADAR.x0) * RADAR.ppm, (b.min.z - RADAR.z0) * RADAR.ppm, Math.max(1, (b.max.x - b.min.x) * RADAR.ppm), Math.max(1, (b.max.z - b.min.z) * RADAR.ppm));
+  }
+  RADAR.img = c;
+})();
+function drawRadar(dt) {
+  RADAR.t -= dt; if (RADAR.t > 0) return; RADAR.t = 0.08;
+  const cv = $('radar'), g = cv.getContext('2d'), S = cv.width, R = S / 2, scale = S / 70;   // 70 m Durchmesser
+  g.clearRect(0, 0, S, S);
+  g.save(); g.beginPath(); g.arc(R, R, R - 1, 0, 7); g.clip();
+  g.fillStyle = 'rgba(10,14,12,0.75)'; g.fillRect(0, 0, S, S);
+  g.translate(R, R); g.rotate(me.yaw); g.scale(scale / RADAR.ppm, scale / RADAR.ppm);
+  g.drawImage(RADAR.img, -(me.pos.x - RADAR.x0) * RADAR.ppm, -(me.pos.z - RADAR.z0) * RADAR.ppm);
+  g.restore();
+  // Spieler-Punkte
+  const now = performance.now(), mine = world.players[myId];
+  const toR = (x, z) => {
+    const dx = x - me.pos.x, dz = z - me.pos.z, c = Math.cos(me.yaw), s = Math.sin(me.yaw);
+    return [R + (dx * c - dz * s) * scale, R + (dx * s + dz * c) * scale];
+  };
+  for (const id in world.players) {
+    if (id === myId) continue;
+    const p = world.players[id]; if (!p.alive) continue;
+    const mate = world.mode === 'tdm' && mine && p.team === mine.team;
+    const shooting = now - (radarPing[id] || -1e9) < 2000;
+    if (!mate && !shooting) continue;
+    let [x, y] = toR(p.x, p.z);
+    const d = Math.hypot(x - R, y - R); if (d > R - 5) { x = R + (x - R) / d * (R - 5); y = R + (y - R) / d * (R - 5); }
+    g.fillStyle = mate ? '#4aa3ff' : '#ff3b30'; g.beginPath(); g.arc(x, y, mate ? 3.5 : 4, 0, 7); g.fill();
+  }
+  // Waffen am Boden (kleine gelbe Punkte)
+  for (let i = 0; i < PICKUPS.length; i++) if (pickActive[i]) {
+    const [x, y] = toR(PICKUPS[i].x, PICKUPS[i].z);
+    if (Math.hypot(x - R, y - R) < R - 4) { g.fillStyle = 'rgba(255,210,80,.8)'; g.fillRect(x - 1.5, y - 1.5, 3, 3); }
+  }
+  // Eigener Pfeil + Sichtkegel
+  g.fillStyle = 'rgba(255,255,255,0.08)'; g.beginPath(); g.moveTo(R, R); g.arc(R, R, R, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); g.fill();
+  g.fillStyle = '#ffcc33'; g.beginPath(); g.moveTo(R, R - 7); g.lineTo(R - 5, R + 5); g.lineTo(R, R + 2); g.lineTo(R + 5, R + 5); g.closePath(); g.fill();
+  g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 2; g.beginPath(); g.arc(R, R, R - 1, 0, 7); g.stroke();
+}
+
+/* ---------- Trefferrichtung, Killserien, Endbildschirm, Inventar ---------- */
+function showDamageDir(ax, az) {
+  const dx = ax - me.pos.x, dz = az - me.pos.z;
+  const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
+  const ang = Math.atan2(dx * rx + dz * rz, dx * fx + dz * fz) * 180 / Math.PI;
+  const el = document.createElement('div'); el.className = 'dmgArc'; el.style.transform = `rotate(${ang}deg)`;
+  $('dmgDir').appendChild(el);
+  setTimeout(() => el.classList.add('fade'), 50); setTimeout(() => el.remove(), 1300);
+}
+function showStreak(text, sub) {
+  const el = $('streakMsg'); el.innerHTML = `${text}${sub ? `<small>${sub}</small>` : ''}`;
+  el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+}
+function showEndScreen(m) {
+  $('endName').textContent = '🏆 ' + m.name;
+  $('endTop').innerHTML = (m.top || []).map((p, i) => `<div><b>${i + 1}.</b> ${esc(p.n)} <span>${p.k} Elim. · ${p.d} Tode</span></div>`).join('');
+  $('endScreen').classList.remove('hidden');
+}
+function renderInventory() {
+  const bar = (label, v) => `<div class="stat"><span>${label}</span><em><i style="width:${Math.round(Math.min(1, v) * 100)}%"></i></em></div>`;
+  let html = '';
+  WEAPONS.forEach((w, i) => {
+    const inGame = running && me.owned[i], bought = i >= BASE_WEAPONS && shopState.bought.includes(i);
+    const where = i < BASE_WEAPONS ? (i === START_WEAPON ? 'Startwaffe' : 'Auf der Karte finden') : bought ? (shopState.equip === i ? 'Gekauft · ausgerüstet' : 'Gekauft') : `Im Laden: ${fmt(w.price)} Coins`;
+    const key = i < BASE_WEAPONS ? i + 1 : 5;
+    html += `<div class="invItem ${inGame ? 'have' : ''} ${running && me.weapon === i ? 'cur' : ''}" data-w="${i}">
+      <div class="invKey">${key}</div><div class="info"><div class="nm">${w.name} ${inGame ? '<span class="tag">dabei</span>' : ''}</div>
+      <div class="ds">${where}${inGame ? ` · Munition ${me.ammo[i]}/${w.mag}` : ''}</div>
+      ${bar('Schaden', w.dmg * w.pellets / 60)}${bar('Feuerrate', 0.065 / w.rate)}${bar('Magazin', w.mag / 80)}</div></div>`;
+  });
+  html += `<div class="invItem have"><div class="invKey">G</div><div class="info"><div class="nm">Splittergranate</div><div class="ds">${running ? me.nades : MAX_NADES} von ${MAX_NADES} · explodiert nach 2,4 s, Schaden im Umkreis von 7 m</div></div></div>`;
+  html += `<div class="invItem have"><div class="invKey">V</div><div class="info"><div class="nm">Kampfmesser</div><div class="ds">Immer dabei · 60 Schaden, Kopf 100</div></div></div>`;
+  $('invList').innerHTML = html;
+}
+function toggleInventory(force) {
+  const el = $('inv'), show = force !== undefined ? force : el.classList.contains('hidden');
+  if (show) renderInventory();
+  el.classList.toggle('hidden', !show);
+}
+$('invList').addEventListener('click', e => {
+  const it = e.target.closest('[data-w]'); if (!it || !running) return;
+  const i = +it.dataset.w; if (me.owned[i]) { switchWeapon(i); renderInventory(); }
+});
+$('invClose').onclick = () => toggleInventory(false);
+$('btnInv1').onclick = () => toggleInventory(true); $('btnInv2').onclick = () => toggleInventory(true);
+$('btnSet1').onclick = () => $('settings').classList.remove('hidden'); $('btnSet2').onclick = () => $('settings').classList.remove('hidden');
+$('setClose').onclick = () => $('settings').classList.add('hidden');
+
+/* ======================= Atmosphäre: Sonnenblendung, Staub, Feuer ======================= */
+const glare = sprite(GLOW_TEX, 0xfff0d0, 140, true, 0.55); glare.material.fog = false; scene.add(glare);
+const dust = (() => {
+  const N = 260, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { pos[i * 3] = rnd(-15, 15); pos[i * 3 + 1] = rnd(0, 8); pos[i * 3 + 2] = rnd(-15, 15); }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ map: GLOW_TEX, size: 0.06, transparent: true, opacity: 0.45, depthWrite: false, color: 0xfff3dd, blending: THREE.AdditiveBlending }));
+  p.frustumCulled = false; scene.add(p); return p;
+})();
+let fireT = 0;
+function updateAtmosphere(dt) {
+  glare.position.copy(camera.position).addScaledVector(SUN_DIR, 450);
+  // Staubteilchen schweben um die Kamera
+  const a = dust.geometry.attributes.position, c = camera.position;
+  for (let i = 0; i < a.count; i++) {
+    let x = a.getX(i) + Math.sin(performance.now() / 3000 + i) * 0.003, y = a.getY(i) + 0.004 * Math.sin(i), z = a.getZ(i) + 0.002;
+    if (x - c.x > 15) x -= 30; if (x - c.x < -15) x += 30; if (z - c.z > 15) z -= 30; if (z - c.z < -15) z += 30;
+    if (y > c.y + 6) y -= 9; if (y < c.y - 3) y += 9;
+    a.setXYZ(i, x, y, z);
+  }
+  a.needsUpdate = true;
+  dust.visible = gfx !== 'low';
+  // Brennender Bus auf der Hauptstraße + Schornstein des Schiffs
+  fireT -= dt;
+  if (fireT <= 0) {
+    fireT = 0.07;
+    if (camera.position.distanceTo(new THREE.Vector3(38, 2, -1)) < 90) {
+      const f = sprite(FIRE_TEX, 0xffffff, rnd(0.8, 1.4), true); f.position.set(rnd(35, 41), 3.0, rnd(-1.8, -0.6));
+      addFx(f, rnd(0.4, 0.7), { vel: new THREE.Vector3(rnd(-0.2, 0.2), rnd(1.5, 2.5), rnd(-0.2, 0.2)), grow: 0.4, fadeIn: 0.08 });
+      if (Math.random() < 0.6) puff(new THREE.Vector3(rnd(35.5, 40.5), 3.6, rnd(-1.6, -0.8)), 0x2b2724, rnd(1, 1.8), rnd(3, 4.5),
+        new THREE.Vector3(rnd(0.3, 0.8), rnd(1.8, 2.6), rnd(-0.2, 0.2)), { opacity: 0.55, grow: 0.45, fadeIn: 0.4 });
+    }
+    if (Math.random() < 0.35) puff(new THREE.Vector3(92, 16, 34), 0x6b6b6b, rnd(2, 3), 6, new THREE.Vector3(rnd(0.8, 1.4), rnd(1.5, 2.2), 0), { opacity: 0.5, grow: 0.3, fadeIn: 0.5 });
+  }
+}
+
+/* ======================= Hauptschleife ======================= */
+let last = performance.now();
+camera.position.set(0, 18, 34); camera.lookAt(0, 0, 0);
+function frame(t) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  const now = t / 1000;
+  if (running && myId) {
+    updateLocal(dt, now);
+    netTick(now);
+    updateAvatars(dt);
+    updatePickups(now);
+    updateHUD(dt);
+  } else if (!running) {
+    // Kamerafahrt im Menü: langsamer Flug über das Hafenviertel
+    const a = now * 0.05;
+    camera.position.set(-3 + Math.sin(a) * 58, 24 + Math.sin(now * 0.13) * 4, Math.cos(a) * 58);
+    camera.lookAt(-3 + Math.sin(a + 1.2) * 12, 3, Math.cos(a + 1.2) * 12);
+  }
+  updateEffects(dt);
+  updateAtmosphere(dt);
+  followSun(camera.position.x, camera.position.z);
+  if (window.waterNormal) { window.waterNormal.offset.x += dt * 0.004; window.waterNormal.offset.y += dt * 0.0025; }
+  skyMesh.position.copy(camera.position);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(frame);
