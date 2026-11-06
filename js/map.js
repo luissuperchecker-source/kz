@@ -22,14 +22,16 @@ function collider(x, y, z, w, h, d) { boxes.push({ min: { x: x - w / 2, y, z: z 
 // Wie stark Kanten je nach Material abgerundet werden (Meter)
 function defaultRound(mat) {
   if (mat === MAT.sandbag) return 0.24;
-  if (mat === MAT.crate) return 0.05;
+  if (mat === MAT.crate) return 0.045;
   if (mat === MAT.ctrRed || mat === MAT.ctrBlue || mat === MAT.ctrGreen || mat === MAT.ctrOrange) return 0.05;
   if (mat === MAT.metal || mat === MAT.yellow || mat === MAT.dark) return 0.03;
   return 0.025;   // Beton, Ziegel, Putz …: leicht gebrochene Kanten
 }
 function addBox(x, y, z, w, h, d, mat, tile = 2, opts = {}) {
   const t = tile === 0 ? 0 : (mat.userData.tile || tile);
-  const r = opts.round !== undefined ? opts.round : defaultRound(mat);
+  let r = opts.round !== undefined ? opts.round : defaultRound(mat);
+  // Große Wände/Decken: die feine Kantenrundung sieht man nicht, kostet aber viele Dreiecke
+  if (opts.round === undefined && r <= 0.03 && Math.max(w, h, d) > 3.5) r = 0;
   const m = new THREE.Mesh(boxGeo(w, h, d, t, r), mat);
   m.position.set(x, y + h / 2, z);
   if (opts.rotY) m.rotation.y = opts.rotY;
@@ -74,21 +76,22 @@ function rampH(r, x, z) {
   if (u < 0 || u > r.L || Math.abs(v) > r.w / 2) return 0;
   const p = r.prof; let i = 1; while (i < p.length - 1 && p[i][0] < u) i++;
   const a = p[i - 1], b = p[i], t = (u - a[0]) / ((b[0] - a[0]) || 1);
-  return a[1] + (b[1] - a[1]) * Math.min(1, Math.max(0, t));
+  return r.base + a[1] + (b[1] - a[1]) * Math.min(1, Math.max(0, t));
 }
-// Bodenhöhe an einer Stelle (0 = flach, sonst Schanze)
-function groundH(x, z) {
+// Bodenhöhe an einer Stelle (0 = flach, sonst Schanze). y = Höhe des Körpers: Schanzen weit darüber
+// (z. B. auf der Hochstraße) zählen für jemanden unten auf der Straße nicht.
+function groundH(x, z, y = Infinity) {
   let h = 0;
   for (const r of RAMPS) {
-    if (x < r.bx0 || x > r.bx1 || z < r.bz0 || z > r.bz1) continue;
+    if (x < r.bx0 || x > r.bx1 || z < r.bz0 || z > r.bz1 || r.base > y + 1) continue;
     const hh = rampH(r, x, z); if (hh > h) h = hh;
   }
   return h;
 }
-function addRamp(x, z, a, w, prof, mat, tile = 2) {
+function addRamp(x, z, a, w, prof, mat, tile = 2, base = 0) {
   const fx = Math.cos(a), fz = Math.sin(a), L = prof[prof.length - 1][0];
-  const r = { x, z, fx, fz, w, prof, L, H: Math.max(...prof.map(p => p[1])) };
-  const P = (u, v, h) => [x + u * fx - v * fz, h, z + u * fz + v * fx];
+  const r = { x, z, fx, fz, w, prof, L, base, H: base + Math.max(...prof.map(p => p[1])) };
+  const P = (u, v, h) => [x + u * fx - v * fz, base + h, z + u * fz + v * fx];
   const cs = [P(0, -w / 2, 0), P(0, w / 2, 0), P(L, -w / 2, 0), P(L, w / 2, 0)];
   r.bx0 = Math.min(...cs.map(c => c[0])); r.bx1 = Math.max(...cs.map(c => c[0]));
   r.bz0 = Math.min(...cs.map(c => c[2])); r.bz1 = Math.max(...cs.map(c => c[2]));
@@ -184,15 +187,15 @@ function leafTree(x, z, s = 1) {
   const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
   const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.28, 4, 12), treeTrunkMat); tr.position.y = 2; tr.castShadow = true; g.add(tr);
   for (let i = 0; i < 6; i++) {
-    const c = new THREE.Mesh(new THREE.SphereGeometry(srnd(1.2, 1.8), 16, 12), leafMat2);
+    const c = new THREE.Mesh(new THREE.SphereGeometry(srnd(1.2, 1.8), 11, 8), leafMat2);
     c.position.set(srnd(-1, 1), srnd(3.8, 5.4), srnd(-1, 1)); c.castShadow = true; g.add(c);
   }
   scene.add(g);
   collider(x, 0, z, 0.55 * s, 3.5 * s, 0.55 * s);
 }
 // Haus mit Satteldach (geschlossen)
-function house(x, z, w, d, h) {
-  addBox(x, 0, z, w, h, d, MAT.brick, 2.5);
+function house(x, z, w, d, h, wallMat = MAT.brick) {
+  addBox(x, 0, z, w, h, d, wallMat, 2.5);
   addBox(x, h, z, w + 0.3, 0.2, d + 0.3, MAT.concrete, 2, { decor: true });
   const rise = d * 0.35, slope = Math.hypot(d / 2 + 0.4, rise), ang = Math.atan2(rise, d / 2 + 0.4);
   for (const s of [1, -1]) {
@@ -203,7 +206,7 @@ function house(x, z, w, d, h) {
   for (const s of [1, -1]) {
     const gg = new THREE.ShapeGeometry(gable);
     const uv = gg.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, gg.attributes.position.getX(i) / 2.5, gg.attributes.position.getY(i) / 2.5);
-    const gm = new THREE.Mesh(withUv2(gg), MAT.brick);
+    const gm = new THREE.Mesh(withUv2(gg), wallMat);
     gm.position.set(x + s * (w / 2), h + 0.2, z); gm.rotation.y = s * Math.PI / 2; gm.receiveShadow = true; scene.add(gm);
   }
   for (const s of [1, -1]) {
@@ -398,258 +401,490 @@ MAT.hallMetal = pbr('container', 2.6, { mat: { color: new THREE.Color(0.75, 0.78
 const BRONZE = new THREE.MeshStandardMaterial({ color: 0x6b5a3a, roughness: 0.35, metalness: 0.9 });
 const MAP_PICKUPS = [];
 
-(function buildMap() {
-  const WALL_H = 6;
-  /* --- Außengrenzen: Mauern im Norden, Westen, Süden; Kaimauer im Osten --- */
-  addBox(-3, 0, -61, 118, WALL_H, 1, MAT.concrete, 3);
-  // Südmauer mit drei Toren zum Crosspark
-  const GATES = [[-48, -40], [-14, -6], [22, 32]];
-  wallRun('x', -62, 56, 61, 0, WALL_H, 1, MAT.concrete, GATES.map(([a, b]) => [a, b, 0, WALL_H]));
-  addBox(-61, 0, 0, 1, WALL_H, 122, MAT.concrete, 3);
-  for (let i = -60; i <= 54; i += 10) for (const z of [-60.3, 60.3]) {
-    if (z > 0 && GATES.some(([a, b]) => i > a - 1 && i < b + 1)) continue;
-    addBox(i, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+/* ======================= Karte „Tokio“: x/z -100 … 100, im Osten die Bucht ======================= */
+const TK_FONT = '"Yu Gothic UI","Yu Gothic","Meiryo","Hiragino Sans","Noto Sans JP",sans-serif';
+// Hochhaus-Fassade mit Fensterraster (512 px = 16 m, 4 Etagen); einzelne Fenster leuchten
+function tkFacade(base, glass, frame, lit, style) {
+  const s = 512, c = document.createElement('canvas'), e = document.createElement('canvas'); c.width = c.height = e.width = e.height = s;
+  const g = c.getContext('2d'), ge = e.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, s, s); ge.fillStyle = '#000'; ge.fillRect(0, 0, s, s);
+  const isGlass = style === 'glass', cols = isGlass ? 8 : 5, fh = s / 4, cw = s / cols;
+  for (let f = 0; f < 4; f++) for (let k = 0; k < cols; k++) {
+    const x = k * cw + (isGlass ? 2 : cw * 0.18), y = f * fh + (isGlass ? 3 : fh * 0.22);
+    const w = isGlass ? cw - 4 : cw * 0.64, h = isGlass ? fh - 6 : fh * 0.56;
+    const on = Math.random() < lit;
+    g.fillStyle = on ? '#f1dca4' : glass; g.fillRect(x, y, w, h);
+    if (!on) { const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, 'rgba(255,255,255,.2)'); gr.addColorStop(0.55, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x, y, w, h); }
+    else { ge.fillStyle = '#ffe2a0'; ge.fillRect(x, y, w, h); }
+    g.strokeStyle = frame; g.lineWidth = isGlass ? 3 : 4; g.strokeRect(x, y, w, h);
   }
-  for (const [a, b] of GATES) for (const x of [a - 0.6, b + 0.6]) addBox(x, 0, 61, 1.3, WALL_H + 0.8, 1.4, MAT.concrete, 2);
-  for (let i = -60; i <= 60; i += 10) addBox(-60.3, 0, i, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
-  // Kai: Kante, Poller, Geländer + unsichtbare Sperre
-  addBox(55.4, -2.2, 0, 0.8, 2.45, 122, MAT.concrete, 2, { decor: true });
-  for (let z = -56; z <= 56; z += 8) {
-    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.7, 12), MAT.dark); b.position.set(54.6, 0.35, z); b.castShadow = true; scene.add(b);
-    collider(54.6, 0, z, 0.5, 0.7, 0.5);
+  speckle(g, s, 4000, '0,0,0', 0.07, 2);
+  const t = new THREE.CanvasTexture(c), te = new THREE.CanvasTexture(e);
+  for (const q of [t, te]) { q.wrapS = q.wrapT = THREE.RepeatWrapping; q.anisotropy = MAX_ANISO; q.encoding = THREE.sRGBEncoding; }
+  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: te, emissiveIntensity: 0.5,
+    roughness: isGlass ? 0.18 : 0.75, metalness: isGlass ? 0.55 : 0.1, envMapIntensity: isGlass ? 1.5 : 1 });
+}
+const TKM = {
+  glassBlue: tkFacade('#3a4a5c', '#1c2d43', '#61728a', 0.12, 'glass'),
+  glassGreen: tkFacade('#2f4442', '#173130', '#58736e', 0.1, 'glass'),
+  office: tkFacade('#b8b2a5', '#2a3440', '#8e887c', 0.25, 'office'),
+  officeDark: tkFacade('#4a4c52', '#1e2530', '#34363b', 0.3, 'office'),
+  tile: tkFacade('#d6d0c2', '#2b3541', '#aaa498', 0.2, 'office'),
+  lobby: new THREE.MeshStandardMaterial({ color: 0x141a20, roughness: 0.1, metalness: 0.7, envMapIntensity: 1.5 }),
+  red: new THREE.MeshStandardMaterial({ color: 0xc8321e, roughness: 0.55 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x1b1b1d, roughness: 0.6 }),
+  white: new THREE.MeshStandardMaterial({ color: 0xe9e8e2, roughness: 0.6 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xc9a43a, roughness: 0.3, metalness: 0.9 }),
+  wood: pbr('wood', 2, { mat: { color: new THREE.Color(0.8, 0.5, 0.33) } }),
+  stone: pbr('concrete', 2, { mat: { color: new THREE.Color(0.78, 0.77, 0.72) } }),
+  gravel: pbr('asphalt', 3, { mat: { color: new THREE.Color(1.6, 1.55, 1.45) } }),
+  roofTile: pbr('roof', 2.5, { mat: { color: new THREE.Color(0.42, 0.45, 0.52) } }),
+  water: new THREE.MeshStandardMaterial({ color: 0x23464f, roughness: 0.05, metalness: 0.3, normalMap: waterNormal, envMapIntensity: 1.3 }),
+  sakura: new THREE.MeshStandardMaterial({ map: canvasTex((g, s) => {
+    g.clearRect(0, 0, s, s);
+    for (let i = 0; i < 1400; i++) {
+      const x = Math.random() * s, y = Math.random() * s, r = rnd(2, 5), l = rnd(0.75, 1);
+      g.fillStyle = `rgb(${255 * l | 0},${(170 + Math.random() * 60) * l | 0},${(195 + Math.random() * 40) * l | 0})`;
+      g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+    }
+  }, 256), alphaTest: 0.4, side: THREE.DoubleSide, roughness: 0.85 }),
+  lantern: new THREE.MeshStandardMaterial({ color: 0xd8301c, emissive: 0xff4a20, emissiveIntensity: 0.7, roughness: 0.6 }),
+  silver: new THREE.MeshStandardMaterial({ color: 0xc9ced3, roughness: 0.3, metalness: 0.8 }),
+  green: new THREE.MeshStandardMaterial({ color: 0x2f7a3c, roughness: 0.45, metalness: 0.2 }),
+  signal: new THREE.MeshStandardMaterial({ color: 0x30ff70, emissive: 0x30ff70, emissiveIntensity: 1.2 }),
+  signalR: new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff3020, emissiveIntensity: 1.2 }),
+};
+// Leuchtschild (waagerecht oder senkrecht) mit japanischer Schrift
+function tkSignMat(text, bg, fg, vertical, wpx = 512, hpx = 128) {
+  const c = document.createElement('canvas'); c.width = vertical ? hpx : wpx; c.height = vertical ? wpx : hpx;
+  const g = c.getContext('2d');
+  g.fillStyle = bg; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = fg; g.lineWidth = 6; g.strokeRect(8, 8, c.width - 16, c.height - 16);
+  g.fillStyle = fg; g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (vertical) {
+    const ch = [...text], step = (c.height - 30) / ch.length, fs = Math.min(c.width * 0.7, step * 0.9);
+    g.font = `900 ${fs}px ${TK_FONT}`; ch.forEach((k, i) => g.fillText(k, c.width / 2, 15 + (i + 0.5) * step));
+  } else {
+    let fs = c.height * 0.62; g.font = `900 ${fs}px ${TK_FONT}`;
+    while (g.measureText(text).width > c.width - 40 && fs > 10) { fs -= 4; g.font = `900 ${fs}px ${TK_FONT}`; }
+    g.fillText(text, c.width / 2, c.height / 2 + 3);
   }
-  for (let z = -60; z < 60; z += 2.5) addBox(55.6, 0.25, z, 0.06, 1.0, 0.06, MAT.yellow, 1, { decor: true });
-  addBox(55.6, 1.2, 0, 0.06, 0.06, 120, MAT.yellow, 1, { decor: true });
-  collider(56, 0, 0, 1, 12, 122);
-  // Wasser
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(700, 1600), new THREE.MeshStandardMaterial({ color: 0x1b3c48, roughness: 0.08, metalness: 0.2, normalMap: waterNormal, envMapIntensity: 1.3 }));
-  water.normalMap = waterNormal; water.material.normalScale.set(0.5, 0.5);
-  water.rotation.x = -Math.PI / 2; water.position.set(55 + 350, -0.9, 0); water.userData.noMerge = true; scene.add(water);
-  // Frachtschiff draußen im Wasser (nur Kulisse)
-  const hull = new THREE.MeshStandardMaterial({ color: 0x3a1a16, roughness: 0.6, metalness: 0.3 });
-  const deck = new THREE.MeshStandardMaterial({ color: 0x2c3a44, roughness: 0.7 });
-  addBox(92, -3, -5, 18, 9, 90, hull, 3, { decor: true, shadow: false });
-  addBox(92, 6, -5, 17, 0.3, 88, deck, 3, { decor: true, shadow: false });
-  addBox(92, 6.3, 32, 14, 9, 10, MAT.plaster2, 2.7, { decor: true, shadow: false });
-  for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) for (let h = 0; h < 1 + ((r * 7 + c * 3) % 3); h++) {
-    const mats = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
-    addBox(86.5 + c * 3.6, 6.3 + h * 2.6, -42 + r * 13, 2.44, 2.6, 12.2, mats[(r + c + h) % 4], 2.6, { decor: true, shadow: false });
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.7, roughness: 0.4 });
+}
+const TK_COLORS = [['#d41f3a', '#ffffff'], ['#ffd21f', '#c0141e'], ['#1b6fd8', '#ffffff'], ['#12a05a', '#ffffff'], ['#ff6a00', '#ffffff'], ['#6a2bd6', '#ffe14d'], ['#111111', '#ff3b7a'], ['#ffffff', '#d41f3a']];
+const TK_WORDS = ['ラーメン', 'カラオケ', '寿司', '居酒屋', 'ゲーム', 'ホテル', 'カフェ', '焼肉', '電器', '本屋', 'うどん', 'バー', '薬局', '定食', '餃子', '喫茶'];
+let tkSignN = 0;
+function tkSign(x, y, z, w, h, rotY, mat) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); m.rotation.y = rotY; scene.add(m); return m;
+}
+// Senkrechtes Schild an einer Fassade (zufälliges Wort/Farbe)
+function tkVSign(x, y, z, rotY, h = 3.2) {
+  const [bg, fg] = TK_COLORS[tkSignN % TK_COLORS.length], word = TK_WORDS[(tkSignN * 7) % TK_WORDS.length]; tkSignN++;
+  return tkSign(x, y, z, h / 4, h, rotY, tkSignMat(word, bg, fg, true));
+}
+function tkHSign(x, y, z, w, rotY, word) {
+  const [bg, fg] = TK_COLORS[tkSignN % TK_COLORS.length]; tkSignN++;
+  return tkSign(x, y, z, w, w / 4, rotY, tkSignMat(word || TK_WORDS[(tkSignN * 5) % TK_WORDS.length], bg, fg, false));
+}
+// Hochhaus (nicht begehbar): Fassade, dunkle Lobby, Technik auf dem Dach
+function tkTower(x, z, w, d, h, mat) {
+  addBox(x, 0, z, w, h, d, mat, 16, { round: 0 });
+  addBox(x, 0, z, w + 0.2, 4.2, d + 0.2, TKM.lobby, 4, { decor: true, round: 0 });
+  addBox(x, h, z, w, 0.9, d, MAT.concrete, 2, { decor: true, round: 0, shadow: false });
+  if (w > 9) { addBox(x + w * 0.2, h + 0.9, z - d * 0.15, 3, 2.2, 3, MAT.metal, 1, { decor: true }); addBox(x - w * 0.25, h + 0.9, z + d * 0.2, 2.2, 3.2, 2.2, MAT.hallMetal, 2, { decor: true }); }
+  if (h > 40) addBox(x, h + 0.9, z, 0.3, 9, 0.3, MAT.metal, 1, { decor: true });
+}
+function tkLamp(x, z, dx, dz) {
+  addBox(x, 0, z, 0.18, 6, 0.18, MAT.metal, 1, { round: 0.085 });
+  addBox(x + dx * 0.7, 5.9, z + dz * 0.7, dx ? 1.4 : 0.1, 0.1, dz ? 1.4 : 0.1, MAT.dark, 1, { decor: true });
+  addBox(x + dx * 1.4, 5.75, z + dz * 1.4, dx ? 0.6 : 0.3, 0.15, dz ? 0.6 : 0.3, LAMP_MAT, 0, { decor: true, round: 0.05 });
+}
+function tkSignal(x, z, dx, dz) {
+  addBox(x, 0, z, 0.16, 4.6, 0.16, MAT.dark, 1, { round: 0.07 });
+  addBox(x + dx * 0.25, 4.0, z + dz * 0.25, dz ? 1.1 : 0.32, 0.38, dx ? 1.1 : 0.32, MAT.dark, 1, { decor: true, round: 0.05 });
+  addBox(x + dx * 0.42, 4.08, z + dz * 0.42, 0.22, 0.22, 0.22, (Math.abs(x + z) | 0) % 2 ? TKM.signal : TKM.signalR, 0, { decor: true, round: 0.1 });
+}
+function tkZebra(cx, cz, alongX, width, len) {
+  // Streifen quer zur Gehrichtung; alongX = Fußgänger laufen entlang x
+  for (let o = -width / 2 + 0.4; o < width / 2; o += 1.2)
+    alongX ? decalT(cx, cz + o, len, 0.6, MAT.zebra, 0, 0, 0.016) : decalT(cx + o, cz, 0.6, len, MAT.zebra, 0, 0, 0.016);
+}
+function tkPlanter(x, z, w, d) {
+  addBox(x, 0, z, w, 0.9, d, MAT.concrete, 2);
+  addBox(x, 0.9, z, w - 0.2, 0.55, d - 0.2, HEDGE_MAT, 1, { decor: true, round: 0.22 });
+}
+const VEND_MAT = (() => {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 256;
+  const g = c.getContext('2d'); g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, 128, 256);
+  g.fillStyle = '#1e2a36'; g.fillRect(10, 14, 108, 120);
+  const cols = ['#d63031', '#0984e3', '#00b894', '#fdcb6e', '#e17055', '#6c5ce7'];
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 6; k++) { g.fillStyle = cols[(r * 6 + k * 5) % 6]; g.fillRect(16 + k * 17, 20 + r * 29, 11, 22); g.fillStyle = '#fff'; g.fillRect(17 + k * 17, 21 + r * 29, 3, 6); }
+  g.fillStyle = '#c0392b'; g.fillRect(0, 140, 128, 30); g.fillStyle = '#222'; g.fillRect(36, 190, 56, 40);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.45, roughness: 0.4 });
+})();
+// Getränkeautomat; rot = Blickrichtung (0 = +z, π/2 = +x …)
+function tkVend(x, z, rot) {
+  const side = Math.abs(Math.sin(rot)) > 0.5;
+  addBox(x, 0, z, side ? 0.8 : 1.0, 1.85, side ? 1.0 : 0.8, TKM.white, 1, { round: 0.04 });
+  tkSign(x + Math.sin(rot) * 0.41, 0.95, z + Math.cos(rot) * 0.41, 0.95, 1.8, rot, VEND_MAT);
+}
+function tkLantern(x, y, z) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), TKM.lantern); m.scale.y = 1.35; m.position.set(x, y, z); scene.add(m);
+  addBox(x, y + 0.33, z, 0.22, 0.06, 0.22, TKM.black, 0, { decor: true, round: 0.02 }); addBox(x, y - 0.39, z, 0.22, 0.06, 0.22, TKM.black, 0, { decor: true, round: 0.02 });
+}
+function tkStoneLantern(x, z) {
+  addBox(x, 0, z, 0.8, 0.35, 0.8, TKM.stone, 1); addBox(x, 0.35, z, 0.3, 0.9, 0.3, TKM.stone, 1, { decor: true });
+  addBox(x, 1.25, z, 0.65, 0.5, 0.65, TKM.stone, 1, { decor: true }); addBox(x, 1.75, z, 1.0, 0.18, 1.0, TKM.stone, 1, { decor: true, round: 0.06 });
+  collider(x, 0, z, 0.7, 1.9, 0.7);
+}
+function tkTorii(x, z, alongX, s = 1) {
+  const o = 3 * s;
+  for (const k of [-1, 1]) {
+    const px = alongX ? x + k * o : x, pz = alongX ? z : z + k * o;
+    const post = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.3 * s, 0.36 * s, 5.6 * s, 16)), TKM.red); post.position.set(px, 2.8 * s, pz); post.castShadow = true; scene.add(post);
+    addBox(px, 0, pz, 0.9 * s, 0.5 * s, 0.9 * s, TKM.black, 1, { decor: true, round: 0.05 }); collider(px, 0, pz, 0.75 * s, 5.6 * s, 0.75 * s);
   }
+  addBox(x, 4.4 * s, z, alongX ? 7.4 * s : 0.4 * s, 0.38 * s, alongX ? 0.4 * s : 7.4 * s, TKM.red, 0, { decor: true });
+  addBox(x, 5.55 * s, z, alongX ? 8.6 * s : 0.8 * s, 0.4 * s, alongX ? 0.8 * s : 8.6 * s, TKM.red, 0, { decor: true });
+  addBox(x, 5.95 * s, z, alongX ? 9.2 * s : 0.95 * s, 0.32 * s, alongX ? 0.95 * s : 9.2 * s, TKM.black, 0, { decor: true });
+}
+function tkPagoda(x, z) {
+  addBox(x, 0, z, 9, 1, 9, TKM.stone, 2);
+  for (let i = 0; i < 5; i++) {
+    const bw = 5.4 - i * 0.7, y = 1 + i * 2.7;
+    addBox(x, y, z, bw, 2.3, bw, TKM.red, 2);
+    addBox(x, y + 2.3, z, bw + 2.8, 0.35, bw + 2.8, TKM.roofTile, 2.5, { decor: true, round: 0.1 });
+    addBox(x, y + 2.15, z, bw + 0.6, 0.15, bw + 0.6, TKM.black, 0, { decor: true });
+  }
+  const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 5, 10), TKM.gold); sp.position.set(x, 1 + 5 * 2.7 + 2.6, z); scene.add(sp);
+}
+function tkSakura(x, z, s = 1) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.scale.setScalar(s);
+  const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.26, 3.2, 10), treeTrunkMat); tr.position.y = 1.6; tr.castShadow = true; g.add(tr);
+  for (let i = 0; i < 6; i++) {
+    const c = new THREE.Mesh(new THREE.SphereGeometry(srnd(1.1, 1.7), 11, 8), TKM.sakura);
+    c.position.set(srnd(-1.3, 1.3), srnd(3.0, 4.4), srnd(-1.3, 1.3)); c.scale.y = 0.75; c.castShadow = true; g.add(c);
+  }
+  scene.add(g); collider(x, 0, z, 0.5 * s, 3 * s, 0.5 * s);
+}
+function tkTrainCar(cx, z, mat = TKM.silver) {
+  addBox(cx, 0.55, z, 17, 3.2, 2.9, mat, 2, { round: 0.25 });
+  addBox(cx, 1.9, z, 16.4, 0.95, 2.96, CAR_GLASS, 0, { decor: true, round: 0.08 });
+  addBox(cx, 1.45, z, 17.05, 0.22, 2.97, mat === TKM.green ? TKM.white : TKM.green, 0, { decor: true, round: 0 });
+  for (const o of [-6, 6]) addBox(cx + o, 0.05, z, 2.6, 0.55, 2.2, MAT.dark, 1, { decor: true });
+  collider(cx, 0, z, 17, 0.6, 2.9);
+}
 
-  /* --- Straßen: Hauptstraße (z=0) und Querstraße (x=-10) --- */
+MAT.zebra = new THREE.MeshStandardMaterial({ color: 0xe2e0d6, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
+window.MAP_STREETS = [[-7, -100, 7, 100], [-100, -7, 100, 7], [-57, -100, -47, 100], [47, -100, 57, 100], [-100, -57, 100, -47], [-100, 47, 100, 57]];
+window.FIRE_POS = [40, -2.5];
+window.SHIP_SMOKE = [152, 16, 19];
+
+(function buildMap() {
+  const WALL_H = 7;
   const white = new THREE.MeshStandardMaterial({ color: 0xd8d6cc, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
   const yel = new THREE.MeshStandardMaterial({ color: 0xc8a232, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
-  for (let x = -58; x < 52; x += 4) if (Math.abs(x + 10) > 7) decalT(x, 0, 2.2, 0.16, white, 0, 0, 0.014);
-  for (let z = -58; z < 58; z += 4) if (Math.abs(z) > 7) decalT(-10, z, 0.16, 2.2, white, 0, 0, 0.014);
-  for (let i = -3; i <= 3; i++) { decalT(-18, i * 1.1, 2.6, 0.55, white, 0, 0, 0.014); decalT(-2, i * 1.1, 2.6, 0.55, white, 0, 0, 0.014); }
-  // Gehwege (Beton) entlang der Straßen
-  decalT(-3, -6.5, 116, 3, MAT.concreteFloor, 2.7, 0, 0.008); decalT(-3, 6.5, 116, 3, MAT.concreteFloor, 2.7, 0, 0.008);
-  decalT(-15.5, -33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009); decalT(-4.5, -33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009);
-  decalT(-15.5, 33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009); decalT(-4.5, 33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009);
-  // Laternen
-  for (let x = -52; x <= 48; x += 16) { lamp(x, -7.6, 1); lamp(x + 8, 7.6, -1); }
-  // Kreisverkehr mit Denkmal
-  const isl = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(4.2, 4.3, 0.3, 32)), MAT.concrete); isl.position.set(-10, 0.15, 0); isl.receiveShadow = true; scene.add(isl);
-  const islG = new THREE.Mesh(withUv2(new THREE.CircleGeometry(3.9, 32)), MAT.grass); islG.rotation.x = -Math.PI / 2; islG.position.set(-10, 0.31, 0); scene.add(islG);
-  collider(-10, 0, 0, 6, 0.3, 6);
-  addBox(-10, 0, 0, 2.2, 2.4, 2.2, MAT.concrete, 2);
-  addBox(-10, 2.4, 0, 1.6, 0.3, 1.6, MAT.concrete, 2);
-  // Bronzestatue (Soldat mit Fahne)
-  addBox(-10, 2.7, 0, 0.55, 0.9, 0.35, BRONZE, 0, { decor: true }); addBox(-10, 3.6, 0, 0.7, 0.8, 0.4, BRONZE, 0, { decor: true });
-  addBox(-10, 4.4, 0, 0.3, 0.32, 0.3, BRONZE, 0, { decor: true }); addBox(-9.6, 3.4, 0, 0.08, 3.2, 0.08, BRONZE, 0, { decor: true });
-  addBox(-9.0, 5.6, 0, 1.1, 0.7, 0.04, BRONZE, 0, { decor: true });
-  collider(-10, 2.4, 0, 1.2, 2.5, 1.2);
-  // Deckung auf der Hauptstraße
-  car(-44, -2.6, true); car(-28, 2.6, true); car(10, -2.6, true); car(24, 2.4, true); car(-50, 2.5, true);
-  // Ausgebrannter Bus
-  const burnt = new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.9, metalness: 0.4 });
-  addBox(38, 0.3, -1.2, 11, 2.7, 2.6, burnt, 0); collider(38, 0, -1.2, 11, 0.3, 2.6);
-  for (let i = 0; i < 5; i++) addBox(34 + i * 2.1, 1.6, 0.11, 1.5, 0.9, 0.05, CAR_GLASS, 0, { decor: true });
-  jersey(-36, 0, false); jersey(2, -2, true); jersey(18, 3, true); jersey(46, 2, false);
-  sandbags(-20, 3.6, 3, true); sandbags(5, 2.2, 3, true); sandbags(28, -3.4, 3, true);
-  // Bushaltestelle
-  addBox(-30, 0, -7.4, 4, 0.08, 1.4, MAT.dark, 1, { decor: true });
-  for (const o of [-1.9, 1.9]) addBox(-30 + o, 0, -7.9, 0.1, 2.6, 0.1, MAT.metal, 1);
-  addBox(-30, 2.6, -7.4, 4.2, 0.1, 1.6, MAT.dark, 1, { decor: true });
-  addBox(-30, 0.5, -8.0, 3.8, 1.9, 0.05, MAT.window, 0, { decor: true }); collider(-30, 0, -8.0, 3.8, 2.4, 0.1);
-  bench(-30, -7.6, true);
-
-  /* --- NORDWEST: Altstadt mit begehbaren Häusern --- */
-  const B1 = building(-46, -46, 16, 12, 3, MAT.plaster, { e: [2], s: [3] });
-  const B2 = building(-24, -50, 12, 10, 2, MAT.brick, { s: [1], w: [1.5] });
-  const B3 = building(-46, -22, 12, 12, 2, MAT.plaster2, { e: [-2], n: [2] });
-  // Ruine: zerbrochene Mauern ohne Dach
-  const ru = MAT.brick;
-  addBox(-27, 0, -29, 10, 3.4, 0.4, ru, 2.5); addBox(-31.5, 3.4, -29, 1.0, 1.2, 0.4, ru, 2.5);
-  addBox(-32, 0, -24, 0.4, 2.6, 10, ru, 2.5); addBox(-22, 0, -21.5, 0.4, 1.6, 5, ru, 2.5);
-  addBox(-25, 0, -19.2, 4, 2.2, 0.4, ru, 2.5);
-  for (let i = 0; i < 9; i++) addBox(srnd(-31, -23), 0, srnd(-28, -20), srnd(0.4, 1.2), srnd(0.2, 0.6), srnd(0.4, 1.2), MAT.concrete, 2);
-  // Gassen-Details
-  dumpster(-36, -46, false); dumpster(-36, -42.5, false); barrel(-34.8, -50, MAT.ctrRed); barrel(-34.5, -51, MAT.ctrGreen);
-  crate(-33, 0, -34, 1.2); crate(-32, 0, -35.3, 1); car(-21.5, -38, true); car(-40, -31.5, true, carPaints[2]);
-  dumpster(-55, -32, true); jersey(-27, -12, true); sandbags(-38, -12, 3, true);
-  car(-12.2, -24, false); car(-7.8, -42, false, carPaints[1]); car(-12.2, -54, false);
-
-  /* --- SÜDWEST: Park und Wohnhäuser --- */
-  house(-48, 22, 9, 7, 3.6); house(-48, 44, 9, 7, 3.6); house(-28, 53, 9, 7, 3.6);
-  decalT(-31, 27, 22, 26, MAT.grass, 2, 0, 0.008);
-  // Wege im Park
-  decalT(-31, 27, 2, 26, MAT.concreteFloor, 2.7, 0, 0.011); decalT(-31, 27, 22, 2, MAT.concreteFloor, 2.7, 0, 0.011);
-  // Brunnen in der Mitte
-  const basin = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3.1, 0.7, 28, 1, true)), MAT.concrete); basin.position.set(-31, 0.35, 27); scene.add(basin);
-  const wdisk = new THREE.Mesh(new THREE.CircleGeometry(2.9, 28), new THREE.MeshStandardMaterial({ color: 0x1e4652, roughness: 0.05, metalness: 0.3, normalMap: waterNormal }));
-  wdisk.rotation.x = -Math.PI / 2; wdisk.position.set(-31, 0.5, 27); scene.add(wdisk);
-  collider(-31, 0, 27, 5.2, 0.7, 5.2);
-  addBox(-31, 0.7, 27, 0.6, 1.6, 0.6, MAT.concrete, 2);
-  for (const [x, z, s] of [[-40, 17, 1.0], [-22, 18, 1.1], [-40, 36, 0.9], [-23, 37, 1.0], [-36, 22, 0.8], [-26, 31, 0.85], [-44, 30, 1.0], [-18, 26, 0.9]]) leafTree(x, z, s);
-  hedge(-36, 14.5, 8, 1); hedge(-24, 39.5, 8, 1); hedge(-42.5, 27, 1, 6); hedge(-19.5, 31, 1, 6);
-  bench(-31, 21.5, true); bench(-31, 32.5, true); bench(-25.5, 27, false); bench(-36.5, 27, false);
-  watchtower(-56, 32, 1);
-  for (const [x, z] of [[-58, 52], [-55, 58], [-20, 58], [-14, 46], [-58, 14]]) tree(x, z, srnd(0.7, 0.9));
-  car(-7.8, 22, false); car(-12.2, 40, false, carPaints[4]); jersey(-40, 50, true); sandbags(-52, 36, 3, false);
-
-  /* --- NORDOST: Containerhafen --- */
-  decalT(25, -33.5, 60, 53, MAT.concreteFloor, 2.7, 0, 0.007);
-  const ctrMats = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
-  const cols = [2.5, 8.7, 18.5, 24.7, 34.5, 40.7], rows = [-14, -21, -28, -35, -42, -49, -56];
-  const forced = { '2.5,-14': 1, '24.7,-35': 1, '40.7,-49': 1, '8.7,-28': 2, '34.5,-21': 3 };
-  for (const z of rows) for (const x of cols) {
-    const key = x + ',' + z;
-    let h = forced[key];
-    if (h === undefined) { const r = srand(); h = r < 0.22 ? 0 : r < 0.6 ? 1 : r < 0.88 ? 2 : 3; }
-    for (let k = 0; k < h; k++) container(x, k * 2.6, z, true, ctrMats[Math.floor(srand() * 4)]);
-  }
-  // Kisten-Treppen auf einige Container
-  for (const [x, z] of [[2.5, -14], [24.7, -35], [40.7, -49]]) for (let i = 0; i < 3; i++) addBox(x - 1.1 + i * 1.1, 0, z + 2.0, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
-  // Hafenkran über dem Kai
-  const yellow = MAT.yellow;
-  for (const [x, z] of [[47, -45], [53, -45], [47, -25], [53, -25]]) addBox(x, 0, z, 1.2, 20, 1.2, yellow, 2);
-  addBox(50, 20, -45, 8, 1.4, 1.4, yellow, 2, { decor: true }); addBox(50, 20, -25, 8, 1.4, 1.4, yellow, 2, { decor: true });
-  addBox(47, 21.4, -35, 1.2, 1.2, 22, yellow, 2, { decor: true }); addBox(53, 21.4, -35, 1.2, 1.2, 22, yellow, 2, { decor: true });
-  addBox(70, 22.6, -35, 50, 1.2, 2.2, yellow, 2, { decor: true });
-  addBox(52, 16.5, -35, 3, 3, 3, MAT.plaster2, 2.7, { decor: true });
-  addBox(68, 15.5, -35, 0.08, 7, 0.08, MAT.dark, 1, { decor: true }); addBox(68, 13.5, -35, 6.1, 2.6, 2.44, MAT.ctrOrange, 2.6, { decor: true });
-  // Hafenbüro (Container mit Treppe) + Kisten
-  container(50, 0, -55, true, MAT.ctrBlue);
-  for (let i = 0; i < 3; i++) addBox(47.8 + i * 1.1, 0, -52.7, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
-  crate(46, 0, -18, 1.3); crate(47.2, 0, -17.6, 1.1); barrel(50, -15, MAT.ctrRed); barrel(50.7, -15.6, MAT.ctrBlue);
-  jersey(15, -9.5, true); jersey(30, -9.5, true);
-
-  /* --- SÜDOST: Lagerhalle, LKWs, Parkplatz, Tanks --- */
-  const HX0 = 9, HX1 = 43, HZ0 = 25, HZ1 = 47, HH = 9, T = 0.4;
-  wallRun('x', HX0, HX1, HZ0 + T / 2, 0, HH, T, MAT.hallMetal, [[15.5, 21, 0, 5], [31, 36.5, 0, 5], [24, 28, 6.2, 7.8], [38, 41, 6.2, 7.8], [11, 13.5, 6.2, 7.8]]);
-  wallRun('x', HX0, HX1, HZ1 - T / 2, 0, HH, T, MAT.hallMetal, [[14, 17, 6.2, 7.8], [24, 27, 6.2, 7.8], [34, 37, 6.2, 7.8]]);
-  wallRun('z', HZ0 + T, HZ1 - T, HX0 + T / 2, 0, HH, T, MAT.hallMetal, [[33.5, 36, 0, 2.6]]);
-  wallRun('z', HZ0 + T, HZ1 - T, HX1 - T / 2, 0, HH, T, MAT.hallMetal, [[37.5, 42.5, 0, 5]]);
-  addBox((HX0 + HX1) / 2, HH, (HZ0 + HZ1) / 2, HX1 - HX0 + 0.4, 0.3, HZ1 - HZ0 + 0.4, MAT.hallMetal, 2.6);
-  decalT((HX0 + HX1) / 2, (HZ0 + HZ1) / 2, HX1 - HX0 - 0.8, HZ1 - HZ0 - 0.8, MAT.concreteFloor, 2.7, 0, 0.01);
-  // Laufsteg an der Südwand (Höhe 4,5 m) mit Treppe
-  const CW = 4.5;
-  addBox(26, CW - 0.2, 45.5, 32, 0.2, 2.2, MAT.metal, 1.5);
-  for (let x = 11; x <= 41; x += 6) addBox(x, 0, 45.5, 0.2, CW - 0.2, 0.2, MAT.metal, 1);
-  for (let i = 0; i < 7; i++) addBox(10.4 + i * 0.9 + 0.45, 0, 43.6, 0.9, (i + 1) * 0.643, 1.4, MAT.metal, 1.5);
-  addBox(29.6, CW, 44.38, 24.8, 1.0, 0.06, MAT.metal, 1);   // Geländer (Treppenende frei)
-  // Regale mit Kisten (Deckung, man kann durchschießen)
-  for (const z of [31, 36.5]) for (const [xa, xb] of [[13, 21], [27, 37]]) {
-    const xc = (xa + xb) / 2, L = xb - xa;
-    for (const y of [0, 1.5, 3.0]) addBox(xc, y, z, L, 0.1, 1.2, MAT.metal, 1.5);
-    for (const x of [xa, xb]) for (const o of [-0.55, 0.55]) addBox(x, 0, z + o, 0.1, 3.5, 0.1, MAT.metal, 1);
-    for (let i = 0; i < 4; i++) for (const y of [0.1, 1.6]) if (srand() < 0.75) crate(xa + 1 + i * 2, y, z, srnd(0.9, 1.1));
-  }
-  // Gabelstapler
-  addBox(22, 0.2, 41, 1.3, 1.2, 2.2, MAT.yellow, 1); addBox(22, 1.4, 41.4, 1.1, 1.0, 1.0, CAR_GLASS, 0, { decor: true });
-  addBox(22, 0, 39.6, 1.0, 2.6, 0.12, MAT.dark, 1);
-  // Draußen: LKWs an der Rampe, Parkplatz, Tanks
-  truck(18.2, 16.5, true); truck(33.7, 15, true);
-  jersey(26, 18, false); sandbags(12, 20, 3, true); crate(40, 0, 20, 1.2); crate(41.2, 0, 21, 1);
-  for (let z = 12; z <= 40; z += 4) decalT(50, z - 2, 8, 0.12, white, 0, 0, 0.014);
-  car(49.5, 12, true); car(49.5, 20, true, carPaints[3]); car(49.5, 28, true); car(49.5, 36, true, carPaints[6]);
-  for (const z of [50.5, 56.5]) {
-    const tank = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(2.2, 2.2, 6, 24)), MAT.hallMetal); tank.position.set(49.5, 3, z); tank.castShadow = true; scene.add(tank);
-    collider(49.5, 0, z, 4.2, 6, 4.2);
-  }
-  dumpster(14, 54, true); dumpster(17, 54, true); jersey(30, 52, true); crate(36, 0, 55, 1.3);
-  // Beton-Gebäude und Werkstatt zwischen Straße und Halle
-  const B4 = building(2.5, 24, 10, 12, 2, MAT.concrete, { w: [2], s: [2] });
-  building(2, 47, 10, 10, 1, MAT.brick, { n: [0], w: [2] }, { crates: 3 });
-  // Kiosk an der Straße
-  addBox(2, 0, 11, 3.5, 2.6, 2.5, MAT.plaster2, 2.7); addBox(2, 2.6, 11, 4, 0.15, 3, MAT.ctrRed, 2.6, { decor: true });
-  car(-7.8, 52, false, carPaints[0]);
-
-  /* --- Schanzen in der Stadt (Querstraße) --- */
   MAT.rampWood = pbr('wood', 2, { mat: { color: new THREE.Color(1.35, 1.2, 1.0) } });
   MAT.dirt = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x6e5034), mat: { color: new THREE.Color(0.68, 0.6, 0.52) }, normalScale: 1.6 });
-  addRamp(-10, -14, -Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
-  addRamp(-10, 27, Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
 
-  /* --- SÜDEN: Simson-Crosspark (z 62 … 131) mit Schanzen --- */
-  decalT(-3.5, 96.5, 115, 69, MAT.dirt, 4.5, 0, 0.004);
-  addBox(-3.5, 0, 131, 116, WALL_H, 1, MAT.concrete, 3);
-  addBox(-61, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
-  addBox(54.5, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
-  for (let i = -60; i <= 54; i += 10) addBox(i, 0, 130.3, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
-  for (let z = 70; z <= 130; z += 10) { addBox(-60.3, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); addBox(53.8, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); }
-  // Zufahrt: Betonpiste mit Schanze, Tor mit Banner
-  decalT(-10, 78, 8, 32, MAT.concreteFloor, 2.7, 0, 0.012);
-  for (let z = 64; z < 94; z += 4) decalT(-10, z, 0.16, 2.2, white, 0, 0, 0.014);
-  addRamp(-10, 71, Math.PI / 2, 3.5, P_KICK(5, 1.4), MAT.rampWood);
-  for (const x of [-15.5, -4.5]) addBox(x, 0, 64, 0.3, 5.2, 0.3, MAT.metal, 1);
-  const bc = document.createElement('canvas'); bc.width = 1024; bc.height = 128;
-  const bg = bc.getContext('2d'); bg.fillStyle = '#c0262b'; bg.fillRect(0, 0, 1024, 128);
-  bg.fillStyle = '#fff'; bg.font = 'italic 900 84px Arial'; bg.textAlign = 'center'; bg.textBaseline = 'middle'; bg.fillText('SIMSON  CROSSPARK', 512, 68);
-  const btex = new THREE.CanvasTexture(bc); btex.encoding = THREE.sRGBEncoding; btex.anisotropy = MAX_ANISO;
-  const banner = new THREE.Mesh(new THREE.BoxGeometry(11, 1.2, 0.08), new THREE.MeshStandardMaterial({ map: btex, roughness: 0.7 }));
-  banner.position.set(-10, 4.5, 64); scene.add(banner);
-  // Tabletop (Erdhügel) und Buckelpiste
-  addRamp(-40, 74, Math.PI / 2, 7, P_TABLE(5, 6, 7, 1.8), MAT.dirt, 3);
-  for (let i = 0; i < 9; i++) addRamp(-52, 70 + i * 3.2, Math.PI / 2, 5, P_BUMP(3.2, 0.45), MAT.dirt, 3);
-  // Lückensprung über Fässer
-  addRamp(5, 105, 0, 4, P_KICK(7, 2.2), MAT.rampWood);
-  addRamp(21, 105, 0, 5, P_TABLE(3, 0.8, 12, 2.2), MAT.dirt, 3);
-  for (const [x, z] of [[14.5, 104], [16, 105.6], [17.5, 104.2], [19, 105.8], [20.5, 104.5], [15.5, 106.4]]) barrel(x, z, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrOrange][Math.floor(x) % 3]);
-  // Mega-Schanze mit Landehügel
-  addRamp(-21, 121, 0, 6, P_KICK(10, 3.2), MAT.rampWood);
-  addRamp(-1, 121, 0, 7, P_TABLE(3.5, 1.5, 16, 3.2), MAT.dirt, 3);
-  // kleine Kicker
-  addRamp(22, 76, 0, 3, P_KICK(3, 0.8), MAT.rampWood);
-  addRamp(45, 113, -Math.PI / 2, 3, P_KICK(4, 1.2), MAT.rampWood);
-  addRamp(-30, 98, 0, 3, P_KICK(3.5, 0.9), MAT.rampWood);
-  // Strohballen, Reifenstapel, Fahnen
-  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
-  const tireM = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
-  const bale = (x, z, rot) => { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16)), hay); m.rotation.set(Math.PI / 2, rot, 0); m.position.set(x, 0.6, z); m.castShadow = m.receiveShadow = true; scene.add(m); collider(x, 0, z, 1.2, 1.2, 1.2); };
-  const tires = (x, z, n) => { for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.14, 8, 18), tireM); m.rotation.x = Math.PI / 2; m.position.set(x, 0.14 + i * 0.27, z); m.castShadow = true; scene.add(m); } collider(x, 0, z, 1, n * 0.27 + 0.05, 1); };
-  for (let x = -34; x <= 36; x += 6) if (x < -25 || x > -4) bale(x, 113, Math.PI / 2);
-  for (let z = 68; z <= 100; z += 8) bale(-46, z, 0);
-  for (const [x, z, n] of [[-57, 66, 3], [-57, 126, 4], [50, 66, 3], [50, 126, 3], [-24, 66, 2], [3, 66, 3], [38, 92, 4], [-35, 106, 3], [26, 96, 2], [-58, 104, 3]]) tires(x, z, n);
-  const flagMats = [MAT.ctrRed, MAT.yellow, MAT.ctrBlue];
-  for (const [x, z] of [[4.5, 103], [4.5, 107], [-21.5, 118], [-21.5, 124], [-44.2, 74], [-35.8, 74]]) {
-    addBox(x, 0, z, 0.06, 3.2, 0.06, MAT.metal, 1, { decor: true });
-    addBox(x + 0.45, 2.6, z, 0.9, 0.55, 0.03, flagMats[Math.abs(Math.round(x + z)) % 3], 0, { decor: true, round: 0 });
+  /* --- Außengrenzen: Mauern N/W/S, Kaimauer zur Bucht im Osten --- */
+  addBox(0, 0, -100.5, 202, WALL_H, 1, MAT.concrete, 3); addBox(0, 0, 100.5, 202, WALL_H, 1, MAT.concrete, 3);
+  addBox(-100.5, 0, 0, 1, WALL_H, 202, MAT.concrete, 3);
+  for (let i = -96; i <= 96; i += 12) {
+    addBox(i, 0, -100, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); addBox(i, 0, 100, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+    addBox(-100, 0, i, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
   }
-  // Tribüne an der Südmauer (Stufen = erhöhte Schussposition)
-  for (let i = 0; i < 4; i++) addBox(-45, 0, 129.9 - i * 1.1, 18, 0.55 * (4 - i), 1.1, MAT.concrete, 2);
-  addBox(-45, 5.4, 128.6, 19, 0.15, 4.2, MAT.hallMetal, 2.6, { decor: true });
-  for (const x of [-53.5, -45, -36.5]) addBox(x, 2.2, 127, 0.15, 3.2, 0.15, MAT.metal, 1, { decor: true });
-  // Deckung: Container, Sandsäcke, Werkstatt
-  container(-25, 0, 84, false, MAT.ctrOrange); container(35, 0, 70, true, MAT.ctrBlue); container(35, 2.6, 70, true, MAT.ctrRed);
-  container(46, 0, 88, false, MAT.ctrGreen);
-  for (let i = 0; i < 3; i++) addBox(33.4 + i * 1.1, 0, 72.2, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
-  sandbags(8, 88, 3, true); sandbags(-30, 110, 3, false); sandbags(30, 124, 3, true); sandbags(-4, 98, 3, false);
-  building(18, 88, 8, 6, 1, MAT.brick, { n: [0], s: [1] });
-  for (const z of [80, 96]) lamp(-14.6, z, 1);
-  // Mopeds im Crosspark
-  car(-6.5, 66, false); car(-13.5, 67.5, false); car(-50, 120, true); car(0, 109, true); car(30, 82, true);
+  addBox(100.9, -2.2, 0, 0.8, 2.45, 202, MAT.concrete, 2, { decor: true });
+  for (let z = -95; z <= 95; z += 10) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.7, 12), MAT.dark); b.position.set(99.6, 0.35, z); b.castShadow = true; scene.add(b);
+    collider(99.6, 0, z, 0.5, 0.7, 0.5);
+  }
+  for (let z = -99; z < 100; z += 2.5) addBox(100.6, 0.25, z, 0.06, 1.0, 0.06, MAT.yellow, 1, { decor: true });
+  addBox(100.6, 1.2, 0, 0.06, 0.06, 200, MAT.yellow, 1, { decor: true });
+  collider(101.5, 0, 0, 1, 14, 202);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(800, 1600), new THREE.MeshStandardMaterial({ color: 0x1b3c48, roughness: 0.08, metalness: 0.2, normalMap: waterNormal, envMapIntensity: 1.3 }));
+  water.material.normalScale.set(0.5, 0.5); water.rotation.x = -Math.PI / 2; water.position.set(101 + 400, -0.9, 0); water.userData.noMerge = true; scene.add(water);
+  // Frachtschiff in der Bucht
+  const hull = new THREE.MeshStandardMaterial({ color: 0x3a1a16, roughness: 0.6, metalness: 0.3 });
+  addBox(152, -3, -10, 18, 9, 90, hull, 3, { decor: true, shadow: false }); addBox(152, 6, -10, 17, 0.3, 88, MAT.dark, 3, { decor: true, shadow: false });
+  addBox(152, 6.3, 27, 14, 9, 10, MAT.plaster2, 2.7, { decor: true, shadow: false });
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) for (let h = 0; h < 1 + ((r * 7 + c * 3) % 3); h++)
+    addBox(146.5 + c * 3.6, 6.3 + h * 2.6, -47 + r * 13, 2.44, 2.6, 12.2, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange][(r + c + h) % 4], 2.6, { decor: true, shadow: false });
 
-  /* --- Bäume außerhalb (Wald) und Gras --- */
+  /* --- Straßen: zwei Hauptstraßen (x=0, z=0) mit großer Kreuzung, vier Nebenstraßen (±52) --- */
+  const BX = [[-100, -57], [-47, -7], [7, 47], [57, 100]];
+  for (const [x0, x1] of BX) for (const [z0, z1] of BX) decalT((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.008);   // Gehwege/Blöcke
+  const crossings = [0, -52, 52];
+  const nearX = v => crossings.some(c => Math.abs(v - c) < (c === 0 ? 8.5 : 6.5));
+  for (let t = -98; t < 98; t += 4) {
+    if (!nearX(t)) {
+      decalT(t, -3.5, 2.2, 0.16, white, 0, 0, 0.014); decalT(t, 3.5, 2.2, 0.16, white, 0, 0, 0.014); decalT(t, 0, 4, 0.22, yel, 0, 0, 0.014);
+      decalT(-3.5, t, 0.16, 2.2, white, 0, 0, 0.014); decalT(3.5, t, 0.16, 2.2, white, 0, 0, 0.014); decalT(0, t, 0.22, 4, yel, 0, 0, 0.014);
+      for (const s of [-52, 52]) { decalT(t, s, 2.2, 0.16, white, 0, 0, 0.014); decalT(s, t, 0.16, 2.2, white, 0, 0, 0.014); }
+    }
+  }
+  // Große „Scramble“-Kreuzung in der Mitte: Zebrastreifen in alle Richtungen + diagonal
+  tkZebra(0, -9, false, 14, 3.4); tkZebra(0, 9, false, 14, 3.4); tkZebra(-9, 0, true, 14, 3.4); tkZebra(9, 0, true, 14, 3.4);
+  for (const sgn of [1, -1]) for (let k = -8.4; k <= 8.4; k += 1.3) decalT(k * 0.707, sgn * k * 0.707, 0.6, 3.2, MAT.zebra, 0, -sgn * Math.PI / 4, 0.017);
+  for (const cx of [0, -52, 52]) for (const cz of [0, -52, 52]) {
+    if (!cx && !cz) continue;
+    const hw = cx === 0 || cz === 0 ? 7 : 5;
+    tkZebra(cx, cz - hw - 1.8, false, cx === 0 ? 14 : 10, 3); tkZebra(cx, cz + hw + 1.8, false, cx === 0 ? 14 : 10, 3);
+    tkZebra(cx - hw - 1.8, cz, true, cz === 0 ? 14 : 10, 3); tkZebra(cx + hw + 1.8, cz, true, cz === 0 ? 14 : 10, 3);
+  }
+  // Ampeln und Laternen
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) tkSignal(sx * 8.3, sz * 8.3, -sx, -sz * 0);
+  for (const c of [-52, 52]) for (const [sx, sz] of [[1, 1], [-1, -1]]) { tkSignal(c + sx * 6, sz * 8.3, -sx, 0); tkSignal(sx * 8.3, c + sz * 6, 0, -sz); }
+  for (let t = -92; t <= 92; t += 16) {
+    if (nearX(t)) continue;
+    tkLamp(t, -7.6, 0, 1); tkLamp(t + 8, 7.6, 0, -1); tkLamp(-7.6, t, 1, 0); tkLamp(7.6, t + 8, -1, 0);
+  }
+  // Bäume an der Hauptstraße
+  for (let t = -90; t <= 90; t += 14) { if (nearX(t) || nearX(t - 3) || nearX(t + 3)) continue; leafTree(9.6, t, 0.8); leafTree(-9.6, t + 7, 0.8); }
+  // Deckung auf den Straßen (Barrikaden, Wrack, LKW)
+  const burnt = new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.9, metalness: 0.4 });
+  addBox(40, 0.3, -2.5, 11, 2.7, 2.6, burnt, 0); collider(40, 0, -2.5, 11, 0.3, 2.6);
+  for (let i = 0; i < 5; i++) addBox(36 + i * 2.1, 1.6, -1.19, 1.5, 0.9, 0.05, CAR_GLASS, 0, { decor: true });
+  jersey(20, -3, true); jersey(-24, 3, true); jersey(-64, -2, true); jersey(70, 3, true); jersey(52, 14, false); jersey(-52, -34, false); jersey(3, 66, false); jersey(-3, -70, false);
+  sandbags(-3, 24, 3, false); sandbags(3, -32, 3, false); sandbags(30, 52, 3, true); sandbags(-36, -52, 3, true); sandbags(-52, 36, 3, false); sandbags(52, -70, 3, false);
+  truck(-30, 54, false); truck(52, 78, true);
+
+  /* --- Hochstraße über der Nordstraße (z=-52): Auffahrten im Westen/Osten, Lücke über der Hauptstraße --- */
+  const HY = 7;
+  addRamp(-97, -52, 0, 8, [[0, 0], [27, HY]], MAT.concrete, 3);
+  addRamp(70, -52, 0, 8, [[0, HY], [27, 0]], MAT.concrete, 3);
+  for (const cx of [-38, 38]) {
+    addBox(cx, HY - 0.6, -52, 64, 0.6, 9, MAT.concrete, 3);
+    for (const sz of [-1, 1]) addBox(cx, HY, -52 + sz * 4.35, 64, 1.0, 0.3, MAT.concrete, 2);
+    tkSign(cx, HY - 1.6, -52 + 4.52, 10, 1.6, 0, tkSignMat('首都高速', '#1d6b3a', '#ffffff', false));
+  }
+  for (const x of [-62, -46, -30, -14, 14, 30, 46, 62]) addBox(x, 0, -52, 1.4, HY - 0.6, 1.8, MAT.concrete, 2);
+  addRamp(-10.5, -52, 0, 5, P_KICK(4.5, 1.2), MAT.rampWood, 2, HY);         // Sprung über die Lücke (West → Ost)
+  addRamp(10.5, -52, Math.PI, 5, P_KICK(4.5, 1.2), MAT.rampWood, 2, HY);    // und zurück
+
+  /* --- Mitte NW: Glasturm mit Riesenbildschirm zur Kreuzung --- */
+  tkTower(-30, -30, 24, 24, 46, TKM.glassBlue);
+  const screen = tkSignMat('東京 TOKYO', '#0a1440', '#38f2ff', false, 1024, 512); screen.emissiveIntensity = 1.1;
+  tkSign(-17.85, 22, -26, 16, 8, Math.PI / 2, screen);
+  tkSign(-26, 16, -17.85, 12, 3, 0, tkSignMat('カラオケ', '#d41f3a', '#ffffff', false));
+  tkPlanter(-12, -14, 4, 1.2); tkPlanter(-14, -11.5, 1.2, 4); tkPlanter(-12, -22, 3, 1.2);
+  addBox(-13, 0, -30, 3, 2.6, 2.5, MAT.plaster2, 2.7); addBox(-13, 2.6, -30, 3.6, 0.15, 3, MAT.ctrRed, 2.6, { decor: true });   // Kiosk
+  tkVend(-14.9, -26, Math.PI / 2); tkVend(-14.9, -24.9, Math.PI / 2);
+
+  /* --- Mitte NO: Kaufhaus (begehbar, 3 Etagen + Dach) --- */
+  const DS = building(30, -28, 24, 18, 3, MAT.plaster2, { s: [-5, 5], w: [5] }, { crates: 2 });
+  tkSign(30, DS.roofY + 3, -28, 14, 3.5, Math.PI / 2 * 0, tkSignMat('百貨店', '#ffffff', '#d41f3a', false));
+  addBox(30, DS.roofY + 1, -28, 0.3, 1.6, 0.3, MAT.metal, 1, { decor: true });
+  tkVSign(18.2 + 0, 6, -19.2 + 0.05, 0, 4); tkVSign(41.5, 6, -18.8, 0, 4); tkVSign(17.8, 5.5, -33, -Math.PI / 2, 4);
+  tkTower(12.5, -41, 9, 10, 22, TKM.tile);
+  tkPlanter(20, -12, 5, 1.2); tkPlanter(36, -12, 5, 1.2);
+
+  /* --- Mitte SW: Bahnhofsvorplatz mit Hundestatue, alter Waggon, kleiner Bahnhof --- */
+  decalT(-27, 22, 38, 28, MAT.concreteFloor, 2.7, 0, 0.011);
+  addBox(-14, 0, 14, 2.2, 1.2, 1.6, MAT.concrete, 2);
+  addBox(-14, 1.2, 14, 0.5, 0.75, 1.1, BRONZE, 0, { decor: true }); addBox(-14, 1.85, 14.45, 0.32, 0.36, 0.42, BRONZE, 0, { decor: true });
+  addBox(-14, 1.6, 13.5, 0.14, 0.4, 0.14, BRONZE, 0, { decor: true });   // Hund aus Bronze
+  tkTrainCar(-32, 18, TKM.green);
+  const ST = building(-36, 38, 18, 10, 1, MAT.brick, { n: [-4, 4] }, { crates: 1 });
+  tkSign(-36, 3.9, 32.85, 6, 1.5, Math.PI, tkSignMat('駅 STATION', '#1b3a6d', '#ffffff', false));
+  for (const [x, z] of [[-42, 12], [-22, 12], [-44, 26], [-20, 28]]) leafTree(x, z, 0.85);
+  tkPlanter(-24, 24, 4, 1.2); tkPlanter(-40, 24, 1.2, 4);
+  addBox(-11, 0, 42, 2.4, 2.8, 2.4, TKM.white, 2); addBox(-11, 2.8, 42, 2.8, 0.25, 2.8, TKM.black, 0, { decor: true });   // Polizeihäuschen
+  const pl = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), TKM.signalR); pl.position.set(-11, 3.25, 42); scene.add(pl);
+  bench(-26, 14, true); bench(-18, 30, false);
+
+  /* --- Mitte SO: Hochhaus, Spielhalle (begehbar), Karaoke-Turm --- */
+  tkTower(36, 36, 18, 18, 54, TKM.glassGreen);
+  tkSign(26.85, 30, 36, 12, 6, -Math.PI / 2, tkSignMat('KAMPFZONE', '#111111', '#ff3b7a', false, 1024, 512));
+  building(16, 20, 10, 12, 2, MAT.brick, { w: [0], n: [0] }, { crates: 1 });
+  tkSign(10.85, 4.5, 20, 8, 2, -Math.PI / 2, tkSignMat('ゲーム', '#6a2bd6', '#ffe14d', false));
+  tkVSign(21.2, 4, 15, Math.PI / 2, 4);
+  tkTower(17, 39, 12, 12, 26, TKM.officeDark);
+  tkVSign(10.9, 9, 36, -Math.PI / 2, 6); tkVSign(10.9, 9, 42, -Math.PI / 2, 6); tkVSign(17, 12, 32.9, Math.PI, 6);
+  tkVend(25.5, 12, Math.PI / 2); tkVend(25.5, 13.1, Math.PI / 2);
+
+  /* --- NW: Schrein mit Torii, Pagode, Steinlaternen, Kirschbäumen --- */
+  decalT(-78.5, -78.5, 42, 42, TKM.gravel, 3, 0, 0.012);
+  decalT(-78.5, -71, 4, 28, TKM.stone, 2, 0, 0.014);
+  tkTorii(-78.5, -60, true, 1.15); tkTorii(-78.5, -72, true, 0.9);
+  addBox(-78.5, 0, -89, 18, 0.8, 12, TKM.stone, 2);
+  addBox(-78.5, 0.8, -89, 15, 5.2, 9, TKM.wood, 2);
+  addBox(-78.5, 6.0, -89, 19, 0.5, 13, TKM.roofTile, 2.5, { decor: true, round: 0.15 });
+  addBox(-78.5, 6.5, -89, 15, 0.7, 9.5, TKM.roofTile, 2.5, { decor: true, round: 0.15 });
+  addBox(-78.5, 7.2, -89, 10, 0.8, 5, TKM.roofTile, 2.5, { decor: true, round: 0.15 });
+  addBox(-78.5, 8.0, -89, 11, 0.25, 0.6, TKM.black, 0, { decor: true });
+  for (const k of [-3, 3]) tkLantern(-78.5 + k, 4.6, -84.3);
+  tkPagoda(-93, -72);
+  for (const z of [-64, -68, -76, -80]) { tkStoneLantern(-81.6, z); tkStoneLantern(-75.4, z); }
+  for (const [x, z, s] of [[-93, -93, 1], [-64, -93, 1.1], [-64, -66, 0.9], [-93, -60, 1], [-64, -78, 1], [-70, -96, 0.9], [-88, -82, 0.8]]) tkSakura(x, z, s);
+  // Holzzaun mit Eingang
+  addBox(-78.5, 0, -99.3, 42, 1.2, 0.3, TKM.wood, 2); addBox(-99.3, 0, -78.5, 0.3, 1.2, 42, TKM.wood, 2); addBox(-57.7, 0, -78.5, 0.3, 1.2, 42, TKM.wood, 2);
+  addBox(-90.5, 0, -57.7, 18, 1.2, 0.3, TKM.wood, 2); addBox(-66.5, 0, -57.7, 18, 1.2, 0.3, TKM.wood, 2);
+
+  /* --- N: enge Kneipengassen mit kleinen Häusern, Laternen, Schildern --- */
+  const ggMats = [MAT.plaster, MAT.plaster2, MAT.brick, MAT.concrete];
+  let gi = 0;
+  for (const z of [-93, -81, -69]) for (const x of [-41, -31, -21, -11]) {
+    building(x, z, 7, 8, 2, ggMats[gi++ % 4], { s: [0] }, { crates: 1 });
+    tkVSign(x + 2.7, 4.6, z + 4.02, 0, 3.4);
+    tkLantern(x - 1.5, 2.7, z + 4.4); tkLantern(x + 1.5, 2.7, z + 4.4);
+  }
+  for (const [x, z] of [[-36, -75], [-16, -87], [-26, -63]]) tkVend(x, z, Math.PI);
+  tkSign(-27, 6.5, -57.4, 12, 2, 0, tkSignMat('横丁 GASSEN', '#111111', '#ffcc33', false));
+
+  /* --- N-Ost: Büro-Hochhäuser mit Platz --- */
+  tkTower(17, -90, 16, 14, 58, TKM.glassBlue);
+  tkTower(38, -88, 14, 18, 44, TKM.office);
+  tkTower(24, -68, 18, 10, 30, TKM.officeDark);
+  tkSign(24, 18, -62.85, 10, 2.5, 0, tkSignMat('ホテル', '#1b6fd8', '#ffffff', false));
+  tkPlanter(40, -70, 6, 1.2); tkPlanter(40, -64, 1.2, 4); bench(36, -62, true);
+
+  /* --- NO: Bahnhof mit Zügen, Bahnsteig, Bahnhofsgebäude --- */
+  decalT(78.5, -84, 43, 30, TKM.gravel, 3, 0, 0.012);
+  for (const z of [-95, -85, -77]) {
+    decalT(78.5, z, 43, 2.6, MAT.dirt, 3, 0, 0.014);
+    for (const o of [-0.72, 0.72]) decalT(78.5, z + o, 43, 0.1, MAT.metal, 1.5, 0, 0.018);
+  }
+  addBox(78.5, 0, -90, 40, 1.0, 5, MAT.concrete, 2);
+  for (const x of [58, 99]) addBox(x, 0, -90, 1.2, 0.5, 4, MAT.concrete, 1);
+  for (let x = 62; x <= 96; x += 8) addBox(x, 1, -90, 0.2, 3.2, 0.2, MAT.metal, 1, { decor: true });
+  addBox(78.5, 4.2, -90, 40, 0.2, 5.5, MAT.hallMetal, 2.6, { decor: true });
+  tkSign(78.5, 3.4, -87.4, 4, 0.8, 0, tkSignMat('東京駅 1', '#ffffff', '#1d1d1d', false));
+  for (const cx of [67, 84.5]) tkTrainCar(cx, -95);
+  for (const cx of [62, 79.5, 97]) tkTrainCar(cx, -85);
+  for (const cx of [66, 82, 95]) { addBox(cx, 0.2, -77, 12.5, 0.6, 2.6, MAT.dark, 1); container(cx, 0.8, -77, true, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrOrange][Math.abs(cx) % 3]); }
+  building(88, -64, 16, 10, 1, MAT.plaster2, { s: [-3, 3] }, { crates: 1 });
+  tkSign(88, 3.7, -58.85, 8, 1.6, 0, tkSignMat('駅 STATION', '#1b3a6d', '#ffffff', false));
+
+  /* --- W-Nord: Supermarkt, Tankstelle, Parkplatz --- */
+  building(-88, -40, 14, 10, 1, MAT.plaster2, { e: [0] }, { crates: 2 });
+  tkSign(-80.85, 3.6, -40, 8, 1.4, Math.PI / 2, tkSignMat('MART 24', '#12a05a', '#ffffff', false));
+  for (const z of [-45.8, -44.7, -34.3]) tkVend(-80.2, z, Math.PI / 2);
+  for (let z = -42; z <= -12; z += 3) decalT(-70, z, 8, 0.12, white, 0, 0, 0.014);
+  truck(-64, -22, true);
+  for (const [x, z] of [[-93, -24], [-83, -24], [-93, -12], [-83, -12]]) addBox(x, 0, z, 0.4, 5, 0.4, MAT.metal, 1);
+  addBox(-88, 5, -18, 14, 0.5, 16, TKM.white, 2, { decor: true });
+  tkSign(-88, 5.25, -9.95, 6, 0.5, 0, tkSignMat('GAS', '#d41f3a', '#ffffff', false));
+  for (const z of [-21, -15]) { addBox(-90.5, 0, z, 0.8, 1.6, 0.6, MAT.ctrRed, 1); addBox(-85.5, 0, z, 0.8, 1.6, 0.6, MAT.ctrRed, 1); }
+
+  /* --- W-Süd: Wohnviertel mit kleinen Häusern --- */
+  for (const z of [16, 29, 41]) for (const x of [-93, -81, -68]) {
+    if (x === -68 && z === 41) continue;
+    house(x, z, 8, 7, 3.6, MAT.plaster);
+  }
+  for (const [x, z] of [[-76.4, 34], [-87, 35], [-62, 10]]) tkVend(x, z, Math.PI / 2);
+  leafTree(-68, 41, 0.9); bench(-64, 44, true); hedge(-72, 45.5, 6, 1);
+
+  /* --- O-Nord: Baustelle mit Kran, Rohbau, Bauzaun --- */
+  decalT(78.5, -27, 42, 39, MAT.dirt, 4.5, 0, 0.012);
+  wallRun('x', 58, 99, -46, 0, 2.4, 0.15, MAT.hallMetal, []);
+  wallRun('x', 58, 99, -8, 0, 2.4, 0.15, MAT.hallMetal, [[64, 72, 0, 2.4]]);
+  wallRun('z', -46, -8, 58, 0, 2.4, 0.15, MAT.hallMetal, [[-32, -22, 0, 2.4]]);
+  building(84, -30, 16, 14, 3, MAT.concrete, { w: [0] }, { crates: 0 });
+  for (let y = 0; y < 9.6; y += 3.2) addBox(92.6, y + 3.0, -30, 1.2, 0.08, 14, MAT.crate, 0, { decor: true });
+  for (const z of [-37, -30, -23]) addBox(93.1, 0, z, 0.08, 10, 0.08, MAT.metal, 1, { decor: true });
+  addBox(68, 0, -40, 2, 36, 2, MAT.yellow, 2);
+  addBox(76, 36, -40, 36, 1.4, 1.4, MAT.yellow, 2, { decor: true }); addBox(66.5, 34.5, -40, 3, 3, 3, MAT.concrete, 2, { decor: true });
+  addBox(70, 37.4, -40, 2.4, 2.4, 2.4, MAT.plaster2, 2.7, { decor: true });
+  addBox(88, 26, -40, 0.06, 10, 0.06, MAT.dark, 1, { decor: true }); container(88, 23.5, -40, true, MAT.ctrOrange);
+  container(66, 0, -14, true, MAT.ctrBlue); container(82, 0, -14, true, MAT.ctrGreen);
+  for (let i = 0; i < 4; i++) { const p = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.5, 0.5, 6, 16)), MAT.hallMetal); p.rotation.z = Math.PI / 2; p.position.set(74, 0.5 + (i > 2 ? 0.9 : 0), -18 + (i % 3) * 1.05); p.castShadow = true; scene.add(p); }
+  collider(74, 0, -17, 6, 1.4, 3.2);
+  addRamp(62, -24, 0, 5, P_TABLE(4, 3, 5, 1.6), MAT.dirt, 3);
+
+  /* --- O-Süd: Fischmarkt-Halle --- */
+  const HX0 = 62, HX1 = 96, HZ0 = 12, HZ1 = 42, HH = 8, T = 0.4;
+  wallRun('x', HX0, HX1, HZ0 + T / 2, 0, HH, T, MAT.hallMetal, [[70, 76, 0, 5], [84, 90, 0, 5]]);
+  wallRun('x', HX0, HX1, HZ1 - T / 2, 0, HH, T, MAT.hallMetal, [[76, 82, 0, 5]]);
+  wallRun('z', HZ0 + T, HZ1 - T, HX0 + T / 2, 0, HH, T, MAT.hallMetal, [[20, 26, 0, 5], [30, 34, 0, 5]]);
+  wallRun('z', HZ0 + T, HZ1 - T, HX1 - T / 2, 0, HH, T, MAT.hallMetal, [[24, 30, 0, 5]]);
+  addBox((HX0 + HX1) / 2, HH, (HZ0 + HZ1) / 2, HX1 - HX0 + 0.4, 0.3, HZ1 - HZ0 + 0.4, MAT.hallMetal, 2.6);
+  decalT((HX0 + HX1) / 2, (HZ0 + HZ1) / 2, HX1 - HX0 - 0.8, HZ1 - HZ0 - 0.8, MAT.concreteFloor, 2.7, 0, 0.013);
+  tkSign(61.75, 6.3, 27, 10, 2, -Math.PI / 2, tkSignMat('魚市場', '#ffffff', '#1b3a6d', false));
+  for (const z of [18, 24, 30, 36]) for (const x of [70, 82]) { addBox(x, 0, z, 7, 0.9, 1.6, MAT.crate, 0); if (srand() < 0.7) crate(x + srnd(-2.5, 2.5), 0.9, z, 0.7); }
+  for (const [x, z] of [[90, 16], [91.2, 17.1], [66, 39], [92, 38]]) crate(x, 0, z, 1.1);
+
+  /* --- SW: Kirschblüten-Park mit Teich und roter Brücke --- */
+  decalT(-78.5, 78.5, 42, 42, MAT.grass, 2, 0, 0.011);
+  decalT(-78.5, 78.5, 3, 42, MAT.concreteFloor, 2.7, 0, 0.013); decalT(-78.5, 66, 42, 3, MAT.concreteFloor, 2.7, 0, 0.013);
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(9, 32), TKM.water); pond.rotation.x = -Math.PI / 2; pond.position.set(-86, 0.03, 86); pond.userData.noMerge = true; scene.add(pond);
+  for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; addBox(-86 + Math.cos(a) * 9.3, 0, 86 + Math.sin(a) * 9.3, 1.2, 0.35, 1.2, TKM.stone, 1, { decor: true, round: 0.15 }); }
+  addBox(-86, 0, 86, 22, 0.5, 2.6, TKM.red, 2);
+  for (const sz of [-1, 1]) addBox(-86, 0.5, 86 + sz * 1.2, 22, 0.8, 0.12, TKM.red, 0, { decor: true });
+  for (const [x, z, s] of [[-96, 62, 1], [-62, 62, 1.1], [-70, 72, 0.9], [-96, 72, 1], [-62, 92, 1], [-70, 96, 0.9], [-75, 85, 0.8], [-88, 72, 0.9], [-66, 80, 1], [-96, 96, 1]]) tkSakura(x, z, s);
+  for (const [x, z] of [[-81.5, 62], [-75.5, 62], [-81.5, 72], [-75.5, 72]]) tkStoneLantern(x, z);
+  bench(-70, 66, true); bench(-87, 66, true); bench(-78.5, 92, false);
+  house(-64, 96, 8, 6, 3.2, TKM.wood);
+
+  /* --- S: Moto-Park mit Schanzen --- */
+  decalT(-27, 78.5, 40, 42, MAT.dirt, 4.5, 0, 0.012);
+  addRamp(-40, 64, Math.PI / 2, 4, P_KICK(6, 2.0), MAT.rampWood);
+  addRamp(-40, 82, Math.PI / 2, 5, P_TABLE(3, 0.8, 10, 2.0), MAT.dirt, 3);
+  for (const [x, z] of [[-40.5, 73], [-39, 74.5], [-41, 76], [-39.5, 77.5], [-40.5, 79]]) barrel(x, z, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrOrange][Math.floor(z) % 3]);
+  addRamp(-24, 61, Math.PI / 2, 7, P_TABLE(5, 6, 7, 1.8), MAT.dirt, 3);
+  for (let i = 0; i < 9; i++) addRamp(-12, 60 + i * 3.2, Math.PI / 2, 5, P_BUMP(3.2, 0.45), MAT.dirt, 3);
+  addRamp(-24, 86, Math.PI / 2, 3, P_KICK(3, 0.8), MAT.rampWood);
+  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
+  const bale = (x, z) => { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16)), hay); m.rotation.set(Math.PI / 2, 0, 0); m.position.set(x, 0.6, z); m.castShadow = m.receiveShadow = true; scene.add(m); collider(x, 0, z, 1.2, 1.2, 1.2); };
+  for (let z = 64; z <= 96; z += 8) bale(-31.5, z);
+  for (const x of [-44, -18]) bale(x, 98);
+  tkSign(-27, 5.6, 57.6, 12, 1.6, Math.PI, tkSignMat('MOTO PARK', '#c0262b', '#ffffff', false));
+  for (const x of [-33.5, -20.5]) addBox(x, 0, 57.6, 0.3, 6.4, 0.3, MAT.metal, 1);
+
+  /* --- S-Ost: Türme, Platz mit Brunnen, Karaoke-Haus (begehbar) --- */
+  tkTower(18, 88, 16, 16, 64, TKM.glassBlue);
+  tkTower(38, 72, 14, 14, 40, TKM.tile);
+  const KB = building(38, 92, 14, 10, 3, MAT.plaster, { n: [0] }, { crates: 1 });
+  tkVSign(31.0, 6, 86.9, Math.PI, 5); tkVSign(45.0, 6, 86.9, Math.PI, 5);
+  tkSign(38, KB.roofY + 2.2, 92, 10, 2.5, Math.PI, tkSignMat('カラオケ', '#ff3b7a', '#ffffff', false));
+  const basin = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3.1, 0.7, 28, 1, true)), MAT.concrete); basin.position.set(18, 0.35, 68); scene.add(basin);
+  const wdisk = new THREE.Mesh(new THREE.CircleGeometry(2.9, 28), TKM.water); wdisk.rotation.x = -Math.PI / 2; wdisk.position.set(18, 0.5, 68); scene.add(wdisk);
+  collider(18, 0, 68, 5.2, 0.7, 5.2); addBox(18, 0.7, 68, 0.6, 1.6, 0.6, MAT.concrete, 2);
+  tkPlanter(10, 62, 1.2, 5); tkPlanter(26, 62, 1.2, 5); bench(18, 75, true);
+
+  /* --- SO: Containerhafen mit Kran am Kai --- */
+  decalT(78.5, 78.5, 42, 42, MAT.concreteFloor, 2.7, 0, 0.012);
+  const ctrMats = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
+  const forced = { '62,62': 1, '74,76': 2, '86,90': 1 };
+  for (const z of [62, 69, 76, 83, 90]) for (const x of [62, 74, 86]) {
+    let h = forced[x + ',' + z];
+    if (h === undefined) { const r = srand(); h = r < 0.25 ? 0 : r < 0.6 ? 1 : r < 0.88 ? 2 : 3; }
+    for (let k = 0; k < h; k++) container(x, k * 2.6, z, true, ctrMats[Math.floor(srand() * 4)]);
+  }
+  for (const [x, z] of [[62, 62], [74, 76], [86, 90]]) for (let i = 0; i < 3; i++) addBox(x - 1.1 + i * 1.1, 0, z + 2.0, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
+  for (const [x, z] of [[93, 68], [99, 68], [93, 86], [99, 86]]) addBox(x, 0, z, 1.2, 22, 1.2, MAT.yellow, 2);
+  addBox(96, 22, 68, 8, 1.4, 1.4, MAT.yellow, 2, { decor: true }); addBox(96, 22, 86, 8, 1.4, 1.4, MAT.yellow, 2, { decor: true });
+  addBox(93, 23.4, 77, 1.2, 1.2, 20, MAT.yellow, 2, { decor: true }); addBox(99, 23.4, 77, 1.2, 1.2, 20, MAT.yellow, 2, { decor: true });
+  addBox(118, 24.6, 77, 46, 1.2, 2.2, MAT.yellow, 2, { decor: true });
+
+  /* --- Mopeds überall --- */
+  for (const [x, z, ax] of [[4, -20, false], [-4, 35, false], [20, 4.5, true], [-35, -4.5, true], [54.5, -25, false], [-49.5, 20, false], [30, 49.5, true], [-20, -48.5, true],
+    [-70, -30, true], [-70, -25, true], [-66, -14, false], [-20, 30, true], [-12, 24, false], [-33, 60, true], [-16, 96, true], [-70, -60, true], [-8, -62, false],
+    [70, -60, true], [95, -60, true], [62, -28, false], [60, 20, false], [70, 96, true], [-61, 70, true], [44, -60, true], [40, -12, true], [-49.5, 70, false]]) car(x, z, ax);
+
+  /* --- Skyline rund um die Stadt (nur Kulisse) --- */
+  const skyMats = [TKM.glassBlue, TKM.office, TKM.officeDark, TKM.tile, TKM.glassGreen];
+  const skyBox = (x, z) => { if (srand() < 0.22) return; const w = srnd(10, 18), d = srnd(10, 18), h = srnd(18, 95) * (1 - Math.max(0, Math.hypot(x, z) - 160) / 260); addBox(x, 0, z, w, h, d, skyMats[Math.floor(srand() * 5)], 16, { decor: true, shadow: false, round: 0 }); };
+  for (let a = -230; a <= 100; a += 21) for (let r = 116; r <= 220; r += 22) { skyBox(a, -r); skyBox(a, r); }
+  for (let a = -94; a <= 94; a += 21) for (let r = 116; r <= 220; r += 22) skyBox(-r, a);
+  // rot-weißer Funkturm und ferner Vulkanberg
+  for (let i = 0; i < 9; i++) addBox(-170, i * 14, -160, 12 - i * 1.2, 14, 12 - i * 1.2, i % 2 ? TKM.white : TKM.red, 0, { decor: true, shadow: false, round: 0 });
+  addBox(-170, 126, -160, 0.6, 22, 0.6, TKM.red, 0, { decor: true, shadow: false, round: 0 });
+  const mtn = new THREE.MeshBasicMaterial({ color: 0x8c9db6, fog: false }), snow = new THREE.MeshBasicMaterial({ color: 0xe8eef6, fog: false });
+  const fuji = new THREE.Mesh(new THREE.ConeGeometry(430, 240, 48, 1, true), mtn); fuji.position.set(-720, 80, -260); fuji.userData.noMerge = true; scene.add(fuji);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(108, 61, 48, 1, true), snow); cap.position.set(-720, 80 + 120 - 30, -260); cap.userData.noMerge = true; scene.add(cap);
+
+  /* --- Bäume außerhalb (Wald auf den Hügeln) und Gras in den Parks --- */
   const N = 240, dummy = new THREE.Object3D();
   const farLeafMat = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
   const farTrunkMat = new THREE.MeshLambertMaterial({ map: TEX.bark });
   const trunks = new THREE.InstancedMesh(trunkGeo, farTrunkMat, N);
   const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
   for (let i = 0; i < N; i++) {
-    let x, z; do { x = rnd(-240, 50); z = rnd(-240, 240); } while (window.mapEdge(x, z) < 68);
-    const s = rnd(0.9, 1.8);
+    let x, z; do { x = rnd(-420, 100); z = rnd(-420, 420); } while (window.mapEdge(x, z) < 70);
+    const s = rnd(1.2, 2.2);
     dummy.position.set(x, window.terrainHeight(x, z) - 0.2, z); dummy.scale.set(s, s * rnd(0.9, 1.3), s); dummy.rotation.y = Math.random() * 6;
     dummy.updateMatrix();
     trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
@@ -667,25 +902,23 @@ const MAP_PICKUPS = [];
     g.setIndex([0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5]); return g;
   })();
   const bladeMat = new THREE.MeshLambertMaterial({ map: TEX.blades, alphaTest: 0.5, side: THREE.DoubleSide });
-  const NG = 2600, grassI = window.grassI = new THREE.InstancedMesh(bladeGeo, bladeMat, NG);
+  const NG = 2200, grassI = window.grassI = new THREE.InstancedMesh(bladeGeo, bladeMat, NG);
   for (let i = 0; i < NG; i++) {
-    let x, z, y = 0.01;
-    if (i < 1300) { x = rnd(-41.5, -20.5); z = rnd(14.5, 39.5); if (Math.abs(x + 31) < 1.4 || Math.abs(z - 27) < 1.4 || Math.hypot(x + 31, z - 27) < 3.3) { x = rnd(-41.5, -33); } }
-    else if (i < 2000) { const side = i % 3; const t = rnd(-59, 59); [x, z] = side === 0 ? [rnd(-60, -58.5), t] : side === 1 ? [t * 0.95 - 3, rnd(-60, -58.6)] : [t * 0.95 - 3, rnd(58.6, 60)]; }
-    else { do { x = rnd(-110, 50); z = rnd(-110, 180); } while (window.mapEdge(x, z) < 63); y = window.terrainHeight(x, z); }
-    const s = rnd(0.7, 1.5);
-    dummy.position.set(x, y, z); dummy.scale.set(s, s, s); dummy.rotation.set(0, Math.random() * 6, 0);
+    let x, z;
+    do { x = rnd(-99, -58); z = rnd(58, 99); } while (Math.hypot(x + 86, z - 86) < 9.8 || Math.abs(x + 78.5) < 2 || Math.abs(z - 66) < 2);
+    const s = rnd(0.7, 1.4);
+    dummy.position.set(x, 0.01, z); dummy.scale.set(s, s, s); dummy.rotation.set(0, Math.random() * 6, 0);
     dummy.updateMatrix(); grassI.setMatrixAt(i, dummy.matrix);
   }
   scene.add(grassI);
 
   /* --- Waffen zum Aufsammeln (Position + Höhe) --- */
   MAP_PICKUPS.push(
-    { w: 0, x: -34, y: 0, z: -38 }, { w: 0, x: 14, y: 0, z: -31.5 }, { w: 0, x: 30, y: CW, z: 45.6 }, { w: 0, x: -24, y: 0, z: 22 }, { w: 0, x: 0, y: 0, z: 8.5 },
-    { w: 1, x: -44, y: 0, z: -46 }, { w: 1, x: -44, y: 0, z: -22 }, { w: 1, x: 4, y: 0, z: 24 }, { w: 1, x: -27, y: 0, z: -24 },
-    { w: 2, x: -44, y: B1.roofY, z: -46 }, { w: 2, x: -56, y: 4, z: 32 }, { w: 2, x: 50, y: 2.6, z: -55 }, { w: 2, x: 40, y: CW, z: 45.6 },
-    { w: 1, x: 26, y: 0, z: 28 }, { w: 0, x: 50, y: 0, z: -20 },
-    { w: 0, x: -25, y: 0, z: 108 }, { w: 1, x: 40, y: 0, z: 76 }, { w: 2, x: -45, y: 2.2, z: 129.9 }, { w: 0, x: 18, y: 0, z: 88 },
+    { w: 2, x: 30, y: DS.roofY, z: -28 }, { w: 2, x: 84, y: 9.6, z: -30 }, { w: 2, x: 38, y: KB.roofY, z: 92 }, { w: 2, x: -38, y: HY, z: -52 }, { w: 2, x: 74, y: 5.2, z: 76 },
+    { w: 0, x: 0, y: 0, z: -20 }, { w: 0, x: -26, y: 0, z: -75 }, { w: 0, x: 16, y: 0, z: -78 }, { w: 0, x: -74.5, y: 0, z: 22 }, { w: 0, x: 79, y: 0, z: 27 },
+    { w: 0, x: -30, y: 0, z: 70 }, { w: 0, x: 68, y: 0, z: 72 }, { w: 0, x: -12, y: 0, z: 30 }, { w: 0, x: 50, y: 0, z: 30 },
+    { w: 1, x: -31, y: 0, z: -87 }, { w: 1, x: -82.5, y: 0, z: -40 }, { w: 1, x: 16, y: 3.2, z: 20 }, { w: 1, x: -36, y: 0, z: 38 }, { w: 1, x: 92, y: 1, z: -90 },
+    { w: 1, x: -86, y: 0.5, z: 86 }, { w: 1, x: 62, y: 0, z: -34 }, { w: 1, x: -78.5, y: 0, z: -66 },
   );
 })();
 
@@ -735,10 +968,10 @@ let gfx = TOUCH ? 'low' : 'medium';   // Handys starten mit niedriger Grafik
 try { gfx = localStorage.getItem('kz_gfx2') || gfx; } catch (e) {}
 applyGfx(gfx);
 $('gfxIn').onchange = e => applyGfx(e.target.value);
-const SPAWNS = [[-34, -40], [-55, -30], [-20, -36], [-52, -8], [-36, 18], [-24, 33], [-54, 52], [-40, 56],
-  [-20, -10], [-20, 10], [0, 8.5], [0, -9], [6, -17.5], [29.6, -24.5], [13.6, -45.5], [50, -22], [26, 28], [5, 38], [40, 12], [20, 56],
-  [-4, -56], [52, 45], [-58, 6], [30, -11],
-  [-30, 72], [0, 82], [30, 95], [-45, 112], [12, 127], [46, 72], [-56, 90]];
+// Startpunkte (auch Wegpunkte der Bots): Straßen, Plätze, Gassen
+const SPAWNS = [[-12, -12], [12, -12], [-12, 12], [12, 12], [0, -40], [0, 40], [-40, 0], [40, 0], [-52, -25], [52, -25], [-52, 25], [52, 25],
+  [-25, -52], [25, -52], [-25, 52], [25, 52], [-78, -66], [-26, -75], [-16, -63], [35, -66], [90, -73], [-88, -28], [-74.5, 22], [-14, 30], [24, 22],
+  [64, -35], [59.5, 27], [79, 27], [-78, 78], [-84, 66], [-30, 64], [18, 62], [70, 72], [88, -58], [94, 0], [-94, 0], [0, 94], [0, -94], [-62, 52], [62, -4]];
 
 /* ======================= Kollision (mit Raster für schnelle Suche) ======================= */
 const GRID = 8, grid = new Map();
@@ -772,7 +1005,7 @@ function moveH(e, ax, amt, grounded) {
   if (!amt) return;
   e.pos[ax] += amt;
   // Schanzen: hohe Seiten-/Stirnflächen sind Wände, flache Schrägen kann man hochfahren
-  if (RAMPS.length && groundH(e.pos.x, e.pos.z) - e.pos.y > STEP * 0.6) { e.pos[ax] -= amt; e.blocked = true; return; }
+  if (RAMPS.length && groundH(e.pos.x, e.pos.z, e.pos.y) - e.pos.y > STEP * 0.6) { e.pos[ax] -= amt; e.blocked = true; return; }
   for (const b of _near) {
     if (!overlap(e.pos, b)) continue;
     const rise = b.max.y - e.pos.y;
@@ -793,7 +1026,7 @@ function moveBody(e, dx, dy, dz) {
   for (let i = 0; i < n; i++) {
     const was = e.onGround; e.onGround = false;
     e.pos.y += dy / n;
-    const gh = groundH(e.pos.x, e.pos.z);
+    const gh = groundH(e.pos.x, e.pos.z, e.pos.y);
     if (e.pos.y < gh) { e.pos.y = gh; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
     for (const b of _near) if (overlap(e.pos, b)) {
       if (dy <= 0) { e.pos.y = b.max.y; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
@@ -802,7 +1035,7 @@ function moveBody(e, dx, dy, dz) {
     moveH(e, 'x', dx / n, was || e.onGround);
     moveH(e, 'z', dz / n, was || e.onGround);
   }
-  const gEnd = groundH(e.pos.x, e.pos.z);
+  const gEnd = groundH(e.pos.x, e.pos.z, e.pos.y);
   if (e.pos.y < gEnd) { e.pos.y = gEnd; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
   _near = boxes; _h = PH;
 }
@@ -827,7 +1060,7 @@ function rayMap(o, d, maxDist = 300) {
   // Schanzen: Strahl in kleinen Schritten durch den Bereich der Schanze verfolgen
   for (const r of RAMPS) {
     let t0 = 0, t1 = best;
-    const mn = [r.bx0, 0, r.bz0], mx = [r.bx1, r.H, r.bz1], oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+    const mn = [r.bx0, r.base, r.bz0], mx = [r.bx1, r.H, r.bz1], oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
     for (let a = 0; a < 3 && t0 <= t1; a++) {
       if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < mn[a] || oo[a] > mx[a]) t0 = Infinity; continue; }
       let ta = (mn[a] - oo[a]) / dd[a], tb = (mx[a] - oo[a]) / dd[a]; if (ta > tb) [ta, tb] = [tb, ta];

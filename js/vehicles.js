@@ -43,12 +43,12 @@ const DECAL_TANK = decalMat('SIMSON', 'italic 900 92px Arial', 512, 128);
 const DECAL_S51 = decalMat('S51', 'italic 900 100px Arial', 256, 128);
 const mDecal = (mat, w, h, x, y, z, side, tilt = 0) => ({ geo: new THREE.PlaneGeometry(w, h), mat, p: [x, y, z], r: [0, side > 0 ? 0 : Math.PI, tilt * side] });
 // Bausteine: gebogene Rohre, Spiralfedern, geformte Teile
-const tube = (pts, r, mat, seg = 32, radial = 10) => ({ geo: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), seg, r, radial, false), mat, p: [0, 0, 0], r: [0, 0, 0] });
+const tube = (pts, r, mat, seg = 32, radial = 10) => ({ geo: new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), Math.min(seg, 18), r, Math.min(radial, r > 0.015 ? 7 : 5), false), mat, p: [0, 0, 0], r: [0, 0, 0] });
 class HelixCurve extends THREE.Curve {
   constructor(r, h, turns) { super(); this.rad = r; this.h = h; this.turns = turns; }
   getPoint(u, t = new THREE.Vector3()) { const a = u * this.turns * Math.PI * 2; return t.set(Math.cos(a) * this.rad, u * this.h, Math.sin(a) * this.rad); }
 }
-const spring = (x, y, z, h, tilt, mat) => ({ geo: new THREE.TubeGeometry(new HelixCurve(0.028, h, 8), 80, 0.0055, 5, false), mat, p: [x, y, z], r: [0, 0, tilt] });
+const spring = (x, y, z, h, tilt, mat) => ({ geo: new THREE.TubeGeometry(new HelixCurve(0.028, h, 8), 56, 0.0055, 4, false), mat, p: [x, y, z], r: [0, 0, tilt] });
 const WHEEL_R = 0.3;
 function makeWheel(front) {
   const g = new THREE.Group();
@@ -102,7 +102,7 @@ function makeMoped(paint) {
     // Gabel: Gabelbrücke, Standrohre, Faltenbälge, Tauchrohre
     B(0.07, 0.04, 0.2, pt, 0.43, 0.99, 0),
     limbPart([0.47, 0.84, 0.075], [0.43, 0.99, 0.075], 0.019, 0.019, CHROME), limbPart([0.47, 0.84, -0.075], [0.43, 0.99, -0.075], 0.019, 0.019, CHROME),
-    ...[0, 1, 2, 3, 4, 5, 6].flatMap(i => { const y = 0.6 + i * 0.033, x = 0.555 - i * 0.008; return [0.075, -0.075].map(z => ({ geo: new THREE.TorusGeometry(0.024, 0.009, 6, 14), mat: P.rubber, p: [x, y, z], r: [Math.PI / 2, 0, 0.25] })); }),
+    ...[0, 1, 2, 3, 4, 5, 6].flatMap(i => { const y = 0.6 + i * 0.033, x = 0.555 - i * 0.008; return [0.075, -0.075].map(z => ({ geo: new THREE.TorusGeometry(0.024, 0.009, 4, 10), mat: P.rubber, p: [x, y, z], r: [Math.PI / 2, 0, 0.25] })); }),
     limbPart([0.62, WHEEL_R, 0.075], [0.56, 0.58, 0.075], 0.024, 0.026, P.alu), limbPart([0.62, WHEEL_R, -0.075], [0.56, 0.58, -0.075], 0.024, 0.026, P.alu),
     // Scheinwerfer: Gehäuse, Chromring, Glas; Tacho; Blinker
     SPH(0.095, pt, 0.49, 0.94, 0, 0.75, 1, 1), { geo: new THREE.TorusGeometry(0.083, 0.01, 8, 28), mat: CHROME, p: [0.56, 0.94, 0], r: [0, Math.PI / 2, 0] },
@@ -192,8 +192,10 @@ function toggleRide() {
     if (vehicles.some(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < 3)) showMsg('Dieses Moped ist besetzt');
     return;
   }
-  enterPending = performance.now();
+  const t0 = enterPending = performance.now();
   net.send({ t: 'enter', v: i, p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)] });
+  // Keine Antwort vom Host (z. B. alte Spielversion beim Host)
+  setTimeout(() => { if (enterPending === t0 && ride.v < 0) { enterPending = 0; showMsg('Keine Antwort vom Host – alle Spieler bitte neu laden (F5)'); } }, 1500);
 }
 // Antwort vom Host, wenn das Aufsteigen nicht geklappt hat
 function enterFailed(reason) {
@@ -204,12 +206,13 @@ function startRide(i) {
   const v = vehicles[i]; if (!v || ride.v === i || !me.alive) return;
   enterPending = 0; rideLeft.v = -1;
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
+  ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
   myRider.g.visible = true; setAvatarGun(myRider, me.weapon);
   engineSound(true);
-  showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · E absteigen');
+  showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie · E absteigen');
 }
 function exitRide(silent) {
   if (ride.v < 0) return;
@@ -221,7 +224,7 @@ function exitRide(silent) {
   let placed = false;
   for (const [ox, oz] of spots) {
     p.set(ride.pos.x + ox, 0, ride.pos.z + oz);
-    p.y = Math.max(ride.pos.y + 0.05, groundH(p.x, p.z));
+    p.y = Math.max(ride.pos.y + 0.05, groundH(p.x, p.z, ride.pos.y));
     if (p.y - ride.pos.y > 0.8) continue;
     _near = nearBoxes(p.x, p.z, 2); _h = PH;
     const blocked = anyOverlap(p) || rayMap(new THREE.Vector3(ride.pos.x, ride.pos.y + 1, ride.pos.z), new THREE.Vector3(ox, 0, oz).normalize(), Math.hypot(ox, oz) + PR);
@@ -250,17 +253,37 @@ function updateRide(dt) {
   ride.speed = Math.max(-3.5, Math.min(16.8, ride.speed));   // ca. 60 km/h Spitze
   // Lenken: bei Tempo weniger stark, rückwärts umgekehrt
   const sp = Math.abs(ride.speed);
-  const turn = steer * Math.min(1, sp / 3) * (2.1 - Math.min(1.2, sp / 14)) * Math.sign(ride.speed || 1);
+  // Wheelie: Leertaste (Handy: SPRUNG) während der Fahrt → Vorderrad hoch. Mit W geht es höher,
+  // S drückt es runter. Wer zu lange Vollgas gibt, kippt nach hinten über.
+  const now0 = performance.now() / 1000;
+  const wantW = keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
+  ride.whCreep = wantW && thr > 0 ? (ride.whCreep || 0) + dt * 0.045 : Math.max(0, (ride.whCreep || 0) - dt * 0.3);
+  let wt = wantW ? 0.42 + Math.max(0, thr) * 0.24 + Math.min(0.08, sp * 0.005) + ride.whCreep + Math.sin(now0 * 2.3) * 0.03 : 0;
+  if (thr < 0) wt = Math.min(wt, 0.08);
+  ride.wh = (ride.wh || 0) + (wt - (ride.wh || 0)) * Math.min(1, dt * (wt > (ride.wh || 0) ? 2.2 : 3.2));
+  if (ride.wh > 0.98) {   // Überschlag
+    ride.wh = 0; ride.whCreep = 0; ride.whBlock = now0 + 1.2; ride.speed *= 0.15;
+    sndThud(0.9); me.shake = Math.max(me.shake, 0.6); showMsg('Überschlag! Nicht zu lange Vollgas beim Wheelie');
+    ride.whT = 0;
+  }
+  if (ride.wh > 0.3 && ride.onGround) {
+    const before = ride.whT || 0; ride.whT = before + dt;
+    if (Math.floor(ride.whT / 5) > Math.floor(before / 5)) { shopState.coins += 10; saveShop(); updateCoins(true); showMsg(`WHEELIE ${Math.floor(ride.whT)} s!  +10 Coins`); }
+  } else if (ride.wh < 0.15 && (ride.whT || 0) > 0) {
+    if (ride.whT > 1.5 && ride.whT < 5) showMsg(`Wheelie ${ride.whT.toFixed(1)} s`);
+    ride.whT = 0;
+  }
+  const turn = steer * Math.min(1, sp / 3) * (2.1 - Math.min(1.2, sp / 14)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
   ride.yaw += turn * dt;
   ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
   ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
   // Schanzen: am Boden übernimmt das Moped die Steigung als Aufwärtstempo → an der Kante hebt es ab
-  const gh0 = groundH(ride.pos.x, ride.pos.z), wasAir = !ride.onGround;
+  const gh0 = groundH(ride.pos.x, ride.pos.z, ride.pos.y), wasAir = !ride.onGround;
   if (ride.onGround) ride.vel.y = ride.climb || 0;
   ride.vel.y = Math.max(-30, ride.vel.y - RIDE_GRAV * dt);
   const vyBefore = ride.vel.y;
   moveBody(ride, ride.vel.x * dt, ride.vel.y * dt, ride.vel.z * dt);
-  ride.climb = ride.onGround ? Math.max(-12, Math.min(12, (groundH(ride.pos.x, ride.pos.z) - gh0) / Math.max(dt, 1e-3))) : 0;
+  ride.climb = ride.onGround ? Math.max(-12, Math.min(12, (groundH(ride.pos.x, ride.pos.z, ride.pos.y) - gh0) / Math.max(dt, 1e-3))) : 0;
   if (!ride.onGround) ride.air = (ride.air || 0) + dt;
   else {
     if (wasAir && ride.air > 0.25) {   // Landung
@@ -273,7 +296,7 @@ function updateRide(dt) {
   ride.land = Math.max(0, (ride.land || 0) - dt * 3);
   // Neigung nach vorne/hinten: am Boden = Steigung, in der Luft langsam nach vorne kippen
   const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw);
-  const pitchT = ride.onGround ? Math.atan2(groundH(ride.pos.x + fx * 0.6, ride.pos.z + fz * 0.6) - groundH(ride.pos.x - fx * 0.6, ride.pos.z - fz * 0.6), 1.2)
+  const pitchT = ride.onGround ? Math.atan2(groundH(ride.pos.x + fx * 0.6, ride.pos.z + fz * 0.6, ride.pos.y) - groundH(ride.pos.x - fx * 0.6, ride.pos.z - fz * 0.6, ride.pos.y), 1.2)
     : Math.atan2(ride.vel.y, Math.max(4, sp)) * 0.7;
   ride.pitch = (ride.pitch || 0) + (pitchT - (ride.pitch || 0)) * Math.min(1, dt * (ride.onGround ? 14 : 3));
   if (ride.blocked && sp > 2.5) { if (sp > 8) { sndThud(0.8); me.shake = Math.max(me.shake, 0.4); } ride.speed *= 0.25; }
@@ -281,7 +304,7 @@ function updateRide(dt) {
   // Spielerposition = auf dem Sitz
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * RIDER_BACK, ride.pos.y + RIDER_UP, ride.pos.z + Math.sin(ride.yaw) * RIDER_BACK);
   me.vel.set(ride.vel.x, 0, ride.vel.z); me.onGround = true;
-  const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean;
+  const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh;
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
   const aiming = riderAiming();
   if (performance.now() - ride.lastMouse > 1500 && sp > 3 && !aiming) {
@@ -291,13 +314,13 @@ function updateRide(dt) {
   // Zielen (Schießen / Rechtsklick) = Ego-Ansicht mit der Waffe direkt neben dir, sonst Ansicht von hinten
   ride.fp = (ride.fp || 0) + ((aiming ? 1 : 0) - (ride.fp || 0)) * Math.min(1, dt * 11);
   const fpK = ride.fp * ride.fp * (3 - 2 * ride.fp);
-  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55 - (ride.land || 0) * 0.3, ride.pos.z);
+  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55 - (ride.land || 0) * 0.3 + (ride.wh || 0) * 0.5, ride.pos.z);
   const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
   let dist = 4.2;
   const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(0.6, hit.dist - 0.3);   // nicht durch Wände schauen
   camera.position.copy(target).addScaledVector(back, dist);
-  const eye = new THREE.Vector3(me.pos.x + Math.cos(ride.yaw) * 0.08, me.pos.y + 1.5 + Math.sin(performance.now() / 45) * 0.003 * Math.min(1, sp / 4), me.pos.z - Math.sin(ride.yaw) * 0.08);
-  camera.position.lerp(eye, fpK);
+  const [ef, eu] = wheelieShift(ride.wh || 0, 0.6 - RIDER_BACK, RIDER_UP + 1.5);
+  const eye = new THREE.Vector3(me.pos.x + Math.cos(ride.yaw) * (0.08 + ef), me.pos.y + 1.5 + eu + Math.sin(performance.now() / 45) * 0.003 * Math.min(1, sp / 4), me.pos.z - Math.sin(ride.yaw) * (0.08 + ef));  camera.position.lerp(eye, fpK);
   camera.rotation.set(me.pitch, me.yaw, ride.lean * 0.45 * fpK);
   // Schießen und Nachladen während der Fahrt
   const w = WEAPONS[me.weapon], now = performance.now() / 1000;
@@ -319,14 +342,17 @@ document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse =
 
 /* ---------- Darstellung aller Mopeds ---------- */
 function updateVehicles(dt) {
+  for (const id in avatars) { const a = avatars[id]; if (!(a.flags & 8) && a.g.rotation.x) a.g.rotation.x = 0; }   // abgestiegen: wieder aufrecht
   for (const v of vehicles) {
     const m = v.mesh;
-    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0;
-    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = ride.pitch || 0; }
+    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null;
+    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = ride.pitch || 0; wh = ride.wh || 0; }
     else if (v.d && avatars[v.d] && avatars[v.d].g.visible) {
       // Fremdes Moped: an die (weich abgespielte) Figur des Fahrers koppeln
-      const a = avatars[v.d].g; yaw = a.rotation.y + Math.PI / 2;
+      rider = avatars[v.d];
+      const a = rider.g; yaw = a.rotation.y + Math.PI / 2;
       x = a.position.x + Math.cos(yaw) * RIDER_BACK; z = a.position.z - Math.sin(yaw) * RIDER_BACK; y = a.position.y - RIDER_UP;
+      v.whS = (v.whS || 0) + ((v.wh || 0) - (v.whS || 0)) * Math.min(1, dt * 10); wh = v.whS;
     }
     // Geschwindigkeit fürs Raddrehen
     const moved = Math.hypot(x - v.rx, z - v.rz);
@@ -341,15 +367,29 @@ function updateVehicles(dt) {
     m.wf.rotation.z = m.wr.rotation.z = -v.spin;
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
-    m.root.position.set(x, y, z);
-    m.root.rotation.set(parked ? 0.12 : lean, yaw, pitch);
+    // Weit entfernte Mopeds nicht zeichnen (sie sind sehr detailliert, aus 70 m sieht man sie kaum)
+    const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > 70 && v.i !== ride.v;
+    m.root.visible = !far;
+    const shadow = dCam < 32 || v.i === ride.v;   // Schatten nur bei nahen Mopeds
+    if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh) o.castShadow = shadow; }); }
+    // Wheelie: um den Hinterrad-Aufstandspunkt nach hinten kippen
+    const [wf, wu] = wheelieShift(wh, 0.6, 0);
+    m.root.position.set(x + Math.cos(yaw) * wf, y + wu, z - Math.sin(yaw) * wf);
+    m.root.rotation.set(parked ? 0.12 : lean, yaw, pitch + wh);
+    if (rider) {   // fremder Fahrer kippt mit
+      const [sf, su] = wheelieShift(wh, 0.6 - RIDER_BACK, RIDER_UP);
+      rider.g.rotation.order = 'YXZ'; rider.g.rotation.x = wh * 0.9;
+      rider.g.position.x += Math.cos(yaw) * sf; rider.g.position.z -= Math.sin(yaw) * sf; rider.wheelieY = su;
+    }
     void fwd;
   }
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
   if (myRider && ride.v >= 0) {
     myRider.g.visible = (ride.fp || 0) < 0.45;   // in der Ego-Ansicht eigene Figur ausblenden
     myRider.g.rotation.order = 'YXZ';
-    myRider.g.position.copy(me.pos); myRider.g.rotation.set((ride.pitch || 0) * 0.8, ride.yaw - Math.PI / 2, ride.lean * 0.8);
+    const [sf, su] = wheelieShift(ride.wh || 0, 0.6 - RIDER_BACK, RIDER_UP);
+    myRider.g.position.set(me.pos.x + Math.cos(ride.yaw) * sf, me.pos.y + su, me.pos.z - Math.sin(ride.yaw) * sf);
+    myRider.g.rotation.set((ride.pitch || 0) * 0.8 + (ride.wh || 0) * 0.9, ride.yaw - Math.PI / 2, ride.lean * 0.8);
     const aiming = riderAiming();
     myRider.flags = 8 | (aiming ? 16 : 0);
     setAvatarGun(myRider, me.weapon);
@@ -359,6 +399,13 @@ function updateVehicles(dt) {
   }
 }
 
+// Verschiebung (vorwärts, hoch) eines Punktes, der dx vor / dy über dem Hinterrad-Aufstandspunkt liegt,
+// wenn das Moped um den Winkel a nach hinten kippt
+function wheelieShift(a, dx, dy) {
+  if (!a) return [0, 0];
+  const c = Math.cos(a), s = Math.sin(a);
+  return [dx * c - dy * s - dx, dx * s + dy * c - dy];
+}
 // Fahrer zielt gerade (Abzug, Zoom oder vor kurzem geschossen)?
 function riderAiming() { return ride.v >= 0 && (me.trigger || me.scoped || performance.now() / 1000 - (me.rideAimT || -9) < 1.5); }
 // Oberkörper des Fahrers in Zielrichtung drehen (Beine bleiben auf dem Moped)

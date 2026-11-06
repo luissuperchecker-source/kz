@@ -39,7 +39,7 @@ function hostGame(mode, bots, autoLock) {
       c.on('close', () => hostDrop(c.peer));
       c.on('error', () => hostDrop(c.peer));
     });
-    hostHandle(myId, { t: 'join', name });
+    hostHandle(myId, { t: 'join', name, b: BUILD });
     startGame();
     for (let i = 0; i < bots; i++) addBot();
     if (autoLock) lockPointer();
@@ -63,7 +63,7 @@ $('btnJoin').onclick = () => {
   peer.on('open', () => {
     hostConn = peer.connect(PREFIX + code, { reliable: true });
     const to = setTimeout(() => { if (!running) menuMsg('Keine Antwort vom Host. Code richtig? Läuft der Raum noch?'); }, 12000);
-    hostConn.on('open', () => hostConn.send({ t: 'join', name }));
+    hostConn.on('open', () => hostConn.send({ t: 'join', name, b: BUILD }));
     hostConn.on('data', m => { if (m.t === 'welcome') clearTimeout(to); clientHandle(m); });
     hostConn.on('close', () => hostLost());
   });
@@ -72,6 +72,13 @@ $('btnJoin').onclick = () => {
     else if (!running) menuMsg('Fehler: ' + e.type);
   });
 };
+// Warnung bei verschiedenen Versionen: alle sollen neu laden
+function versionWarn(text) {
+  const bar = $('updateBar');
+  bar.firstChild.textContent = `⚠ ${text} Alle Spieler bitte neu laden (F5), sonst klappen z. B. die Mopeds nicht. `;
+  bar.classList.remove('hidden');
+  feed(esc(text + ' Bitte alle neu laden (F5).'));
+}
 function hostLost() {
   if (!running) return;
   alert('Die Verbindung zum Host wurde getrennt.');
@@ -125,8 +132,10 @@ function hostHandle(from, m) {
       team: H.mode === 'tdm' ? nextTeam() : -1, x: 0, y: 0, z: 0, ry: 0, rx: 0, hp: 100, alive: true, k: 0, d: 0, w: 3, f: 0,
       prot: performance.now() + 1500, lastHit: 0 };
     const sp = pickSpawn(p); p.x = sp[0]; p.y = sp[1]; p.z = sp[2];
-    sendTo(from, { t: 'welcome', id: from, spawn: sp, code: roomCode, mode: H.mode });
+    sendTo(from, { t: 'welcome', id: from, spawn: sp, code: roomCode, mode: H.mode, b: BUILD });
     broadcast({ t: 'feed', msg: `${p.name} ist beigetreten` + (p.team >= 0 ? ` (Team ${TEAM_NAMES[p.team]})` : '') });
+    // Unterschiedliche Spielversionen → Mopeds, Karte usw. passen nicht zusammen
+    if (m.b !== BUILD) versionWarn(`${p.name} hat eine andere Spielversion!`);
   } else if (m.t === 's') {
     const p = P[from]; if (!p || !p.alive) return;
     p.x = m.p[0]; p.y = m.p[1]; p.z = m.p[2]; p.ry = m.r[0]; p.rx = m.r[1];
@@ -135,7 +144,7 @@ function hostHandle(from, m) {
     if (m.ay !== undefined) p.ay = m.ay;
     // Fahrer schickt die Position seines Mopeds mit
     if (m.vs && vehicles[m.vs[0]] && vehicles[m.vs[0]].d === from) {
-      const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5];
+      const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5]; v.wh = m.vs[6] || 0;
     }
   } else if (m.t === 'enter') {
     const v = vehicles[m.v], p = P[from];
@@ -330,11 +339,12 @@ function clientHandle(m) {
   if (m.t === 'welcome') {
     myId = m.id; world.mode = m.mode || 'ffa'; spawnAt(m.spawn);
     if (!running) startGame();
+    if (m.b !== BUILD) versionWarn('Der Host hat eine andere Spielversion!');
   } else if (m.t === 'snap') {
     world.players = m.p;
     if (m.vh) m.vh.forEach((s, i) => {
       const v = vehicles[i]; if (!v || i === ride.v) return;
-      v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5];
+      v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5]; v.wh = s[6] || 0;
     });
     if (m.m) world.mode = m.m;
     if (m.tl !== undefined) world.timeLeft = m.tl;
@@ -421,7 +431,7 @@ function netTick(now) {
     r: riding ? [+(ride.yaw - Math.PI / 2).toFixed(3), riderAiming() ? +me.pitch.toFixed(3) : -0.3] : [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
     w: me.weapon, f: riding ? 8 | (riderAiming() ? 16 : 0) : (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) };
   if (riding) msg.ay = +me.yaw.toFixed(3);   // Zielrichtung des Fahrers
-  if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2)];
+  if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2), +(ride.wh || 0).toFixed(2)];
   net.send(msg);
 }
 // Host-Simulation läuft über einen Timer, damit sie auch weiterläuft, wenn der Host-Tab im Hintergrund ist
@@ -437,6 +447,6 @@ setInterval(() => {
   world.timeLeft = tl;
   const r2 = n => Math.round(n * 100) / 100;
   const snap = { t: 'snap', p: H.players, k: pickActive.map(v => v ? 1 : 0), m: H.mode, tl,
-    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean)]) };
+    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean), v.d ? r2(v.wh || 0) : 0]) };
   for (const id in H.conns) if (H.conns[id].open) H.conns[id].send(snap);
 }, 50);

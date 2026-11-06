@@ -79,7 +79,7 @@ function updateHUD(dt) {
   drawRadar(dt);
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1;
-  hudSet('rideHint', 'html', ride.v >= 0 ? `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken`
+  hudSet('rideHint', 'html', ride.v >= 0 ? (TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken · <b>Leertaste</b> Wheelie`)
     : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – auf das Moped steigen` : '');
   hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
   hudSet('speedo', 'display', ride.v >= 0 ? 'block' : 'none');
@@ -87,14 +87,14 @@ function updateHUD(dt) {
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 };
+const RADAR = { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
   const g = c.getContext('2d');
   g.fillStyle = 'rgba(40,46,40,0.9)'; g.fillRect(0, 0, c.width, c.height);
-  g.fillStyle = 'rgba(70,74,70,0.9)'; g.fillRect((-14 - RADAR.x0) * RADAR.ppm, 0, 8 * RADAR.ppm, c.height); g.fillRect(0, (-5 - RADAR.z0) * RADAR.ppm, c.width, 10 * RADAR.ppm);
-  g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((55.5 - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
-  g.fillStyle = 'rgba(92,72,48,0.95)'; g.fillRect(0, (62 - RADAR.z0) * RADAR.ppm, (54 - RADAR.x0) * RADAR.ppm, 69 * RADAR.ppm);   // Crosspark (Erde)
+  g.fillStyle = 'rgba(78,82,78,0.95)';   // Straßen
+  for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) g.fillRect((x0 - RADAR.x0) * RADAR.ppm, (z0 - RADAR.z0) * RADAR.ppm, (x1 - x0) * RADAR.ppm, (z1 - z0) * RADAR.ppm);
+  g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((101 - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
   g.fillStyle = 'rgba(205,150,80,0.9)';   // Schanzen
   for (const r of RAMPS) g.fillRect((r.bx0 - RADAR.x0) * RADAR.ppm, (r.bz0 - RADAR.z0) * RADAR.ppm, (r.bx1 - r.bx0) * RADAR.ppm, (r.bz1 - r.bz0) * RADAR.ppm);
   const sorted = boxes.slice().sort((a, b) => a.max.y - b.max.y);
@@ -216,13 +216,14 @@ function updateAtmosphere(dt) {
   fireT -= dt;
   if (fireT <= 0) {
     fireT = 0.07;
-    if (camera.position.distanceTo(new THREE.Vector3(38, 2, -1)) < 90) {
-      const f = sprite(FIRE_TEX, 0xffffff, rnd(0.8, 1.4), true); f.position.set(rnd(35, 41), 3.0, rnd(-1.8, -0.6));
+    const [fx, fz] = window.FIRE_POS || [38, -1], [sx, sy, sz] = window.SHIP_SMOKE || [92, 16, 34];
+    if (camera.position.distanceTo(new THREE.Vector3(fx, 2, fz)) < 90) {
+      const f = sprite(FIRE_TEX, 0xffffff, rnd(0.8, 1.4), true); f.position.set(fx + rnd(-3, 3), 3.0, fz + rnd(-0.6, 0.6));
       addFx(f, rnd(0.4, 0.7), { vel: new THREE.Vector3(rnd(-0.2, 0.2), rnd(1.5, 2.5), rnd(-0.2, 0.2)), grow: 0.4, fadeIn: 0.08 });
-      if (Math.random() < 0.6) puff(new THREE.Vector3(rnd(35.5, 40.5), 3.6, rnd(-1.6, -0.8)), 0x2b2724, rnd(1, 1.8), rnd(3, 4.5),
+      if (Math.random() < 0.6) puff(new THREE.Vector3(fx + rnd(-2.5, 2.5), 3.6, fz + rnd(-0.4, 0.4)), 0x2b2724, rnd(1, 1.8), rnd(3, 4.5),
         new THREE.Vector3(rnd(0.3, 0.8), rnd(1.8, 2.6), rnd(-0.2, 0.2)), { opacity: 0.55, grow: 0.45, fadeIn: 0.4 });
     }
-    if (Math.random() < 0.35) puff(new THREE.Vector3(92, 16, 34), 0x6b6b6b, rnd(2, 3), 6, new THREE.Vector3(rnd(0.8, 1.4), rnd(1.5, 2.2), 0), { opacity: 0.5, grow: 0.3, fadeIn: 0.5 });
+    if (Math.random() < 0.35) puff(new THREE.Vector3(sx, sy, sz), 0x6b6b6b, rnd(2, 3), 6, new THREE.Vector3(rnd(0.8, 1.4), rnd(1.5, 2.2), 0), { opacity: 0.5, grow: 0.3, fadeIn: 0.5 });
   }
 }
 
@@ -242,8 +243,8 @@ function frame(t) {
   } else if (!running) {
     // Kamerafahrt im Menü: langsamer Flug über das Hafenviertel
     const a = now * 0.05;
-    camera.position.set(-3 + Math.sin(a) * 58, 24 + Math.sin(now * 0.13) * 4, Math.cos(a) * 58);
-    camera.lookAt(-3 + Math.sin(a + 1.2) * 12, 3, Math.cos(a + 1.2) * 12);
+    camera.position.set(Math.sin(a) * 75, 32 + Math.sin(now * 0.13) * 5, Math.cos(a) * 75);
+    camera.lookAt(Math.sin(a + 1.2) * 14, 6, Math.cos(a + 1.2) * 14);
   }
   updateEffects(dt);
   updateVehicles(dt);
