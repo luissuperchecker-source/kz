@@ -164,6 +164,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   return { i, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
 });
 const RIDER_BACK = 0.22, RIDER_UP = 0.06;   // Sitzposition des Fahrers relativ zum Moped
+const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Sprünge
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
 
@@ -222,8 +223,28 @@ function updateRide(dt) {
   ride.yaw += turn * dt;
   ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
   ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
-  ride.vel.y = Math.max(-30, ride.vel.y - GRAV * dt);
+  // Schanzen: am Boden übernimmt das Moped die Steigung als Aufwärtstempo → an der Kante hebt es ab
+  const gh0 = groundH(ride.pos.x, ride.pos.z), wasAir = !ride.onGround;
+  if (ride.onGround) ride.vel.y = ride.climb || 0;
+  ride.vel.y = Math.max(-30, ride.vel.y - RIDE_GRAV * dt);
+  const vyBefore = ride.vel.y;
   moveBody(ride, ride.vel.x * dt, ride.vel.y * dt, ride.vel.z * dt);
+  ride.climb = ride.onGround ? Math.max(-12, Math.min(12, (groundH(ride.pos.x, ride.pos.z) - gh0) / Math.max(dt, 1e-3))) : 0;
+  if (!ride.onGround) ride.air = (ride.air || 0) + dt;
+  else {
+    if (wasAir && ride.air > 0.25) {   // Landung
+      const hard = Math.min(1, -vyBefore / 16);
+      sndThud(0.3 + hard * 0.6); me.shake = Math.max(me.shake, hard * 0.5); ride.land = hard;
+      if (ride.air > 0.6) showMsg(ride.air > 1.2 ? 'MEGA-SPRUNG! ' + ride.air.toFixed(1) + ' s' : 'Sprung! ' + ride.air.toFixed(1) + ' s');
+    }
+    ride.air = 0;
+  }
+  ride.land = Math.max(0, (ride.land || 0) - dt * 3);
+  // Neigung nach vorne/hinten: am Boden = Steigung, in der Luft langsam nach vorne kippen
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw);
+  const pitchT = ride.onGround ? Math.atan2(groundH(ride.pos.x + fx * 0.6, ride.pos.z + fz * 0.6) - groundH(ride.pos.x - fx * 0.6, ride.pos.z - fz * 0.6), 1.2)
+    : Math.atan2(ride.vel.y, Math.max(4, sp)) * 0.7;
+  ride.pitch = (ride.pitch || 0) + (pitchT - (ride.pitch || 0)) * Math.min(1, dt * (ride.onGround ? 14 : 3));
   if (ride.blocked && sp > 2.5) { if (sp > 8) { sndThud(0.8); me.shake = Math.max(me.shake, 0.4); } ride.speed *= 0.25; }
   if (ride.pos.y < -10) ride.pos.set(0, 2, 0);
   // Spielerposition = auf dem Sitz
@@ -239,7 +260,7 @@ function updateRide(dt) {
   // Zielen (Schießen / Rechtsklick) = Ego-Ansicht mit der Waffe direkt neben dir, sonst Ansicht von hinten
   ride.fp = (ride.fp || 0) + ((aiming ? 1 : 0) - (ride.fp || 0)) * Math.min(1, dt * 11);
   const fpK = ride.fp * ride.fp * (3 - 2 * ride.fp);
-  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55, ride.pos.z);
+  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55 - (ride.land || 0) * 0.3, ride.pos.z);
   const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
   let dist = 4.2;
   const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(0.6, hit.dist - 0.3);   // nicht durch Wände schauen
@@ -269,28 +290,35 @@ document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse =
 function updateVehicles(dt) {
   for (const v of vehicles) {
     const m = v.mesh;
-    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean;
-    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; }
+    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0;
+    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = ride.pitch || 0; }
     else if (v.d && avatars[v.d] && avatars[v.d].g.visible) {
       // Fremdes Moped: an die (weich abgespielte) Figur des Fahrers koppeln
       const a = avatars[v.d].g; yaw = a.rotation.y + Math.PI / 2;
       x = a.position.x + Math.cos(yaw) * RIDER_BACK; z = a.position.z - Math.sin(yaw) * RIDER_BACK; y = a.position.y - RIDER_UP;
     }
     // Geschwindigkeit fürs Raddrehen
-    const moved = Math.hypot(x - v.rx, z - v.rz); v.rx = x; v.rz = z;
+    const moved = Math.hypot(x - v.rx, z - v.rz);
+    if (v.i !== ride.v) {   // fremde Mopeds: Neigung aus Bewegung (Schanze hoch/runter, Sprünge)
+      const pt = v.d && moved > 0.01 ? Math.atan2(y - (v.ry || y), moved) * 0.8 : 0;
+      v.pitch = (v.pitch || 0) + (Math.max(-0.6, Math.min(0.6, pt)) - (v.pitch || 0)) * Math.min(1, dt * 6);
+      pitch = v.pitch;
+    }
+    v.rx = x; v.rz = z; v.ry = y;
     const fwd = Math.cos(yaw) * 1, dirSign = ((x - (m.root.position.x)) * Math.cos(yaw) - (z - m.root.position.z) * Math.sin(yaw)) >= 0 ? 1 : -1;
     v.spin += moved / WHEEL_R * dirSign;
     m.wf.rotation.z = m.wr.rotation.z = -v.spin;
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
     m.root.position.set(x, y, z);
-    m.root.rotation.set(parked ? 0.12 : lean, yaw, 0);
+    m.root.rotation.set(parked ? 0.12 : lean, yaw, pitch);
     void fwd;
   }
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
   if (myRider && ride.v >= 0) {
     myRider.g.visible = (ride.fp || 0) < 0.45;   // in der Ego-Ansicht eigene Figur ausblenden
-    myRider.g.position.copy(me.pos); myRider.g.rotation.set(0, ride.yaw - Math.PI / 2, ride.lean * 0.8);
+    myRider.g.rotation.order = 'YXZ';
+    myRider.g.position.copy(me.pos); myRider.g.rotation.set((ride.pitch || 0) * 0.8, ride.yaw - Math.PI / 2, ride.lean * 0.8);
     const aiming = riderAiming();
     myRider.flags = 8 | (aiming ? 16 : 0);
     setAvatarGun(myRider, me.weapon);

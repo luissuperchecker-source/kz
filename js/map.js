@@ -62,6 +62,69 @@ function wallRun(axis, from, to, at, y, h, t, mat, openings = []) {
   }
   seg(cur, to, y, h);
 }
+/* ---------- Sprungschanzen / Erdhügel (befahrbare Schrägen) ----------
+   Profil = [[u, h], …]: u = Meter in Fahrtrichtung, h = Höhe. a = Richtung (0 = +x, π/2 = +z). */
+const RAMPS = [];
+const P_KICK = (L, H, e = 1.4) => Array.from({ length: 10 }, (_, i) => { const t = i / 9; return [t * L, H * Math.pow(t, e)]; });
+const P_LAND = (L, H) => Array.from({ length: 10 }, (_, i) => { const t = i / 9; return [t * L, H * Math.pow(1 - t, 1.25)]; });
+const P_BUMP = (L, H) => Array.from({ length: 9 }, (_, i) => { const t = i / 8; return [t * L, H * Math.sin(t * Math.PI)]; });
+const P_TABLE = (up, top, down, H) => [...P_KICK(up, H, 1.15), ...P_LAND(down, H).map(([u, h]) => [u + up + top, h])];
+function rampH(r, x, z) {
+  const dx = x - r.x, dz = z - r.z, u = dx * r.fx + dz * r.fz, v = -dx * r.fz + dz * r.fx;
+  if (u < 0 || u > r.L || Math.abs(v) > r.w / 2) return 0;
+  const p = r.prof; let i = 1; while (i < p.length - 1 && p[i][0] < u) i++;
+  const a = p[i - 1], b = p[i], t = (u - a[0]) / ((b[0] - a[0]) || 1);
+  return a[1] + (b[1] - a[1]) * Math.min(1, Math.max(0, t));
+}
+// Bodenhöhe an einer Stelle (0 = flach, sonst Schanze)
+function groundH(x, z) {
+  let h = 0;
+  for (const r of RAMPS) {
+    if (x < r.bx0 || x > r.bx1 || z < r.bz0 || z > r.bz1) continue;
+    const hh = rampH(r, x, z); if (hh > h) h = hh;
+  }
+  return h;
+}
+function addRamp(x, z, a, w, prof, mat, tile = 2) {
+  const fx = Math.cos(a), fz = Math.sin(a), L = prof[prof.length - 1][0];
+  const r = { x, z, fx, fz, w, prof, L, H: Math.max(...prof.map(p => p[1])) };
+  const P = (u, v, h) => [x + u * fx - v * fz, h, z + u * fz + v * fx];
+  const cs = [P(0, -w / 2, 0), P(0, w / 2, 0), P(L, -w / 2, 0), P(L, w / 2, 0)];
+  r.bx0 = Math.min(...cs.map(c => c[0])); r.bx1 = Math.max(...cs.map(c => c[0]));
+  r.bz0 = Math.min(...cs.map(c => c[2])); r.bz1 = Math.max(...cs.map(c => c[2]));
+  RAMPS.push(r);
+  // Mesh (Oberseite, Seiten, Stirnflächen) – Dreiecke werden automatisch nach außen gedreht
+  const pos = [], uv = [];
+  const tri = (A, B, C, ta, tb, tc, out) => {
+    const e1 = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], e2 = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+    const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    if (n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0) { [B, C] = [C, B]; [tb, tc] = [tc, tb]; }
+    pos.push(...A, ...B, ...C); uv.push(...ta, ...tb, ...tc);
+  };
+  const quad = (A, B, C, D, ta, tb, tc, td, out) => { tri(A, B, C, ta, tb, tc, out); tri(A, C, D, ta, tc, td, out); };
+  let s = 0;
+  for (let i = 0; i < prof.length - 1; i++) {
+    const [u0, h0] = prof[i], [u1, h1] = prof[i + 1], ds = Math.hypot(u1 - u0, h1 - h0);
+    quad(P(u0, -w / 2, h0), P(u0, w / 2, h0), P(u1, w / 2, h1), P(u1, -w / 2, h1),
+      [0, s / tile], [w / tile, s / tile], [w / tile, (s + ds) / tile], [0, (s + ds) / tile], [0, 1, 0]);
+    s += ds;
+    for (const sv of [-1, 1]) {
+      if (h0 < 0.01 && h1 < 0.01) continue;
+      quad(P(u0, sv * w / 2, 0), P(u1, sv * w / 2, 0), P(u1, sv * w / 2, h1), P(u0, sv * w / 2, h0),
+        [u0 / tile, 0], [u1 / tile, 0], [u1 / tile, h1 / tile], [u0 / tile, h0 / tile], [-fz * sv, 0, fx * sv]);
+    }
+  }
+  for (const [u, h, o] of [[0, prof[0][1], -1], [L, prof[prof.length - 1][1], 1]]) {
+    if (h < 0.01) continue;
+    quad(P(u, -w / 2, 0), P(u, w / 2, 0), P(u, w / 2, h), P(u, -w / 2, h), [0, 0], [w / tile, 0], [w / tile, h / tile], [0, h / tile], [fx * o, 0, fz * o]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals(); withUv2(g);
+  const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; scene.add(m);
+  return r;
+}
 // Alte Schreibweise (Türen) für bestehenden Code
 function wallLine(axis, from, to, at, y, h, t, mat, doors = []) { wallRun(axis, from, to, at, y, h, t, mat, doors.map(([a, b, top]) => [a, b, 0, top])); }
 function windowAt(x, y, z, rotY, w = 1.3, h = 1.2) {
@@ -338,9 +401,16 @@ const MAP_PICKUPS = [];
 (function buildMap() {
   const WALL_H = 6;
   /* --- Außengrenzen: Mauern im Norden, Westen, Süden; Kaimauer im Osten --- */
-  addBox(-3, 0, -61, 118, WALL_H, 1, MAT.concrete, 3); addBox(-3, 0, 61, 118, WALL_H, 1, MAT.concrete, 3);
+  addBox(-3, 0, -61, 118, WALL_H, 1, MAT.concrete, 3);
+  // Südmauer mit drei Toren zum Crosspark
+  const GATES = [[-48, -40], [-14, -6], [22, 32]];
+  wallRun('x', -62, 56, 61, 0, WALL_H, 1, MAT.concrete, GATES.map(([a, b]) => [a, b, 0, WALL_H]));
   addBox(-61, 0, 0, 1, WALL_H, 122, MAT.concrete, 3);
-  for (let i = -60; i <= 54; i += 10) for (const z of [-60.3, 60.3]) addBox(i, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  for (let i = -60; i <= 54; i += 10) for (const z of [-60.3, 60.3]) {
+    if (z > 0 && GATES.some(([a, b]) => i > a - 1 && i < b + 1)) continue;
+    addBox(i, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  }
+  for (const [a, b] of GATES) for (const x of [a - 0.6, b + 0.6]) addBox(x, 0, 61, 1.3, WALL_H + 0.8, 1.4, MAT.concrete, 2);
   for (let i = -60; i <= 60; i += 10) addBox(-60.3, 0, i, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
   // Kai: Kante, Poller, Geländer + unsichtbare Sperre
   addBox(55.4, -2.2, 0, 0.8, 2.45, 122, MAT.concrete, 2, { decor: true });
@@ -506,6 +576,71 @@ const MAP_PICKUPS = [];
   addBox(2, 0, 11, 3.5, 2.6, 2.5, MAT.plaster2, 2.7); addBox(2, 2.6, 11, 4, 0.15, 3, MAT.ctrRed, 2.6, { decor: true });
   car(-7.8, 52, false, carPaints[0]);
 
+  /* --- Schanzen in der Stadt (Querstraße) --- */
+  MAT.rampWood = pbr('wood', 2, { mat: { color: new THREE.Color(1.35, 1.2, 1.0) } });
+  MAT.dirt = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x6e5034), mat: { color: new THREE.Color(0.68, 0.6, 0.52) }, normalScale: 1.6 });
+  addRamp(-10, -14, -Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
+  addRamp(-10, 27, Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
+
+  /* --- SÜDEN: Simson-Crosspark (z 62 … 131) mit Schanzen --- */
+  decalT(-3.5, 96.5, 115, 69, MAT.dirt, 4.5, 0, 0.004);
+  addBox(-3.5, 0, 131, 116, WALL_H, 1, MAT.concrete, 3);
+  addBox(-61, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
+  addBox(54.5, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
+  for (let i = -60; i <= 54; i += 10) addBox(i, 0, 130.3, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  for (let z = 70; z <= 130; z += 10) { addBox(-60.3, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); addBox(53.8, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); }
+  // Zufahrt: Betonpiste mit Schanze, Tor mit Banner
+  decalT(-10, 78, 8, 32, MAT.concreteFloor, 2.7, 0, 0.012);
+  for (let z = 64; z < 94; z += 4) decalT(-10, z, 0.16, 2.2, white, 0, 0, 0.014);
+  addRamp(-10, 71, Math.PI / 2, 3.5, P_KICK(5, 1.4), MAT.rampWood);
+  for (const x of [-15.5, -4.5]) addBox(x, 0, 64, 0.3, 5.2, 0.3, MAT.metal, 1);
+  const bc = document.createElement('canvas'); bc.width = 1024; bc.height = 128;
+  const bg = bc.getContext('2d'); bg.fillStyle = '#c0262b'; bg.fillRect(0, 0, 1024, 128);
+  bg.fillStyle = '#fff'; bg.font = 'italic 900 84px Arial'; bg.textAlign = 'center'; bg.textBaseline = 'middle'; bg.fillText('SIMSON  CROSSPARK', 512, 68);
+  const btex = new THREE.CanvasTexture(bc); btex.encoding = THREE.sRGBEncoding; btex.anisotropy = MAX_ANISO;
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(11, 1.2, 0.08), new THREE.MeshStandardMaterial({ map: btex, roughness: 0.7 }));
+  banner.position.set(-10, 4.5, 64); scene.add(banner);
+  // Tabletop (Erdhügel) und Buckelpiste
+  addRamp(-40, 74, Math.PI / 2, 7, P_TABLE(5, 6, 7, 1.8), MAT.dirt, 3);
+  for (let i = 0; i < 9; i++) addRamp(-52, 70 + i * 3.2, Math.PI / 2, 5, P_BUMP(3.2, 0.45), MAT.dirt, 3);
+  // Lückensprung über Fässer
+  addRamp(5, 105, 0, 4, P_KICK(7, 2.2), MAT.rampWood);
+  addRamp(21, 105, 0, 5, P_TABLE(3, 0.8, 12, 2.2), MAT.dirt, 3);
+  for (const [x, z] of [[14.5, 104], [16, 105.6], [17.5, 104.2], [19, 105.8], [20.5, 104.5], [15.5, 106.4]]) barrel(x, z, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrOrange][Math.floor(x) % 3]);
+  // Mega-Schanze mit Landehügel
+  addRamp(-21, 121, 0, 6, P_KICK(10, 3.2), MAT.rampWood);
+  addRamp(-1, 121, 0, 7, P_TABLE(3.5, 1.5, 16, 3.2), MAT.dirt, 3);
+  // kleine Kicker
+  addRamp(22, 76, 0, 3, P_KICK(3, 0.8), MAT.rampWood);
+  addRamp(45, 113, -Math.PI / 2, 3, P_KICK(4, 1.2), MAT.rampWood);
+  addRamp(-30, 98, 0, 3, P_KICK(3.5, 0.9), MAT.rampWood);
+  // Strohballen, Reifenstapel, Fahnen
+  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
+  const tireM = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
+  const bale = (x, z, rot) => { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16)), hay); m.rotation.set(Math.PI / 2, rot, 0); m.position.set(x, 0.6, z); m.castShadow = m.receiveShadow = true; scene.add(m); collider(x, 0, z, 1.2, 1.2, 1.2); };
+  const tires = (x, z, n) => { for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.14, 8, 18), tireM); m.rotation.x = Math.PI / 2; m.position.set(x, 0.14 + i * 0.27, z); m.castShadow = true; scene.add(m); } collider(x, 0, z, 1, n * 0.27 + 0.05, 1); };
+  for (let x = -34; x <= 36; x += 6) if (x < -25 || x > -4) bale(x, 113, Math.PI / 2);
+  for (let z = 68; z <= 100; z += 8) bale(-46, z, 0);
+  for (const [x, z, n] of [[-57, 66, 3], [-57, 126, 4], [50, 66, 3], [50, 126, 3], [-24, 66, 2], [3, 66, 3], [38, 92, 4], [-35, 106, 3], [26, 96, 2], [-58, 104, 3]]) tires(x, z, n);
+  const flagMats = [MAT.ctrRed, MAT.yellow, MAT.ctrBlue];
+  for (const [x, z] of [[4.5, 103], [4.5, 107], [-21.5, 118], [-21.5, 124], [-44.2, 74], [-35.8, 74]]) {
+    addBox(x, 0, z, 0.06, 3.2, 0.06, MAT.metal, 1, { decor: true });
+    addBox(x + 0.45, 2.6, z, 0.9, 0.55, 0.03, flagMats[Math.abs(Math.round(x + z)) % 3], 0, { decor: true, round: 0 });
+  }
+  // Tribüne an der Südmauer (Stufen = erhöhte Schussposition)
+  for (let i = 0; i < 4; i++) addBox(-45, 0, 129.9 - i * 1.1, 18, 0.55 * (4 - i), 1.1, MAT.concrete, 2);
+  addBox(-45, 5.4, 128.6, 19, 0.15, 4.2, MAT.hallMetal, 2.6, { decor: true });
+  for (const x of [-53.5, -45, -36.5]) addBox(x, 2.2, 127, 0.15, 3.2, 0.15, MAT.metal, 1, { decor: true });
+  // Deckung: Container, Sandsäcke, Werkstatt
+  container(-25, 0, 84, false, MAT.ctrOrange); container(35, 0, 70, true, MAT.ctrBlue); container(35, 2.6, 70, true, MAT.ctrRed);
+  container(46, 0, 88, false, MAT.ctrGreen);
+  for (let i = 0; i < 3; i++) addBox(33.4 + i * 1.1, 0, 72.2, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
+  sandbags(8, 88, 3, true); sandbags(-30, 110, 3, false); sandbags(30, 124, 3, true); sandbags(-4, 98, 3, false);
+  building(18, 88, 8, 6, 1, MAT.brick, { n: [0], s: [1] });
+  for (const z of [80, 96]) lamp(-14.6, z, 1);
+  // Mopeds im Crosspark
+  car(-6.5, 66, false); car(-13.5, 67.5, false); car(-50, 120, true); car(0, 109, true); car(30, 82, true);
+
   /* --- Bäume außerhalb (Wald) und Gras --- */
   const N = 240, dummy = new THREE.Object3D();
   const farLeafMat = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
@@ -513,7 +648,7 @@ const MAP_PICKUPS = [];
   const trunks = new THREE.InstancedMesh(trunkGeo, farTrunkMat, N);
   const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
   for (let i = 0; i < N; i++) {
-    let x, z; do { x = rnd(-240, 50); z = rnd(-240, 240); } while (Math.max(Math.abs(x + 3), Math.abs(z)) < 68);
+    let x, z; do { x = rnd(-240, 50); z = rnd(-240, 240); } while (window.mapEdge(x, z) < 68);
     const s = rnd(0.9, 1.8);
     dummy.position.set(x, window.terrainHeight(x, z) - 0.2, z); dummy.scale.set(s, s * rnd(0.9, 1.3), s); dummy.rotation.y = Math.random() * 6;
     dummy.updateMatrix();
@@ -537,7 +672,7 @@ const MAP_PICKUPS = [];
     let x, z, y = 0.01;
     if (i < 1300) { x = rnd(-41.5, -20.5); z = rnd(14.5, 39.5); if (Math.abs(x + 31) < 1.4 || Math.abs(z - 27) < 1.4 || Math.hypot(x + 31, z - 27) < 3.3) { x = rnd(-41.5, -33); } }
     else if (i < 2000) { const side = i % 3; const t = rnd(-59, 59); [x, z] = side === 0 ? [rnd(-60, -58.5), t] : side === 1 ? [t * 0.95 - 3, rnd(-60, -58.6)] : [t * 0.95 - 3, rnd(58.6, 60)]; }
-    else { do { x = rnd(-110, 50); z = rnd(-110, 110); } while (Math.max(Math.abs(x + 3), Math.abs(z)) < 63); y = window.terrainHeight(x, z); }
+    else { do { x = rnd(-110, 50); z = rnd(-110, 180); } while (window.mapEdge(x, z) < 63); y = window.terrainHeight(x, z); }
     const s = rnd(0.7, 1.5);
     dummy.position.set(x, y, z); dummy.scale.set(s, s, s); dummy.rotation.set(0, Math.random() * 6, 0);
     dummy.updateMatrix(); grassI.setMatrixAt(i, dummy.matrix);
@@ -550,6 +685,7 @@ const MAP_PICKUPS = [];
     { w: 1, x: -44, y: 0, z: -46 }, { w: 1, x: -44, y: 0, z: -22 }, { w: 1, x: 4, y: 0, z: 24 }, { w: 1, x: -27, y: 0, z: -24 },
     { w: 2, x: -44, y: B1.roofY, z: -46 }, { w: 2, x: -56, y: 4, z: 32 }, { w: 2, x: 50, y: 2.6, z: -55 }, { w: 2, x: 40, y: CW, z: 45.6 },
     { w: 1, x: 26, y: 0, z: 28 }, { w: 0, x: 50, y: 0, z: -20 },
+    { w: 0, x: -25, y: 0, z: 108 }, { w: 1, x: 40, y: 0, z: 76 }, { w: 2, x: -45, y: 2.2, z: 129.9 }, { w: 0, x: 18, y: 0, z: 88 },
   );
 })();
 
@@ -601,7 +737,8 @@ applyGfx(gfx);
 $('gfxIn').onchange = e => applyGfx(e.target.value);
 const SPAWNS = [[-34, -40], [-55, -30], [-20, -36], [-52, -8], [-36, 18], [-24, 33], [-54, 52], [-40, 56],
   [-20, -10], [-20, 10], [0, 8.5], [0, -9], [6, -17.5], [29.6, -24.5], [13.6, -45.5], [50, -22], [26, 28], [5, 38], [40, 12], [20, 56],
-  [-4, -56], [52, 45], [-58, 6], [30, -11]];
+  [-4, -56], [52, 45], [-58, 6], [30, -11],
+  [-30, 72], [0, 82], [30, 95], [-45, 112], [12, 127], [46, 72], [-56, 90]];
 
 /* ======================= Kollision (mit Raster für schnelle Suche) ======================= */
 const GRID = 8, grid = new Map();
@@ -634,6 +771,8 @@ function anyOverlap(p) { for (const b of _near) if (overlap(p, b)) return true; 
 function moveH(e, ax, amt, grounded) {
   if (!amt) return;
   e.pos[ax] += amt;
+  // Schanzen: hohe Seiten-/Stirnflächen sind Wände, flache Schrägen kann man hochfahren
+  if (RAMPS.length && groundH(e.pos.x, e.pos.z) - e.pos.y > STEP * 0.6) { e.pos[ax] -= amt; e.blocked = true; return; }
   for (const b of _near) {
     if (!overlap(e.pos, b)) continue;
     const rise = b.max.y - e.pos.y;
@@ -654,7 +793,8 @@ function moveBody(e, dx, dy, dz) {
   for (let i = 0; i < n; i++) {
     const was = e.onGround; e.onGround = false;
     e.pos.y += dy / n;
-    if (e.pos.y < 0) { e.pos.y = 0; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
+    const gh = groundH(e.pos.x, e.pos.z);
+    if (e.pos.y < gh) { e.pos.y = gh; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
     for (const b of _near) if (overlap(e.pos, b)) {
       if (dy <= 0) { e.pos.y = b.max.y; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
       else { e.pos.y = b.min.y - _h - 0.001; e.vel.y = 0; }
@@ -662,6 +802,8 @@ function moveBody(e, dx, dy, dz) {
     moveH(e, 'x', dx / n, was || e.onGround);
     moveH(e, 'z', dz / n, was || e.onGround);
   }
+  const gEnd = groundH(e.pos.x, e.pos.z);
+  if (e.pos.y < gEnd) { e.pos.y = gEnd; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
   _near = boxes; _h = PH;
 }
 /* Strahl gegen Kartenboxen + Boden: liefert {dist, point, normal} (für Schüsse und Sichtlinien) */
@@ -681,6 +823,25 @@ function rayMap(o, d, maxDist = 300) {
       if (tmin > tmax) { tmin = Infinity; break; }
     }
     if (tmin < best && tmin > 0 && ax >= 0) { best = tmin; nrm = [0, 0, 0]; nrm[ax] = sgn; }
+  }
+  // Schanzen: Strahl in kleinen Schritten durch den Bereich der Schanze verfolgen
+  for (const r of RAMPS) {
+    let t0 = 0, t1 = best;
+    const mn = [r.bx0, 0, r.bz0], mx = [r.bx1, r.H, r.bz1], oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+    for (let a = 0; a < 3 && t0 <= t1; a++) {
+      if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < mn[a] || oo[a] > mx[a]) t0 = Infinity; continue; }
+      let ta = (mn[a] - oo[a]) / dd[a], tb = (mx[a] - oo[a]) / dd[a]; if (ta > tb) [ta, tb] = [tb, ta];
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    }
+    if (!(t0 <= t1)) continue;
+    const below = t => o.y + d.y * t <= rampH(r, o.x + d.x * t, o.z + d.z * t) - 0.001;
+    for (let t = Math.max(t0, 0.001); t <= t1 + 0.2; t += 0.2) {
+      if (!below(t)) continue;
+      let lo = Math.max(0, t - 0.2), hi = t;
+      for (let k = 0; k < 6; k++) { const mid = (lo + hi) / 2; if (below(mid)) hi = mid; else lo = mid; }
+      if (hi < best) { best = hi; nrm = [0, 1, 0]; }
+      break;
+    }
   }
   if (!nrm) return null;
   return { dist: best, point: new THREE.Vector3(o.x + d.x * best, o.y + d.y * best, o.z + d.z * best), normal: new THREE.Vector3(nrm[0], nrm[1], nrm[2]) };

@@ -87,13 +87,16 @@ function updateHUD(dt) {
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = { img: null, x0: -62, z0: -62, w: 118, h: 124, ppm: 4, t: 0 };
+const RADAR = { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
   const g = c.getContext('2d');
   g.fillStyle = 'rgba(40,46,40,0.9)'; g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = 'rgba(70,74,70,0.9)'; g.fillRect((-14 - RADAR.x0) * RADAR.ppm, 0, 8 * RADAR.ppm, c.height); g.fillRect(0, (-5 - RADAR.z0) * RADAR.ppm, c.width, 10 * RADAR.ppm);
   g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((55.5 - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
+  g.fillStyle = 'rgba(92,72,48,0.95)'; g.fillRect(0, (62 - RADAR.z0) * RADAR.ppm, (54 - RADAR.x0) * RADAR.ppm, 69 * RADAR.ppm);   // Crosspark (Erde)
+  g.fillStyle = 'rgba(205,150,80,0.9)';   // Schanzen
+  for (const r of RAMPS) g.fillRect((r.bx0 - RADAR.x0) * RADAR.ppm, (r.bz0 - RADAR.z0) * RADAR.ppm, (r.bx1 - r.bx0) * RADAR.ppm, (r.bz1 - r.bz0) * RADAR.ppm);
   const sorted = boxes.slice().sort((a, b) => a.max.y - b.max.y);
   for (const b of sorted) {
     if (b.max.y < 0.5 || b.max.x - b.min.x > 100 && b.max.y > 10) continue;
