@@ -139,7 +139,12 @@ function hostHandle(from, m) {
     }
   } else if (m.t === 'enter') {
     const v = vehicles[m.v], p = P[from];
-    if (!v || v.d || !p || !p.alive || Math.hypot(p.x - v.x, p.z - v.z) > 3.2) return;
+    if (!v || !p || !p.alive) return;
+    if (v.d && v.d !== from) return sendTo(from, { t: 'enterFail', r: 'busy' });
+    // Abstand: Host kennt die Position ~50 ms verzögert, darum auch die mitgeschickte Position gelten lassen (wenn plausibel)
+    let dist = Math.hypot(p.x - v.x, p.z - v.z);
+    if (m.p && Math.hypot(m.p[0] - p.x, m.p[2] - p.z) < 4) dist = Math.min(dist, Math.hypot(m.p[0] - v.x, m.p[2] - v.z));
+    if (dist > 3.6) return sendTo(from, { t: 'enterFail', r: 'far' });
     for (const o of vehicles) if (o.d === from) o.d = 0;
     v.d = from;
     sendTo(from, { t: 'entered', v: m.v });
@@ -336,6 +341,8 @@ function clientHandle(m) {
     if (m.k) pickActive = Array.from(m.k, v => !!v);
   } else if (m.t === 'entered') {
     startRide(m.v);
+  } else if (m.t === 'enterFail') {
+    enterFailed(m.r);
   } else if (m.t === 'got') {
     gotWeapon(m.w);
   } else if (m.t === 'shot') {

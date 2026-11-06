@@ -168,24 +168,41 @@ const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Spr
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
 
+// Gerade abgestiegen: dieses Moped gilt kurz als frei, auch wenn ein älteres Netzwerk-Update noch „besetzt“ meldet
+const rideLeft = { v: -1, t: 0 };
+const freeForMe = v => !v.d || v.d === myId && ride.v !== v.i || (rideLeft.v === v.i && performance.now() - rideLeft.t < 1500);
 function nearestFreeVehicle() {
-  let best = -1, bd = 2.6;
+  let best = -1, bd = 3.0;
   for (const v of vehicles) {
-    if (v.d) continue;
+    if (!freeForMe(v)) continue;
     const d = Math.hypot(v.x - me.pos.x, v.z - me.pos.z);
-    if (d < bd && Math.abs(v.y - me.pos.y) < 1.5) { bd = d; best = v.i; }
+    if (d < bd && Math.abs(v.y - me.pos.y) < 2.2) { bd = d; best = v.i; }
   }
   return best;
 }
 // E: auf-/absteigen
+let enterPending = 0;
 function toggleRide() {
   if (!me.alive) return;
   if (ride.v >= 0) return exitRide();
+  if (performance.now() - enterPending < 400) return;   // Anfrage läuft noch
   const i = nearestFreeVehicle();
-  if (i >= 0) net.send({ t: 'enter', v: i });
+  if (i < 0) {
+    // Moped in der Nähe, aber besetzt?
+    if (vehicles.some(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < 3)) showMsg('Dieses Moped ist besetzt');
+    return;
+  }
+  enterPending = performance.now();
+  net.send({ t: 'enter', v: i, p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)] });
+}
+// Antwort vom Host, wenn das Aufsteigen nicht geklappt hat
+function enterFailed(reason) {
+  enterPending = 0;
+  showMsg(reason === 'busy' ? 'Dieses Moped ist besetzt' : 'Zu weit weg – näher ans Moped gehen');
 }
 function startRide(i) {
-  const v = vehicles[i]; if (!v) return;
+  const v = vehicles[i]; if (!v || ride.v === i || !me.alive) return;
+  enterPending = 0; rideLeft.v = -1;
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
@@ -197,11 +214,25 @@ function startRide(i) {
 function exitRide(silent) {
   if (ride.v < 0) return;
   const v = vehicles[ride.v];
-  // neben dem Moped absteigen (links)
-  const lx = Math.sin(ride.yaw) * -1.1, lz = Math.cos(ride.yaw) * -1.1;
-  me.pos.set(ride.pos.x + lx, ride.pos.y + 0.1, ride.pos.z + lz); me.vel.set(0, 0, 0);
+  // neben dem Moped absteigen: links, sonst rechts, hinten, vorne – nie in eine Wand oder Schanze
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
+  const spots = [[-sx * 1.1, -sz * 1.1], [sx * 1.1, sz * 1.1], [-fx * 1.5, -fz * 1.5], [fx * 1.6, fz * 1.6], [-sx * 1.8, -sz * 1.8], [sx * 1.8, sz * 1.8]];
+  const p = new THREE.Vector3();
+  let placed = false;
+  for (const [ox, oz] of spots) {
+    p.set(ride.pos.x + ox, 0, ride.pos.z + oz);
+    p.y = Math.max(ride.pos.y + 0.05, groundH(p.x, p.z));
+    if (p.y - ride.pos.y > 0.8) continue;
+    _near = nearBoxes(p.x, p.z, 2); _h = PH;
+    const blocked = anyOverlap(p) || rayMap(new THREE.Vector3(ride.pos.x, ride.pos.y + 1, ride.pos.z), new THREE.Vector3(ox, 0, oz).normalize(), Math.hypot(ox, oz) + PR);
+    _near = boxes;
+    if (!blocked) { placed = true; break; }
+  }
+  if (!placed) p.set(ride.pos.x, ride.pos.y + 0.05, ride.pos.z);
+  me.pos.copy(p); me.vel.set(0, 0, 0);
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
+  rideLeft.v = ride.v; rideLeft.t = performance.now();
   ride.v = -1; ride.speed = 0;
   if (myRider) myRider.g.visible = false;
   engineSound(false);
