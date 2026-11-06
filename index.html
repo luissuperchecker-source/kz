@@ -158,6 +158,13 @@
   .shopInfo { font-size: 13px; color: #a8c0a8; margin: 10px 0 14px; line-height: 1.5; }
   .shopItem { display: flex; gap: 14px; align-items: center; background: rgba(255,255,255,.04); border: 1px solid #34483a; border-radius: 9px; padding: 12px; margin-bottom: 10px; }
   .shopItem.eq { border-color: #ffcc33; }
+  .voucher { background: rgba(255,204,51,.06); border: 1px dashed #8a7430; border-radius: 9px; padding: 12px; margin-bottom: 14px; }
+  .voucher .vLabel { font-weight: 800; margin-bottom: 8px; color: #ffcc33; }
+  .voucher .vRow { display: flex; gap: 8px; }
+  .voucher input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 7px; border: 1px solid #34483a; background: rgba(0,0,0,.35); color: #fff; font: inherit; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; }
+  .voucher button { width: 120px; margin: 0; flex-shrink: 0; }
+  #voucherMsg { font-size: 13px; margin-top: 7px; min-height: 16px; }
+  #voucherMsg.ok { color: #7dff8a; } #voucherMsg.err { color: #ff7a6a; }
   .shopItem .info { flex: 1; min-width: 0; }
   .shopItem .nm { font-weight: 800; font-size: 16px; }
   .shopItem .ds { font-size: 12.5px; color: #a8c0a8; margin: 3px 0 6px; }
@@ -356,6 +363,11 @@
   <div class="panel shopPanel">
     <div class="shopHead"><h2>🛒 Waffenladen</h2><div class="coinBig"><span class="coin"></span> <span id="shopCoins">0</span> Coins</div></div>
     <div class="shopInfo">Pro Eliminierung <b>+100 Coins</b>, pro Kopfschuss-Eliminierung <b>+150 Coins</b>, Bonus für Killserien. Die ausgerüstete Waffe hast du bei jedem Start in der Hand (Taste <b>5</b>).</div>
+    <div class="voucher">
+      <div class="vLabel">🎁 Gutscheincode</div>
+      <div class="vRow"><input id="voucherIn" maxlength="20" placeholder="z. B. KZ-XXXX-XXXX" autocomplete="off" spellcheck="false"><button id="voucherBtn">Einlösen</button></div>
+      <div id="voucherMsg"></div>
+    </div>
     <div id="shopList"></div>
     <button id="shopClose">Schließen</button>
   </div>
@@ -365,12 +377,12 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261106-185125"></script>
-<script src="js/map.js?v=20261106-185125"></script>
-<script src="js/models.js?v=20261106-185125"></script>
-<script src="js/game.js?v=20261106-185125"></script>
-<script src="js/vehicles.js?v=20261106-185125"></script>
-<script src="js/net.js?v=20261106-185125"></script>
-<script src="js/ui.js?v=20261106-185125"></script>
+<script src="js/core.js?v=20261106-191940"></script>
+<script src="js/map.js?v=20261106-191940"></script>
+<script src="js/models.js?v=20261106-191940"></script>
+<script src="js/game.js?v=20261106-191940"></script>
+<script src="js/vehicles.js?v=20261106-191940"></script>
+<script src="js/net.js?v=20261106-191940"></script>
+<script src="js/ui.js?v=20261106-191940"></script>
 </body>
 </html>

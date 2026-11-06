@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261106-185125 durch eine Versionsnummer ersetzt */
-const BUILD = '20261106-185125';
+/* Update-Prüfung: beim Veröffentlichen wird 20261106-191940 durch eine Versionsnummer ersetzt */
+const BUILD = '20261106-191940';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -98,7 +98,39 @@ $('shopList').addEventListener('click', e => {
     me.weapon = -1; switchWeapon(shopState.equip);
   }
 });
-const openShop = () => { renderShop(); $('shop').classList.remove('hidden'); };
+/* ---------- Gutscheincodes: jeder Code bringt 10.000 Coins (einmal pro Spieler/Browser) ---------- */
+// Gespeichert sind nur Prüfsummen der Codes, nicht die Codes selbst
+const VOUCHERS = ['13eztdq6ah2', '1q13z5uf9om', '15tg7vmhet3', '23pn0adb93r', 'lwfi8lkml1', '272xe40gt3v', '43q6ecl3l5', '1lffgy0oz80', 'moic0g8o3f', '17k6yhivqa9'];
+const VOUCHER_COINS = 10000;
+function codeHash(str, seed = 51) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < str.length; i++) { const ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+function redeemVoucher() {
+  const msg = $('voucherMsg');
+  let code = $('voucherIn').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length === 10) code = code.slice(0, 2) + '-' + code.slice(2, 6) + '-' + code.slice(6);   // Bindestriche ergänzen
+  const h = codeHash(code);
+  let used = [];
+  try { used = JSON.parse(localStorage.getItem('kz_vouchers') || '[]'); } catch (e) {}
+  msg.className = 'err';
+  if (!code) { msg.textContent = 'Bitte einen Code eingeben.'; return; }
+  if (!VOUCHERS.includes(h)) { msg.textContent = '❌ Dieser Code ist ungültig.'; sndBeep(220, 0.15, 0.1, 'square'); return; }
+  if (used.includes(h)) { msg.textContent = '⚠️ Diesen Code hast du schon eingelöst.'; return; }
+  used.push(h);
+  try { localStorage.setItem('kz_vouchers', JSON.stringify(used)); } catch (e) {}
+  shopState.coins += VOUCHER_COINS; saveShop(); renderShop(); updateCoins(true);
+  msg.className = 'ok'; msg.textContent = `✅ Eingelöst! +${fmt(VOUCHER_COINS)} Coins`;
+  $('voucherIn').value = '';
+  initAudio(); sndBeep(660, 0.1, 0.12, 'triangle'); setTimeout(() => sndBeep(990, 0.12, 0.12, 'triangle'), 90); setTimeout(() => sndBeep(1320, 0.18, 0.12, 'triangle'), 180);
+}
+$('voucherBtn').onclick = redeemVoucher;
+$('voucherIn').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') redeemVoucher(); });
+$('voucherIn').addEventListener('keyup', e => e.stopPropagation());
+const openShop = () => { renderShop(); $('voucherMsg').textContent = ''; $('shop').classList.remove('hidden'); };
 $('btnShop1').onclick = openShop; $('btnShop2').onclick = openShop;
 $('shopClose').onclick = () => $('shop').classList.add('hidden');
 updateCoins();
