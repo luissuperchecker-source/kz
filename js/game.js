@@ -17,6 +17,7 @@ let fovBase = 75;
 try { fovBase = parseFloat(localStorage.getItem('kz_fov')) || 75; } catch (e) {}
 
 function spawnAt(pos) {
+  if (typeof ride !== 'undefined' && ride.v >= 0) exitRide(true);
   me.pos.set(pos[0], pos[1], pos[2]); me.vel.set(0, 0, 0);
   me.alive = true; me.hp = 100; me.ammo = WEAPONS.map(w => w.mag); me.reloading = 0;
   me.owned = WEAPONS.map((w, i) => i === START_WEAPON); me.weapon = START_WEAPON; me.scoped = false;
@@ -28,6 +29,7 @@ function spawnAt(pos) {
   $('center').classList.add('hidden');
 }
 function die(killerName) {
+  if (typeof ride !== 'undefined' && ride.v >= 0) exitRide(true);
   me.alive = false; me.scoped = false; me.trigger = false; streak = 0;
   $('centerBig').textContent = 'ELIMINIERT';
   $('centerSmall').textContent = killerName ? `von ${killerName} · Wiederbelebung in 3 Sekunden` : 'Wiederbelebung in 3 Sekunden';
@@ -124,6 +126,7 @@ if (TOUCH) {
     else if (name === 'swap') nextWeapon();
     else if (name === 'nade') throwNade();
     else if (name === 'knife') knifeAttack();
+    else if (name === 'ride') toggleRide();
     else if (name === 'board') { $('board').classList.remove('hidden'); renderBoard(); }
     else if (name === 'pause') setLocked(false);
   };
@@ -223,6 +226,7 @@ document.addEventListener('keydown', e => {
   if (e.code === 'KeyV') knifeAttack();
   if (e.code === 'KeyG') throwNade();
   if (e.code === 'KeyF' && !e.repeat && me.alive && me.reloading <= 0) me.inspectT = 2.2;
+  if (e.code === 'KeyE' && !e.repeat) toggleRide();
 });
 document.addEventListener('keyup', e => {
   keys[e.code] = false;
@@ -271,7 +275,7 @@ function friendly(pid) {
 const _o = new THREE.Vector3(), _f = new THREE.Vector3(), _r = new THREE.Vector3(), _u = new THREE.Vector3();
 function tryShoot(now) {
   const w = WEAPONS[me.weapon];
-  if (!me.alive || me.reloading > 0 || me.knifeT > 0 || me.throwT > 0 || me.drawT > 0.12 || now - me.lastShot < w.rate) return;
+  if (!me.alive || ride.v >= 0 || me.reloading > 0 || me.knifeT > 0 || me.throwT > 0 || me.drawT > 0.12 || now - me.lastShot < w.rate) return;
   if (me.ammo[me.weapon] <= 0) { startReload(); sndClick(0.05, 2); return; }
   me.lastShot = now; me.ammo[me.weapon]--; me.firedPress = true; me.inspectT = 0;
   const moving = Math.hypot(me.vel.x, me.vel.z) > 1.5;
@@ -329,7 +333,7 @@ function showHitmarker(head) {
 
 /* ---------- Messer (V) ---------- */
 function knifeAttack() {
-  if (!me.alive || me.knifeT > 0 || me.throwT > 0) return;
+  if (!me.alive || me.knifeT > 0 || me.throwT > 0 || ride.v >= 0) return;
   me.knifeT = 0.5; me.reloading = 0; me.inspectT = 0; me.scoped = false;
   sndSwish();
   setTimeout(() => {
@@ -356,7 +360,7 @@ function knifeAttack() {
 const nades = [];
 let nadeSeq = 0;
 function throwNade() {
-  if (!me.alive || me.nades <= 0 || me.throwT > 0 || me.knifeT > 0) return;
+  if (!me.alive || me.nades <= 0 || me.throwT > 0 || me.knifeT > 0 || ride.v >= 0) return;
   me.nades--; me.throwT = 0.65; me.reloading = 0; me.inspectT = 0; me.scoped = false;
   sndClick(0.08, 1.8);
   setTimeout(() => {
@@ -412,6 +416,11 @@ function updateNades(dt) {
 let streak = 0, multiN = 0, multiT = 0;
 function updateLocal(dt, now) {
   const w = WEAPONS[me.weapon];
+  // Auf dem Moped: eigene Steuerung und Kamera (vehicles.js)
+  if (ride.v >= 0) {
+    if (!me.alive) exitRide(true);
+    else { updateRide(dt); updateNades(dt); flashT -= dt; if (flashT <= 0) { flash.visible = false; flashLight.intensity = 0; } return; }
+  }
   if (me.alive) {
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
     let iF = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), iR = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), analog = 1;
@@ -650,17 +659,21 @@ function animateAvatar(a, dt) {
   // Ducken: Oberschenkel nach vorne, Knie stark gebeugt, Körper tiefer
   tL = tL * (1 - c) + (1.2 + sw * 0.3) * c; tR = tR * (1 - c) + (1.2 - sw * 0.3) * c;
   kL = kL * (1 - c) - 2.0 * c; kR = kR * (1 - c) - 2.0 * c;
+  // Auf dem Moped: sitzen, Knie angewinkelt, nach vorne gebeugt, Hände am Lenker (Waffe weg)
+  const riding = (a.flags & 8) ? 1 : 0;
+  if (riding) { tL = tR = 1.35; kL = kR = -1.5; bob = 0; lean = -0.3; }
+  if (a.gunHolder) a.gunHolder.visible = !riding;
   const s = 1 - Math.exp(-18 * dt);
   a.hipL.rotation.x += (tL - a.hipL.rotation.x) * s; a.hipR.rotation.x += (tR - a.hipR.rotation.x) * s;
   if (a.knees) { a.knees[0].rotation.x += (kL - a.knees[0].rotation.x) * s; a.knees[1].rotation.x += (kR - a.knees[1].rotation.x) * s; }
-  a.hipL.position.y = a.hipR.position.y = 0.92 - 0.42 * c;
-  a.upper.position.y += ((bob - 0.42 * c) - a.upper.position.y) * s;
+  a.hipL.position.y = a.hipR.position.y = riding ? 0.86 : 0.92 - 0.42 * c;
+  a.upper.position.y += ((riding ? -0.06 : bob - 0.42 * c) - a.upper.position.y) * s;
   a.upper.rotation.x += ((lean - 0.12 * c) - a.upper.rotation.x) * s;
   // Rückstoß beim Schießen
   a.kick = Math.max(0, (a.kick || 0) - dt * 8);
   a.pivot.position.z = a.kick * 0.06; a.pivot.rotation.x += a.kick * 0.05;
   // Schritte (lautlos beim Schleichen/Ducken) – kommen aus der Richtung des Spielers
-  if (!air && amt > 0.4 && !sneak && !crouch && Math.sign(prev) !== Math.sign(Math.sin(a.phase))) {
+  if (!air && !riding && amt > 0.4 && !sneak && !crouch && Math.sign(prev) !== Math.sign(Math.sin(a.phase))) {
     const d = pos.distanceTo(me.pos);
     if (d < 30) sndStep(0.11 * (1 - d / 30), pos);
   }

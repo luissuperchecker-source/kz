@@ -132,6 +132,19 @@ function hostHandle(from, m) {
     p.x = m.p[0]; p.y = m.p[1]; p.z = m.p[2]; p.ry = m.r[0]; p.rx = m.r[1];
     if (m.w !== undefined) p.w = m.w;
     p.f = m.f || 0;
+    // Fahrer schickt die Position seines Mopeds mit
+    if (m.vs && vehicles[m.vs[0]] && vehicles[m.vs[0]].d === from) {
+      const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5];
+    }
+  } else if (m.t === 'enter') {
+    const v = vehicles[m.v], p = P[from];
+    if (!v || v.d || !p || !p.alive || Math.hypot(p.x - v.x, p.z - v.z) > 3.2) return;
+    for (const o of vehicles) if (o.d === from) o.d = 0;
+    v.d = from;
+    sendTo(from, { t: 'entered', v: m.v });
+  } else if (m.t === 'exit') {
+    const v = vehicles[m.v];
+    if (v && v.d === from) { v.d = 0; v.lean = 0; if (m.s) { v.x = m.s[0]; v.y = m.s[1]; v.z = m.s[2]; v.yaw = m.s[3]; } }
   } else if (m.t === 'shot' || m.t === 'nade') {
     m.id = from;
     broadcast(m, from);
@@ -159,6 +172,7 @@ function hostHandle(from, m) {
 function hostDrop(id) {
   delete H.conns[id];
   const p = H.players[id];
+  for (const v of vehicles) if (v.d === id) v.d = 0;   // Moped wird frei
   if (p) { delete H.players[id]; broadcast({ t: 'feed', msg: `${p.name} hat das Spiel verlassen` }); }
 }
 function applyDamage(target, dmg, attacker, w, head) {
@@ -169,6 +183,7 @@ function applyDamage(target, dmg, attacker, w, head) {
   sendTo(target, { t: 'dmg', id: target, from: attacker });
   if (p.hp > 0) return;
   p.hp = 0; p.alive = false; p.d++;
+  for (const v of vehicles) if (v.d === target) { v.d = 0; v.lean = 0; }   // Fahrer fällt vom Moped
   if (a && a !== p) a.k++;
   const col = q => q ? (q.team >= 0 ? TEAM_COLORS[q.team] : q.color) : '#fff';
   broadcast({ t: 'kill', k: attacker, kn: a ? a.name : '?', kc: col(a), v: target, vn: p.name, vc: col(p), w, head });
@@ -311,9 +326,15 @@ function clientHandle(m) {
     if (!running) startGame();
   } else if (m.t === 'snap') {
     world.players = m.p;
+    if (m.vh) m.vh.forEach((s, i) => {
+      const v = vehicles[i]; if (!v || i === ride.v) return;
+      v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5];
+    });
     if (m.m) world.mode = m.m;
     if (m.tl !== undefined) world.timeLeft = m.tl;
     if (m.k) pickActive = Array.from(m.k, v => !!v);
+  } else if (m.t === 'entered') {
+    startRide(m.v);
   } else if (m.t === 'got') {
     gotWeapon(m.w);
   } else if (m.t === 'shot') {
@@ -386,8 +407,13 @@ let lastNet = 0;
 function netTick(now) {
   if (now - lastNet < 0.05 || !myId) return;
   lastNet = now;
-  if (me.alive) net.send({ t: 's', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)], r: [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
-    w: me.weapon, f: (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) });
+  if (!me.alive) return;
+  const riding = ride.v >= 0;
+  const msg = { t: 's', p: [+me.pos.x.toFixed(2), +me.pos.y.toFixed(2), +me.pos.z.toFixed(2)],
+    r: riding ? [+(ride.yaw - Math.PI / 2).toFixed(3), -0.3] : [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
+    w: me.weapon, f: riding ? 8 : (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) };
+  if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2)];
+  net.send(msg);
 }
 // Host-Simulation läuft über einen Timer, damit sie auch weiterläuft, wenn der Host-Tab im Hintergrund ist
 let hostLast = performance.now();
@@ -400,6 +426,8 @@ setInterval(() => {
   const tl = Math.max(0, Math.round((H.endAt - t) / 1000));
   if (tl <= 0 && !H.ended) checkMatchEnd(true);
   world.timeLeft = tl;
-  const snap = { t: 'snap', p: H.players, k: pickActive.map(v => v ? 1 : 0), m: H.mode, tl };
+  const r2 = n => Math.round(n * 100) / 100;
+  const snap = { t: 'snap', p: H.players, k: pickActive.map(v => v ? 1 : 0), m: H.mode, tl,
+    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean)]) };
   for (const id in H.conns) if (H.conns[id].open) H.conns[id].send(snap);
 }, 50);

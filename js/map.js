@@ -268,43 +268,11 @@ const CAR_CABIN_GEO = loftGeo(30, 22, u => {
 }, 5);
 const ARCH_GEO = new THREE.TorusGeometry(0.43, 0.05, 8, 20, Math.PI);
 const SPOKE_GEO = [0.35, 0.37].map(R => withUv2(new THREE.BoxGeometry(0.032, R * 1.38, 0.025)));
-function car(x, z, alongX, paint) {
-  const m = paint || carPaints[Math.floor(srand() * carPaints.length)];
-  const g = new THREE.Group(); g.position.set(x, 0, z);
-  g.rotation.y = (alongX ? 0 : -Math.PI / 2) + (srand() < 0.5 ? Math.PI : 0);
-  const add = (geo, mat, px, py, pz, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, mat); o.position.set(px, py, pz); o.rotation.set(rx, ry, rz); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
-  add(CAR_BODY_GEO, m, 0, 0, 0);
-  add(CAR_CABIN_GEO, CAR_GLASS, 0, 0, 0);
-  // Karbon-Splitter, Diffusor mit Lamellen, Auspuff
-  add(roundedBoxGeo(0.3, 0.04, 1.7, 0.018), CARBON, 2.08, 0.18, 0);
-  add(roundedBoxGeo(0.4, 0.18, 1.6, 0.05), CARBON, -2.2, 0.3, 0);
-  for (const s of [-0.5, -0.17, 0.17, 0.5]) add(roundedBoxGeo(0.36, 0.16, 0.02, 0.008), CAR_BLACK, -2.22, 0.3, s);
-  for (const s of [-0.12, 0.12]) { add(new THREE.CylinderGeometry(0.06, 0.06, 0.18, 16), CHROME, -2.3, 0.5, s, 0, 0, Math.PI / 2); add(new THREE.CylinderGeometry(0.045, 0.045, 0.19, 12), CAR_BLACK, -2.3, 0.5, s, 0, 0, Math.PI / 2); }
-  for (const s of [-1, 1]) {
-    add(roundedBoxGeo(0.85, 0.26, 0.06, 0.08), CAR_BLACK, -0.75, 0.6, s * 0.985, 0, 0, 0.18);           // seitlicher Lufteinlass
-    add(roundedBoxGeo(2.3, 0.07, 0.05, 0.025), CARBON, 0.05, 0.23, s * 0.95);                           // Schweller
-    add(roundedBoxGeo(0.42, 0.035, 0.2, 0.015), HEADLIGHT, 1.9, 0.62, s * 0.62, 0, s * 0.4, -0.26);    // LED-Scheinwerfer
-    add(roundedBoxGeo(0.08, 0.13, 0.5, 0.04), CAR_BLACK, 2.27, 0.36, s * 0.55);                         // Lufteinlass vorne
-    add(roundedBoxGeo(0.04, 0.04, 0.62, 0.015), TAILLIGHT, -2.27, 0.8, s * 0.48);                       // Rücklicht-Streifen
-    add(roundedBoxGeo(0.16, 0.08, 0.1, 0.035), m, 0.5, 0.93, s * 0.97);                                // Spiegel
-    add(roundedBoxGeo(0.04, 0.04, 0.16, 0.015), CAR_BLACK, 0.5, 0.9, s * 0.87);                         // Spiegelarm
-    add(roundedBoxGeo(0.05, 0.36, 0.05, 0.02), CARBON, -1.92, 1.12, s * 0.48);                          // Flügelstützen
-    add(roundedBoxGeo(0.4, 0.17, 0.035, 0.015), CARBON, -1.95, 1.3, s * 1.0);                           // Flügel-Endplatten
-  }
-  add(roundedBoxGeo(0.06, 0.03, 0.7, 0.012), TAILLIGHT, -2.28, 0.82, 0);
-  add(roundedBoxGeo(0.4, 0.045, 1.95, 0.02), CARBON, -1.95, 1.33, 0, 0, 0, 0.12);                       // Heckflügel
-  // Räder: Reifen, Kotflügel-Bogen, Felge mit 10 Speichen, Bremssattel, Nabe
-  for (const wx of [1.42, -1.45]) for (const s of [-1, 1]) {
-    const R = wx > 0 ? 0.35 : 0.37;
-    add(new THREE.CylinderGeometry(R, R, 0.3, 28), TIRE, wx, R, s * 0.9, Math.PI / 2);
-    add(new THREE.CylinderGeometry(R * 0.74, R * 0.74, 0.31, 28), RIM, wx, R, s * 0.9, Math.PI / 2);
-    for (let k = 0; k < 10; k++) add(SPOKE_GEO[wx > 0 ? 0 : 1], CHROME, wx, R, s * 1.05, 0, 0, k / 10 * Math.PI);
-    add(new THREE.CylinderGeometry(0.05, 0.05, 0.04, 14), CAR_BLACK, wx, R, s * 1.06, Math.PI / 2);
-    add(roundedBoxGeo(0.16, 0.1, 0.06, 0.025), CALIPER, wx + 0.13, R + 0.08, s * 1.0, 0, 0, 0.6);
-    add(ARCH_GEO, CAR_BLACK, wx, R, s * 0.97);
-  }
-  scene.add(g);
-  collider(x, 0, z, alongX ? 4.7 : 2.1, 1.1, alongX ? 2.1 : 4.7);
+// Statt Autos: Abstellplätze für fahrbare Mopeds (werden in vehicles.js gebaut und gesteuert)
+const MAP_VEHICLES = [];
+function car(x, z, alongX) {
+  const yaw = (alongX ? 0 : -Math.PI / 2) + (srand() < 0.5 ? Math.PI : 0) + srnd(-0.25, 0.25);
+  MAP_VEHICLES.push({ x, z, yaw });
 }
 function truck(x, z, alongZ) {
   // Fahrerhaus + Kofferaufbau

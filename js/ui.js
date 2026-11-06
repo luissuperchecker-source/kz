@@ -77,6 +77,13 @@ function updateHUD(dt) {
     if (!$('board').classList.contains('hidden')) renderBoard();
   }
   drawRadar(dt);
+  // Moped: Hinweis zum Aufsteigen bzw. Tacho
+  const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1;
+  hudSet('rideHint', 'html', ride.v >= 0 ? `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken`
+    : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – auf das Moped steigen` : '');
+  hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
+  hudSet('speedo', 'display', ride.v >= 0 ? 'block' : 'none');
+  if (ride.v >= 0) hudSet('speedo', 'html', `${Math.round(Math.abs(ride.speed) * 3.6)}<small>km/h</small>`);
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
@@ -236,6 +243,7 @@ function frame(t) {
     camera.lookAt(-3 + Math.sin(a + 1.2) * 12, 3, Math.cos(a + 1.2) * 12);
   }
   updateEffects(dt);
+  updateVehicles(dt);
   updateAtmosphere(dt);
   followSun(camera.position.x, camera.position.z);
   if (window.waterNormal) { window.waterNormal.offset.x += dt * 0.004; window.waterNormal.offset.y += dt * 0.0025; }

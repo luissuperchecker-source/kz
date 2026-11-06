@@ -111,6 +111,10 @@
   #streakMsg small { display: block; font-size: 20px; color: #ffcc33; letter-spacing: 2px; }
   #streakMsg.pop { animation: pop 2.2s ease-out; }
   @keyframes pop { 0% { opacity: 0; transform: translateX(-50%) scale(2.2); } 12% { opacity: 1; transform: translateX(-50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(.95); } }
+  #rideHint { position: absolute; left: 50%; bottom: 120px; transform: translateX(-50%); background: rgba(0,0,0,.55); padding: 7px 14px; border-radius: 8px; font-size: 17px; white-space: nowrap; }
+  #rideHint b { color: #ffcc33; }
+  #speedo { position: absolute; right: 28px; bottom: 150px; font-size: 52px; font-weight: 700; text-shadow: 0 2px 6px #000; text-align: right; line-height: 1; }
+  #speedo small { font-size: 18px; color: #ffcc33; margin-left: 4px; }
   #reloadMsg { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); font-size: 16px; color: #fff; text-shadow: 0 1px 3px #000; }
 
   #board { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(600px, calc(100vw - 32px));
@@ -182,6 +186,7 @@
   .tb[data-t=swap] { right: 200px; bottom: 96px; width: 54px; height: 54px; }
   .tb[data-t=crouch] { right: 214px; bottom: 26px; width: 54px; height: 54px; font-size: 11px; }
   .tb[data-t=nade] { right: 116px; bottom: 176px; width: 50px; height: 50px; }
+  .tb[data-t=ride] { left: 24px; top: 270px; width: 62px; height: 46px; border-radius: 10px; font-size: 11px; }
   .tb[data-t=knife] { right: 184px; bottom: 160px; width: 50px; height: 50px; font-size: 11px; }
   .tb[data-t=pause] { right: 14px; top: 10px; width: 42px; height: 42px; border-radius: 9px; font-size: 18px; }
   .tb[data-t=board] { right: 64px; top: 10px; width: 42px; height: 42px; border-radius: 9px; font-size: 18px; }
@@ -236,7 +241,7 @@
     <div class="help pcOnly">
       <b>WASD</b> laufen · <b>2× W</b> sprinten · <b>Shift</b> schleichen (lautlos) · <b>C</b>/<b>Strg</b> ducken (im Sprint: rutschen) · <b>Leertaste</b> springen<br>
       <b>Maus</b> zielen & schießen · <b>Rechtsklick</b> Visier · <b>R</b> nachladen · <b>F</b> Waffe ansehen<br>
-      <b>V</b> Messer · <b>G</b> Granate · <b>1–5</b>/Mausrad Waffe · <b>I</b> Inventar · <b>Tab</b> Punkte · <b>Esc</b> Menü
+      <b>E</b> Moped fahren · <b>V</b> Messer · <b>G</b> Granate · <b>1–5</b>/Mausrad Waffe · <b>I</b> Inventar · <b>Tab</b> Punkte · <b>Esc</b> Menü
     </div>
     <div class="help touchOnly">
       <b>Linker Daumen</b> laufen (ganz nach vorne = sprinten) · <b>Rechts wischen</b> umschauen · <b>FEUER</b> schießen · <b>ZOOM</b> zielen<br>
@@ -272,6 +277,8 @@
   <div id="streakMsg"></div>
   <div id="killMsg"></div>
   <div id="reloadMsg"></div>
+  <div id="rideHint" style="display:none"></div>
+  <div id="speedo" style="display:none"></div>
   <div id="hpBox"><div id="hpText">100</div><div id="hpBar"><div id="hpFill"></div></div><div id="stance"></div></div>
   <div id="ammoBox"><div id="wName"></div><div id="ammoText"></div><div id="nadeHud"></div><div id="slots"></div></div>
 </div>
@@ -286,6 +293,7 @@
   <div class="tb" data-t="crouch">DUCK</div>
   <div class="tb" data-t="nade">G</div>
   <div class="tb" data-t="knife">MES</div>
+  <div class="tb" data-t="ride">MOPED</div>
   <div class="tb" data-t="board">☰</div>
   <div class="tb" data-t="pause">⏸</div>
 </div>
@@ -357,11 +365,12 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261106-150934"></script>
-<script src="js/map.js?v=20261106-150934"></script>
-<script src="js/models.js?v=20261106-150934"></script>
-<script src="js/game.js?v=20261106-150934"></script>
-<script src="js/net.js?v=20261106-150934"></script>
-<script src="js/ui.js?v=20261106-150934"></script>
+<script src="js/core.js?v=20261106-180221"></script>
+<script src="js/map.js?v=20261106-180221"></script>
+<script src="js/models.js?v=20261106-180221"></script>
+<script src="js/game.js?v=20261106-180221"></script>
+<script src="js/vehicles.js?v=20261106-180221"></script>
+<script src="js/net.js?v=20261106-180221"></script>
+<script src="js/ui.js?v=20261106-180221"></script>
 </body>
 </html>
