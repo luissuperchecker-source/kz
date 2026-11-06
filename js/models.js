@@ -133,7 +133,16 @@ function makeAvatar(p) {
   const mid = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
   const hand = (pt, rx) => [B(0.07, 0.085, 0.095, S.glove, pt[0], pt[1], pt[2], rx), B(0.07, 0.03, 0.06, S.glove, pt[0], pt[1] - 0.035, pt[2] - 0.05, rx)];
   const shR = [0.27, 0.02, 0], shL = [-0.27, 0.02, 0];
-  aim.add(partsToGroup([
+  // Arme zum Mopedfahren: beide Hände an den Lenkergriffen (im Oberkörper-Raum, für ~24° Vorbeugen)
+  const rideArms = new THREE.Group(); rideArms.visible = false; upper.add(rideArms);
+  const rArm = sx => {
+    const sh = [sx * 0.27, 1.47, 0], el = [sx * 0.35, 1.29, -0.35], hd = [sx * 0.34, 1.36, -0.66];
+    return [limbPart(sh, el, 0.088, 0.076, T.fabric), SPH(0.078, T.pad, ...el, 1, 1, 1),
+      limbPart(mid(sh, el, 0.25), mid(sh, el, 0.42), 0.092, 0.09, teamMat),
+      limbPart(el, hd, 0.072, 0.055, T.fabric), B(0.08, 0.075, 0.1, S.glove, hd[0], hd[1], hd[2] - 0.02, -0.2)];
+  };
+  rideArms.add(partsToGroup([...rArm(1), ...rArm(-1)], true, body));
+  const gunArms = partsToGroup([
     limbPart(shR, elbowR, 0.088, 0.076, T.fabric), SPH(0.078, T.pad, ...elbowR, 1, 1, 1),
     limbPart(mid(shR, elbowR, 0.25), mid(shR, elbowR, 0.42), 0.092, 0.09, teamMat),        // Armbinde
     limbPart(elbowR, [grip[0] + 0.01, grip[1] - 0.01, grip[2] + 0.05], 0.072, 0.055, T.fabric),
@@ -142,7 +151,8 @@ function makeAvatar(p) {
     limbPart(mid(shL, elbowL, 0.25), mid(shL, elbowL, 0.42), 0.092, 0.09, teamMat),
     limbPart(elbowL, [fore[0] - 0.01, fore[1] - 0.05, fore[2] + 0.04], 0.072, 0.055, T.fabric),
     ...hand([fore[0], fore[1] - 0.045, fore[2]], 0),
-  ], true, body));
+  ], true, body);
+  aim.add(gunArms);
   const gunHolder = new THREE.Group(); aim.add(gunHolder);
   // ---- Kopf: Sturmhaube (nur Augenpartie frei), Helm mit Brille und Nachtsicht-Halterung ----
   const head = new THREE.Group(); head.position.set(0, 1.6, 0); upper.add(head);
@@ -172,7 +182,7 @@ function makeAvatar(p) {
   g.rotation.order = 'YXZ';
   g.userData.pid = p.id;
   scene.add(g);
-  const a = { g, pivot: aim, head, upper, hipL, hipR, knees, label, gunHolder, gunW: -1, shoulderL: new THREE.Group(), parts: [],
+  const a = { g, pivot: aim, head, upper, hipL, hipR, knees, label, gunHolder, gunW: -1, rideArms, gunArms, shoulderL: new THREE.Group(), parts: [],
     shown: false, spd: 0, phase: 0, lx: null, crouchT: 0, kick: 0 };
   setAvatarGun(a, p.w === undefined ? 0 : p.w);
   return a;

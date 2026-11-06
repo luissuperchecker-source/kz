@@ -144,7 +144,7 @@ function hostHandle(from, m) {
     if (m.ay !== undefined) p.ay = m.ay;
     // Fahrer schickt die Position seines Mopeds mit
     if (m.vs && vehicles[m.vs[0]] && vehicles[m.vs[0]].d === from) {
-      const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5]; v.wh = m.vs[6] || 0;
+      const v = vehicles[m.vs[0]]; v.x = m.vs[1]; v.y = m.vs[2]; v.z = m.vs[3]; v.yaw = m.vs[4]; v.lean = m.vs[5]; v.wh = m.vs[6] || 0; v.st = m.vs[7] || 0;
     }
   } else if (m.t === 'enter') {
     const v = vehicles[m.v], p = P[from];
@@ -344,7 +344,7 @@ function clientHandle(m) {
     world.players = m.p;
     if (m.vh) m.vh.forEach((s, i) => {
       const v = vehicles[i]; if (!v || i === ride.v) return;
-      v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5]; v.wh = s[6] || 0;
+      v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5]; v.wh = s[6] || 0; v.st = s[7] || 0;
     });
     if (m.m) world.mode = m.m;
     if (m.tl !== undefined) world.timeLeft = m.tl;
@@ -431,7 +431,7 @@ function netTick(now) {
     r: riding ? [+(ride.yaw - Math.PI / 2).toFixed(3), riderAiming() ? +me.pitch.toFixed(3) : -0.3] : [+me.yaw.toFixed(3), +me.pitch.toFixed(3)],
     w: me.weapon, f: riding ? 8 | (riderAiming() ? 16 : 0) : (me.crouch ? 1 : 0) | (me.sneak ? 2 : 0) | (me.sprinting ? 4 : 0) };
   if (riding) msg.ay = +me.yaw.toFixed(3);   // Zielrichtung des Fahrers
-  if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2), +(ride.wh || 0).toFixed(2)];
+  if (riding) msg.vs = [ride.v, +ride.pos.x.toFixed(2), +ride.pos.y.toFixed(2), +ride.pos.z.toFixed(2), +ride.yaw.toFixed(3), +ride.lean.toFixed(2), +(ride.wh || 0).toFixed(2), +(ride.st || 0).toFixed(2)];
   net.send(msg);
 }
 // Host-Simulation läuft über einen Timer, damit sie auch weiterläuft, wenn der Host-Tab im Hintergrund ist
@@ -447,6 +447,6 @@ setInterval(() => {
   world.timeLeft = tl;
   const r2 = n => Math.round(n * 100) / 100;
   const snap = { t: 'snap', p: H.players, k: pickActive.map(v => v ? 1 : 0), m: H.mode, tl,
-    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean), v.d ? r2(v.wh || 0) : 0]) };
+    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean), v.d ? r2(v.wh || 0) : 0, v.d ? r2(v.st || 0) : 0]) };
   for (const id in H.conns) if (H.conns[id].open) H.conns[id].send(snap);
 }, 50);

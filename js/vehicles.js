@@ -49,7 +49,7 @@ class HelixCurve extends THREE.Curve {
   getPoint(u, t = new THREE.Vector3()) { const a = u * this.turns * Math.PI * 2; return t.set(Math.cos(a) * this.rad, u * this.h, Math.sin(a) * this.rad); }
 }
 const spring = (x, y, z, h, tilt, mat) => ({ geo: new THREE.TubeGeometry(new HelixCurve(0.028, h, 8), 56, 0.0055, 4, false), mat, p: [x, y, z], r: [0, 0, tilt] });
-const WHEEL_R = 0.3;
+const WHEEL_R = 0.3, STEER_RAKE = 0.27;   // Lenkkopfwinkel (Gabel ist nach hinten geneigt)
 function makeWheel(front) {
   const g = new THREE.Group();
   const parts = [
@@ -94,32 +94,12 @@ function makeMoped(paint) {
     tube([[-0.36, 0.84, -0.128], [-0.36, 0.925, -0.09], [-0.36, 0.947, 0], [-0.36, 0.925, 0.09], [-0.36, 0.84, 0.128]], 0.007, P.rubber, 14, 4),
     CY(0.012, 0.04, CHROME, 0.03, 0.69, -0.075, 8), tube([[0.03, 0.67, -0.075], [0.06, 0.62, -0.08], [0.05, 0.58, -0.07]], 0.006, P.hose, 8, 5),
     CY(0.014, 0.045, P.rubber, 0.285, 0.73, 0, 10), tube([[0.285, 0.75, 0], [0.3, 0.8, 0.03], [0.2, 0.74, 0.07], [0.05, 0.7, 0.08]], 0.005, P.rubber, 14, 5),
-    C(0.038, 0.038, 0.03, P.dark, 0.5, 0.8, 0, 18), C(0.022, 0.022, 0.032, CHROME, 0.5, 0.8, 0, 14),
-    CY(0.012, 0.015, CHROME, 0.5, 1.03, 0.04, 10),
     // Gepäckträger aus Rohr
     tube([[-0.6, 0.86, 0.11], [-0.92, 0.88, 0.11], [-0.94, 0.88, 0], [-0.92, 0.88, -0.11], [-0.6, 0.86, -0.11]], 0.008, CHROME, 24, 6),
     tube([[-0.68, 0.87, 0.11], [-0.68, 0.87, -0.11]], 0.006, CHROME, 4, 5), tube([[-0.8, 0.875, 0.11], [-0.8, 0.875, -0.11]], 0.006, CHROME, 4, 5),
-    // Gabel: Gabelbrücke, Standrohre, Faltenbälge, Tauchrohre
-    B(0.07, 0.04, 0.2, pt, 0.43, 0.99, 0),
-    limbPart([0.47, 0.84, 0.075], [0.43, 0.99, 0.075], 0.019, 0.019, CHROME), limbPart([0.47, 0.84, -0.075], [0.43, 0.99, -0.075], 0.019, 0.019, CHROME),
-    ...[0, 1, 2, 3, 4, 5, 6].flatMap(i => { const y = 0.6 + i * 0.033, x = 0.555 - i * 0.008; return [0.075, -0.075].map(z => ({ geo: new THREE.TorusGeometry(0.024, 0.009, 4, 10), mat: P.rubber, p: [x, y, z], r: [Math.PI / 2, 0, 0.25] })); }),
-    limbPart([0.62, WHEEL_R, 0.075], [0.56, 0.58, 0.075], 0.024, 0.026, P.alu), limbPart([0.62, WHEEL_R, -0.075], [0.56, 0.58, -0.075], 0.024, 0.026, P.alu),
-    // Scheinwerfer: Gehäuse, Chromring, Glas; Tacho; Blinker
-    SPH(0.095, pt, 0.49, 0.94, 0, 0.75, 1, 1), { geo: new THREE.TorusGeometry(0.083, 0.01, 8, 28), mat: CHROME, p: [0.56, 0.94, 0], r: [0, Math.PI / 2, 0] },
-    { geo: new THREE.CircleGeometry(0.078, 28), mat: P.lens, p: [0.562, 0.94, 0], r: [0, Math.PI / 2, 0] },
-    CY(0.038, 0.035, P.rubber, 0.45, 1.06, 0, 20), { geo: new THREE.CircleGeometry(0.032, 20), mat: P.dial, p: [0.45, 1.078, 0], r: [-Math.PI / 2 + 0.3, 0, 0] },
-    limbPart([0.48, 0.94, 0.08], [0.48, 0.94, 0.17], 0.006, 0.006, CHROME, 6), limbPart([0.48, 0.94, -0.08], [0.48, 0.94, -0.17], 0.006, 0.006, CHROME, 6),
-    SPH(0.025, P.blink, 0.49, 0.94, 0.19, 1.3, 1, 1), SPH(0.025, P.blink, 0.49, 0.94, -0.19, 1.3, 1, 1),
-    // Lenker (hochgezogen), Griffe, Hebel, Spiegel
-    tube([[0.36, 1.1, -0.33], [0.39, 1.09, -0.2], [0.44, 1.03, -0.07], [0.44, 1.03, 0.07], [0.39, 1.09, 0.2], [0.36, 1.1, 0.33]], 0.011, CHROME, 30, 8),
-    limbPart([0.36, 1.1, -0.34], [0.37, 1.1, -0.23], 0.017, 0.017, P.rubber), limbPart([0.37, 1.1, 0.23], [0.36, 1.1, 0.34], 0.017, 0.017, P.rubber),
-    limbPart([0.39, 1.1, -0.22], [0.42, 1.1, -0.33], 0.005, 0.005, P.alu, 6), limbPart([0.39, 1.1, 0.22], [0.42, 1.1, 0.33], 0.005, 0.005, P.alu, 6),
-    tube([[0.39, 1.1, -0.2], [0.38, 1.25, -0.26], [0.36, 1.33, -0.3]], 0.005, CHROME, 10, 5), tube([[0.39, 1.1, 0.2], [0.38, 1.25, 0.26], [0.36, 1.33, 0.3]], 0.005, CHROME, 10, 5),
-    C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, -0.31, 18), C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, 0.31, 18),
     tube([[0.44, 1.05, 0.05], [0.4, 0.95, 0.1], [0.2, 0.72, 0.1], [0.05, 0.55, 0.08]], 0.004, P.rubber, 16, 4),       // Bowdenzug
     // Schutzbleche + Streben + Schmutzfänger
-    fender(0.62, Math.PI * 0.62, Math.PI * 0.72, 0.1), fender(-0.6, Math.PI * 0.86, Math.PI * 0.82, 0.12),
-    limbPart([0.62, WHEEL_R, 0.065], [0.42, 0.52, 0.065], 0.005, 0.005, CHROME, 6), limbPart([0.62, WHEEL_R, -0.065], [0.42, 0.52, -0.065], 0.005, 0.005, CHROME, 6),
+    fender(-0.6, Math.PI * 0.86, Math.PI * 0.82, 0.12),
     B(0.012, 0.12, 0.1, P.rubber, -0.97, 0.38, 0),
     // Motor: Kurbelgehäuse, Seitendeckel, Zylinder mit Kühlrippen, Zylinderkopf, Kerze, Vergaser, Luftfilter
     B(0.3, 0.22, 0.2, P.alu, 0.0, 0.42, 0), C(0.11, 0.11, 0.035, P.alu, -0.02, 0.42, 0.11, 24), C(0.095, 0.095, 0.03, P.alu, 0.06, 0.4, -0.11, 24),
@@ -150,12 +130,41 @@ function makeMoped(paint) {
     limbPart([0.0, 0.36, 0.13], [0.16, 0.3, 0.16], 0.008, 0.008, P.alu, 6), limbPart([-0.06, 0.45, -0.13], [-0.2, 0.38, -0.17], 0.008, 0.008, P.alu, 6),
   ];
   root.add(partsToGroup(body, true));
+  // Vorderbau (Gabel, Scheinwerfer, Lenker, Spiegel, Schutzblech, Vorderrad) – dreht sich beim Lenken um die schräge Lenkachse
+  const front = [
+    // Gabel: Gabelbrücke, Standrohre, Faltenbälge, Tauchrohre
+    B(0.07, 0.04, 0.2, pt, 0.43, 0.99, 0),
+    limbPart([0.47, 0.84, 0.075], [0.43, 0.99, 0.075], 0.019, 0.019, CHROME), limbPart([0.47, 0.84, -0.075], [0.43, 0.99, -0.075], 0.019, 0.019, CHROME),
+    ...[0, 1, 2, 3, 4, 5, 6].flatMap(i => { const y = 0.6 + i * 0.033, x = 0.555 - i * 0.008; return [0.075, -0.075].map(z => ({ geo: new THREE.TorusGeometry(0.024, 0.009, 4, 10), mat: P.rubber, p: [x, y, z], r: [Math.PI / 2, 0, 0.25] })); }),
+    limbPart([0.62, WHEEL_R, 0.075], [0.56, 0.58, 0.075], 0.024, 0.026, P.alu), limbPart([0.62, WHEEL_R, -0.075], [0.56, 0.58, -0.075], 0.024, 0.026, P.alu),
+    // Scheinwerfer: Gehäuse, Chromring, Glas; Tacho; Blinker
+    SPH(0.095, pt, 0.49, 0.94, 0, 0.75, 1, 1), { geo: new THREE.TorusGeometry(0.083, 0.01, 8, 28), mat: CHROME, p: [0.56, 0.94, 0], r: [0, Math.PI / 2, 0] },
+    { geo: new THREE.CircleGeometry(0.078, 28), mat: P.lens, p: [0.562, 0.94, 0], r: [0, Math.PI / 2, 0] },
+    CY(0.038, 0.035, P.rubber, 0.45, 1.06, 0, 20), { geo: new THREE.CircleGeometry(0.032, 20), mat: P.dial, p: [0.45, 1.078, 0], r: [-Math.PI / 2 + 0.3, 0, 0] },
+    limbPart([0.48, 0.94, 0.08], [0.48, 0.94, 0.17], 0.006, 0.006, CHROME, 6), limbPart([0.48, 0.94, -0.08], [0.48, 0.94, -0.17], 0.006, 0.006, CHROME, 6),
+    SPH(0.025, P.blink, 0.49, 0.94, 0.19, 1.3, 1, 1), SPH(0.025, P.blink, 0.49, 0.94, -0.19, 1.3, 1, 1),
+    // Lenker (hochgezogen), Griffe, Hebel, Spiegel
+    tube([[0.36, 1.1, -0.33], [0.39, 1.09, -0.2], [0.44, 1.03, -0.07], [0.44, 1.03, 0.07], [0.39, 1.09, 0.2], [0.36, 1.1, 0.33]], 0.011, CHROME, 30, 8),
+    limbPart([0.36, 1.1, -0.34], [0.37, 1.1, -0.23], 0.017, 0.017, P.rubber), limbPart([0.37, 1.1, 0.23], [0.36, 1.1, 0.34], 0.017, 0.017, P.rubber),
+    limbPart([0.39, 1.1, -0.22], [0.42, 1.1, -0.33], 0.005, 0.005, P.alu, 6), limbPart([0.39, 1.1, 0.22], [0.42, 1.1, 0.33], 0.005, 0.005, P.alu, 6),
+    tube([[0.39, 1.1, -0.2], [0.38, 1.25, -0.26], [0.36, 1.33, -0.3]], 0.005, CHROME, 10, 5), tube([[0.39, 1.1, 0.2], [0.38, 1.25, 0.26], [0.36, 1.33, 0.3]], 0.005, CHROME, 10, 5),
+    C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, -0.31, 18), C(0.045, 0.045, 0.012, P.mirror, 0.36, 1.35, 0.31, 18),
+    C(0.038, 0.038, 0.03, P.dark, 0.5, 0.8, 0, 18), C(0.022, 0.022, 0.032, CHROME, 0.5, 0.8, 0, 14),
+    CY(0.012, 0.015, CHROME, 0.5, 1.03, 0.04, 10),
+    fender(0.62, Math.PI * 0.62, Math.PI * 0.72, 0.1),
+    limbPart([0.62, WHEEL_R, 0.065], [0.42, 0.52, 0.065], 0.005, 0.005, CHROME, 6), limbPart([0.62, WHEEL_R, -0.065], [0.42, 0.52, -0.065], 0.005, 0.005, CHROME, 6),
+  ];
+  const steerPivot = new THREE.Group(); steerPivot.position.set(0.43, 0.99, 0); steerPivot.rotation.z = STEER_RAKE; root.add(steerPivot);
+  const steer = new THREE.Group(); steerPivot.add(steer);
+  const unRake = new THREE.Group(); unRake.rotation.z = -STEER_RAKE; steer.add(unRake);
+  const frontG = new THREE.Group(); frontG.position.set(-0.43, -0.99, 0); unRake.add(frontG);
+  frontG.add(partsToGroup(front, true));
   const stand = partsToGroup([limbPart([-0.12, 0.32, -0.12], [-0.2, 0.0, -0.26], 0.012, 0.012, P.rubber), B(0.05, 0.01, 0.04, P.rubber, -0.2, 0.005, -0.26)], true);
   root.add(stand);
-  const wf = makeWheel(true); wf.position.set(0.62, WHEEL_R, 0); root.add(wf);
+  const wf = makeWheel(true); wf.position.set(0.62, WHEEL_R, 0); frontG.add(wf);
   const wr = makeWheel(false); wr.position.set(-0.6, WHEEL_R, 0); root.add(wr);
   scene.add(root);
-  return { root, wf, wr, stand };
+  return { root, wf, wr, stand, steer };
 }
 /* ---------- Zustand ---------- */
 // Für alle Spieler gleich (Abstellplätze aus der Karte); Host verteilt Position/Fahrer per Snapshot
@@ -163,7 +172,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   const m = makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
   return { i, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
 });
-const RIDER_BACK = 0.22, RIDER_UP = 0.06;   // Sitzposition des Fahrers relativ zum Moped
+const RIDER_BACK = 0.42, RIDER_UP = 0.1;   // Sitzposition des Fahrers relativ zum Moped
 const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Sprünge
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
@@ -276,6 +285,12 @@ function updateRide(dt) {
   const turn = steer * Math.min(1, sp / 3) * (2.1 - Math.min(1.2, sp / 14)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
   ride.yaw += turn * dt;
   ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
+  // Lenker sichtbar einschlagen: langsam weit, schnell nur wenig
+  ride.st = (ride.st || 0) + (steer * (0.1 + 0.36 * Math.max(0, 1 - sp / 9)) - (ride.st || 0)) * Math.min(1, dt * 9);
+  // Eintauchen beim Bremsen, Heck runter beim Gasgeben
+  const diveT = thr < 0 && ride.speed > 1 ? -0.045 : thr > 0 && sp < 12 ? 0.018 : 0;
+  ride.dive = (ride.dive || 0) + (diveT - (ride.dive || 0)) * Math.min(1, dt * 6);
+  ride.thr = thr;
   ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
   // Schanzen: am Boden übernimmt das Moped die Steigung als Aufwärtstempo → an der Kante hebt es ab
   const gh0 = groundH(ride.pos.x, ride.pos.z, ride.pos.y), wasAir = !ride.onGround;
@@ -304,7 +319,7 @@ function updateRide(dt) {
   // Spielerposition = auf dem Sitz
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * RIDER_BACK, ride.pos.y + RIDER_UP, ride.pos.z + Math.sin(ride.yaw) * RIDER_BACK);
   me.vel.set(ride.vel.x, 0, ride.vel.z); me.onGround = true;
-  const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh;
+  const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh; v.st = ride.st;
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
   const aiming = riderAiming();
   if (performance.now() - ride.lastMouse > 1500 && sp > 3 && !aiming) {
@@ -345,15 +360,17 @@ function updateVehicles(dt) {
   for (const id in avatars) { const a = avatars[id]; if (!(a.flags & 8) && a.g.rotation.x) a.g.rotation.x = 0; }   // abgestiegen: wieder aufrecht
   for (const v of vehicles) {
     const m = v.mesh;
-    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null;
-    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = ride.pitch || 0; wh = ride.wh || 0; }
+    let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null, st = 0;
+    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = (ride.pitch || 0) + (ride.dive || 0); wh = ride.wh || 0; st = ride.st || 0; }
     else if (v.d && avatars[v.d] && avatars[v.d].g.visible) {
       // Fremdes Moped: an die (weich abgespielte) Figur des Fahrers koppeln
       rider = avatars[v.d];
       const a = rider.g; yaw = a.rotation.y + Math.PI / 2;
       x = a.position.x + Math.cos(yaw) * RIDER_BACK; z = a.position.z - Math.sin(yaw) * RIDER_BACK; y = a.position.y - RIDER_UP;
       v.whS = (v.whS || 0) + ((v.wh || 0) - (v.whS || 0)) * Math.min(1, dt * 10); wh = v.whS;
+      v.stS = (v.stS || 0) + ((v.st || 0) - (v.stS || 0)) * Math.min(1, dt * 10); st = v.stS;
     }
+    m.steer.rotation.y = st;
     // Geschwindigkeit fürs Raddrehen
     const moved = Math.hypot(x - v.rx, z - v.rz);
     if (v.i !== ride.v) {   // fremde Mopeds: Neigung aus Bewegung (Schanze hoch/runter, Sprünge)
@@ -374,12 +391,26 @@ function updateVehicles(dt) {
     if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh) o.castShadow = shadow; }); }
     // Wheelie: um den Hinterrad-Aufstandspunkt nach hinten kippen
     const [wf, wu] = wheelieShift(wh, 0.6, 0);
-    m.root.position.set(x + Math.cos(yaw) * wf, y + wu, z - Math.sin(yaw) * wf);
+    // Motor läuft: leichtes Zittern (Zweitakter)
+    const vib = !parked && !far ? Math.sin(performance.now() * 0.09 + v.i) * 0.0025 : 0;
+    const landDip = v.i === ride.v ? -(ride.land || 0) * 0.07 : 0;
+    m.root.position.set(x + Math.cos(yaw) * wf, y + wu + vib + landDip, z - Math.sin(yaw) * wf);
     m.root.rotation.set(parked ? 0.12 : lean, yaw, pitch + wh);
-    if (rider) {   // fremder Fahrer kippt mit
-      const [sf, su] = wheelieShift(wh, 0.6 - RIDER_BACK, RIDER_UP);
+    if (rider) {   // fremder Fahrer kippt mit, Fuß runter im Stand, Hände am Lenker
+      const [sf] = wheelieShift(wh, 0.6 - RIDER_BACK, RIDER_UP);
       rider.g.rotation.order = 'YXZ'; rider.g.rotation.x = wh * 0.9;
-      rider.g.position.x += Math.cos(yaw) * sf; rider.g.position.z -= Math.sin(yaw) * sf; rider.wheelieY = su;
+      rider.g.position.x += Math.cos(yaw) * sf; rider.g.position.z -= Math.sin(yaw) * sf;
+      rider.footDown = moved / Math.max(dt, 1e-3) < 0.6; rider.steerVis = st;
+    }
+    // Abgaswolken aus dem Auspuff (nur in der Nähe)
+    if (!parked && dCam < 30) {
+      v.smokeT = (v.smokeT || 0) - dt;
+      const gas = v.i === ride.v ? (ride.thr || 0) > 0 : moved / Math.max(dt, 1e-3) > 1;
+      if (v.smokeT <= 0) {
+        v.smokeT = gas ? 0.09 : 0.35;
+        const ex = m.root.localToWorld(new THREE.Vector3(-0.9, 0.335, 0.18));
+        puff(ex, 0xc8c8c8, gas ? 0.22 : 0.14, gas ? 1.1 : 0.8, new THREE.Vector3(-Math.cos(yaw) * 0.6, 0.35, Math.sin(yaw) * 0.6), { opacity: gas ? 0.28 : 0.16, grow: 2.2, fadeIn: 0.05 });
+      }
     }
     void fwd;
   }
@@ -392,6 +423,7 @@ function updateVehicles(dt) {
     myRider.g.rotation.set((ride.pitch || 0) * 0.8 + (ride.wh || 0) * 0.9, ride.yaw - Math.PI / 2, ride.lean * 0.8);
     const aiming = riderAiming();
     myRider.flags = 8 | (aiming ? 16 : 0);
+    myRider.footDown = Math.abs(ride.speed) < 0.6 && ride.onGround; myRider.steerVis = ride.st || 0;
     setAvatarGun(myRider, me.weapon);
     myRider.pivot.rotation.x = aiming ? me.pitch : -0.3;
     animateAvatar(myRider, dt);

@@ -678,14 +678,22 @@ function animateAvatar(a, dt) {
   tL = tL * (1 - c) + (1.2 + sw * 0.3) * c; tR = tR * (1 - c) + (1.2 - sw * 0.3) * c;
   kL = kL * (1 - c) - 2.0 * c; kR = kR * (1 - c) - 2.0 * c;
   // Auf dem Moped: sitzen, Knie angewinkelt, nach vorne gebeugt, Hände am Lenker (Waffe weg)
-  const riding = (a.flags & 8) ? 1 : 0;
-  if (riding) { tL = tR = 1.35; kL = kR = -1.5; bob = 0; lean = -0.3; }
-  if (a.gunHolder) a.gunHolder.visible = !riding || (a.flags & 16) > 0;   // auf dem Moped: Waffe nur beim Zielen
+  const riding = (a.flags & 8) ? 1 : 0, rideAim = riding && (a.flags & 16) > 0;
+  if (riding) {
+    tL = tR = 1.3; kL = kR = -1.45; bob = 0; lean = rideAim ? -0.14 : -0.42;
+    if (a.footDown) { tL = 0.12; kL = -0.1; }   // im Stand: linker Fuß auf dem Boden
+  }
+  if (a.gunHolder) a.gunHolder.visible = !riding || rideAim;   // auf dem Moped: Waffe nur beim Zielen
+  if (a.rideArms) { a.rideArms.visible = riding && !rideAim; a.gunArms.visible = !riding || rideAim; a.rideArms.rotation.y += ((riding ? (a.steerVis || 0) * 0.3 : 0) - a.rideArms.rotation.y) * Math.min(1, dt * 12); }
+  a.hipL.rotation.z += ((riding && a.footDown ? -0.22 : 0) - a.hipL.rotation.z) * Math.min(1, dt * 10);
   const s = 1 - Math.exp(-18 * dt);
   a.hipL.rotation.x += (tL - a.hipL.rotation.x) * s; a.hipR.rotation.x += (tR - a.hipR.rotation.x) * s;
   if (a.knees) { a.knees[0].rotation.x += (kL - a.knees[0].rotation.x) * s; a.knees[1].rotation.x += (kR - a.knees[1].rotation.x) * s; }
   a.hipL.position.y = a.hipR.position.y = riding ? 0.86 : 0.92 - 0.42 * c;
-  a.upper.position.y += ((riding ? -0.06 : bob - 0.42 * c) - a.upper.position.y) * s;
+  // Auf dem Moped dreht sich der Oberkörper um die Hüfte (nicht um die Füße), damit er auf dem Sitz bleibt
+  const pivY = riding ? 0.95 : 0, L = a.upper.rotation.x;
+  a.upper.position.y += (((riding ? -0.06 : bob - 0.42 * c) + pivY * (1 - Math.cos(L))) - a.upper.position.y) * s;
+  a.upper.position.z += ((riding ? -pivY * Math.sin(L) : 0) - a.upper.position.z) * s;
   a.upper.rotation.x += ((lean - 0.12 * c) - a.upper.rotation.x) * s;
   // Rückstoß beim Schießen
   a.kick = Math.max(0, (a.kick || 0) - dt * 8);
