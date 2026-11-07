@@ -582,7 +582,7 @@ window.MAP_STREETS = [[-7, -100, 7, 100], [-100, -7, 100, 7], [-57, -100, -47, 1
 window.FIRE_POS = [40, -2.5];
 window.SHIP_SMOKE = [152, 16, 19];
 
-(function buildMap() {
+function buildTokyoMap() {
   const WALL_H = 7;
   const white = new THREE.MeshStandardMaterial({ color: 0xd8d6cc, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
   const yel = new THREE.MeshStandardMaterial({ color: 0xc8a232, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -920,7 +920,305 @@ window.SHIP_SMOKE = [152, 16, 19];
     { w: 1, x: -31, y: 0, z: -87 }, { w: 1, x: -82.5, y: 0, z: -40 }, { w: 1, x: 16, y: 3.2, z: 20 }, { w: 1, x: -36, y: 0, z: 38 }, { w: 1, x: 92, y: 1, z: -90 },
     { w: 1, x: -86, y: 0.5, z: 86 }, { w: 1, x: 62, y: 0, z: -34 }, { w: 1, x: -78.5, y: 0, z: -66 },
   );
-})();
+}
+
+/* ======================= Alte Karte „Hafenviertel“ (mit Simson-Crosspark im Süden) ======================= */
+function buildHafenMap() {
+  const WALL_H = 6;
+  /* --- Außengrenzen: Mauern im Norden, Westen, Süden; Kaimauer im Osten --- */
+  addBox(-3, 0, -61, 118, WALL_H, 1, MAT.concrete, 3);
+  // Südmauer mit drei Toren zum Crosspark
+  const GATES = [[-48, -40], [-14, -6], [22, 32]];
+  wallRun('x', -62, 56, 61, 0, WALL_H, 1, MAT.concrete, GATES.map(([a, b]) => [a, b, 0, WALL_H]));
+  addBox(-61, 0, 0, 1, WALL_H, 122, MAT.concrete, 3);
+  for (let i = -60; i <= 54; i += 10) for (const z of [-60.3, 60.3]) {
+    if (z > 0 && GATES.some(([a, b]) => i > a - 1 && i < b + 1)) continue;
+    addBox(i, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  }
+  for (const [a, b] of GATES) for (const x of [a - 0.6, b + 0.6]) addBox(x, 0, 61, 1.3, WALL_H + 0.8, 1.4, MAT.concrete, 2);
+  for (let i = -60; i <= 60; i += 10) addBox(-60.3, 0, i, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  // Kai: Kante, Poller, Geländer + unsichtbare Sperre
+  addBox(55.4, -2.2, 0, 0.8, 2.45, 122, MAT.concrete, 2, { decor: true });
+  for (let z = -56; z <= 56; z += 8) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 0.7, 12), MAT.dark); b.position.set(54.6, 0.35, z); b.castShadow = true; scene.add(b);
+    collider(54.6, 0, z, 0.5, 0.7, 0.5);
+  }
+  for (let z = -60; z < 60; z += 2.5) addBox(55.6, 0.25, z, 0.06, 1.0, 0.06, MAT.yellow, 1, { decor: true });
+  addBox(55.6, 1.2, 0, 0.06, 0.06, 120, MAT.yellow, 1, { decor: true });
+  collider(56, 0, 0, 1, 12, 122);
+  // Wasser
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(700, 1600), new THREE.MeshStandardMaterial({ color: 0x1b3c48, roughness: 0.08, metalness: 0.2, normalMap: waterNormal, envMapIntensity: 1.3 }));
+  water.normalMap = waterNormal; water.material.normalScale.set(0.5, 0.5);
+  water.rotation.x = -Math.PI / 2; water.position.set(55 + 350, -0.9, 0); water.userData.noMerge = true; scene.add(water);
+  // Frachtschiff draußen im Wasser (nur Kulisse)
+  const hull = new THREE.MeshStandardMaterial({ color: 0x3a1a16, roughness: 0.6, metalness: 0.3 });
+  const deck = new THREE.MeshStandardMaterial({ color: 0x2c3a44, roughness: 0.7 });
+  addBox(92, -3, -5, 18, 9, 90, hull, 3, { decor: true, shadow: false });
+  addBox(92, 6, -5, 17, 0.3, 88, deck, 3, { decor: true, shadow: false });
+  addBox(92, 6.3, 32, 14, 9, 10, MAT.plaster2, 2.7, { decor: true, shadow: false });
+  for (let r = 0; r < 5; r++) for (let c = 0; c < 4; c++) for (let h = 0; h < 1 + ((r * 7 + c * 3) % 3); h++) {
+    const mats = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
+    addBox(86.5 + c * 3.6, 6.3 + h * 2.6, -42 + r * 13, 2.44, 2.6, 12.2, mats[(r + c + h) % 4], 2.6, { decor: true, shadow: false });
+  }
+
+  /* --- Straßen: Hauptstraße (z=0) und Querstraße (x=-10) --- */
+  const white = new THREE.MeshStandardMaterial({ color: 0xd8d6cc, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
+  const yel = new THREE.MeshStandardMaterial({ color: 0xc8a232, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
+  for (let x = -58; x < 52; x += 4) if (Math.abs(x + 10) > 7) decalT(x, 0, 2.2, 0.16, white, 0, 0, 0.014);
+  for (let z = -58; z < 58; z += 4) if (Math.abs(z) > 7) decalT(-10, z, 0.16, 2.2, white, 0, 0, 0.014);
+  for (let i = -3; i <= 3; i++) { decalT(-18, i * 1.1, 2.6, 0.55, white, 0, 0, 0.014); decalT(-2, i * 1.1, 2.6, 0.55, white, 0, 0, 0.014); }
+  // Gehwege (Beton) entlang der Straßen
+  decalT(-3, -6.5, 116, 3, MAT.concreteFloor, 2.7, 0, 0.008); decalT(-3, 6.5, 116, 3, MAT.concreteFloor, 2.7, 0, 0.008);
+  decalT(-15.5, -33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009); decalT(-4.5, -33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009);
+  decalT(-15.5, 33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009); decalT(-4.5, 33.5, 3, 53, MAT.concreteFloor, 2.7, 0, 0.009);
+  // Laternen
+  for (let x = -52; x <= 48; x += 16) { lamp(x, -7.6, 1); lamp(x + 8, 7.6, -1); }
+  // Kreisverkehr mit Denkmal
+  const isl = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(4.2, 4.3, 0.3, 32)), MAT.concrete); isl.position.set(-10, 0.15, 0); isl.receiveShadow = true; scene.add(isl);
+  const islG = new THREE.Mesh(withUv2(new THREE.CircleGeometry(3.9, 32)), MAT.grass); islG.rotation.x = -Math.PI / 2; islG.position.set(-10, 0.31, 0); scene.add(islG);
+  collider(-10, 0, 0, 6, 0.3, 6);
+  addBox(-10, 0, 0, 2.2, 2.4, 2.2, MAT.concrete, 2);
+  addBox(-10, 2.4, 0, 1.6, 0.3, 1.6, MAT.concrete, 2);
+  // Bronzestatue (Soldat mit Fahne)
+  addBox(-10, 2.7, 0, 0.55, 0.9, 0.35, BRONZE, 0, { decor: true }); addBox(-10, 3.6, 0, 0.7, 0.8, 0.4, BRONZE, 0, { decor: true });
+  addBox(-10, 4.4, 0, 0.3, 0.32, 0.3, BRONZE, 0, { decor: true }); addBox(-9.6, 3.4, 0, 0.08, 3.2, 0.08, BRONZE, 0, { decor: true });
+  addBox(-9.0, 5.6, 0, 1.1, 0.7, 0.04, BRONZE, 0, { decor: true });
+  collider(-10, 2.4, 0, 1.2, 2.5, 1.2);
+  // Deckung auf der Hauptstraße
+  car(-44, -2.6, true); car(-28, 2.6, true); car(10, -2.6, true); car(24, 2.4, true); car(-50, 2.5, true);
+  // Ausgebrannter Bus
+  const burnt = new THREE.MeshStandardMaterial({ color: 0x2a2420, roughness: 0.9, metalness: 0.4 });
+  addBox(38, 0.3, -1.2, 11, 2.7, 2.6, burnt, 0); collider(38, 0, -1.2, 11, 0.3, 2.6);
+  for (let i = 0; i < 5; i++) addBox(34 + i * 2.1, 1.6, 0.11, 1.5, 0.9, 0.05, CAR_GLASS, 0, { decor: true });
+  jersey(-36, 0, false); jersey(2, -2, true); jersey(18, 3, true); jersey(46, 2, false);
+  sandbags(-20, 3.6, 3, true); sandbags(5, 2.2, 3, true); sandbags(28, -3.4, 3, true);
+  // Bushaltestelle
+  addBox(-30, 0, -7.4, 4, 0.08, 1.4, MAT.dark, 1, { decor: true });
+  for (const o of [-1.9, 1.9]) addBox(-30 + o, 0, -7.9, 0.1, 2.6, 0.1, MAT.metal, 1);
+  addBox(-30, 2.6, -7.4, 4.2, 0.1, 1.6, MAT.dark, 1, { decor: true });
+  addBox(-30, 0.5, -8.0, 3.8, 1.9, 0.05, MAT.window, 0, { decor: true }); collider(-30, 0, -8.0, 3.8, 2.4, 0.1);
+  bench(-30, -7.6, true);
+
+  /* --- NORDWEST: Altstadt mit begehbaren Häusern --- */
+  const B1 = building(-46, -46, 16, 12, 3, MAT.plaster, { e: [2], s: [3] });
+  const B2 = building(-24, -50, 12, 10, 2, MAT.brick, { s: [1], w: [1.5] });
+  const B3 = building(-46, -22, 12, 12, 2, MAT.plaster2, { e: [-2], n: [2] });
+  // Ruine: zerbrochene Mauern ohne Dach
+  const ru = MAT.brick;
+  addBox(-27, 0, -29, 10, 3.4, 0.4, ru, 2.5); addBox(-31.5, 3.4, -29, 1.0, 1.2, 0.4, ru, 2.5);
+  addBox(-32, 0, -24, 0.4, 2.6, 10, ru, 2.5); addBox(-22, 0, -21.5, 0.4, 1.6, 5, ru, 2.5);
+  addBox(-25, 0, -19.2, 4, 2.2, 0.4, ru, 2.5);
+  for (let i = 0; i < 9; i++) addBox(srnd(-31, -23), 0, srnd(-28, -20), srnd(0.4, 1.2), srnd(0.2, 0.6), srnd(0.4, 1.2), MAT.concrete, 2);
+  // Gassen-Details
+  dumpster(-36, -46, false); dumpster(-36, -42.5, false); barrel(-34.8, -50, MAT.ctrRed); barrel(-34.5, -51, MAT.ctrGreen);
+  crate(-33, 0, -34, 1.2); crate(-32, 0, -35.3, 1); car(-21.5, -38, true); car(-40, -31.5, true, carPaints[2]);
+  dumpster(-55, -32, true); jersey(-27, -12, true); sandbags(-38, -12, 3, true);
+  car(-12.2, -24, false); car(-7.8, -42, false, carPaints[1]); car(-12.2, -54, false);
+
+  /* --- SÜDWEST: Park und Wohnhäuser --- */
+  house(-48, 22, 9, 7, 3.6); house(-48, 44, 9, 7, 3.6); house(-28, 53, 9, 7, 3.6);
+  decalT(-31, 27, 22, 26, MAT.grass, 2, 0, 0.008);
+  // Wege im Park
+  decalT(-31, 27, 2, 26, MAT.concreteFloor, 2.7, 0, 0.011); decalT(-31, 27, 22, 2, MAT.concreteFloor, 2.7, 0, 0.011);
+  // Brunnen in der Mitte
+  const basin = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3.1, 0.7, 28, 1, true)), MAT.concrete); basin.position.set(-31, 0.35, 27); scene.add(basin);
+  const wdisk = new THREE.Mesh(new THREE.CircleGeometry(2.9, 28), new THREE.MeshStandardMaterial({ color: 0x1e4652, roughness: 0.05, metalness: 0.3, normalMap: waterNormal }));
+  wdisk.rotation.x = -Math.PI / 2; wdisk.position.set(-31, 0.5, 27); scene.add(wdisk);
+  collider(-31, 0, 27, 5.2, 0.7, 5.2);
+  addBox(-31, 0.7, 27, 0.6, 1.6, 0.6, MAT.concrete, 2);
+  for (const [x, z, s] of [[-40, 17, 1.0], [-22, 18, 1.1], [-40, 36, 0.9], [-23, 37, 1.0], [-36, 22, 0.8], [-26, 31, 0.85], [-44, 30, 1.0], [-18, 26, 0.9]]) leafTree(x, z, s);
+  hedge(-36, 14.5, 8, 1); hedge(-24, 39.5, 8, 1); hedge(-42.5, 27, 1, 6); hedge(-19.5, 31, 1, 6);
+  bench(-31, 21.5, true); bench(-31, 32.5, true); bench(-25.5, 27, false); bench(-36.5, 27, false);
+  watchtower(-56, 32, 1);
+  for (const [x, z] of [[-58, 52], [-55, 58], [-20, 58], [-14, 46], [-58, 14]]) tree(x, z, srnd(0.7, 0.9));
+  car(-7.8, 22, false); car(-12.2, 40, false, carPaints[4]); jersey(-40, 50, true); sandbags(-52, 36, 3, false);
+
+  /* --- NORDOST: Containerhafen --- */
+  decalT(25, -33.5, 60, 53, MAT.concreteFloor, 2.7, 0, 0.007);
+  const ctrMats = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
+  const cols = [2.5, 8.7, 18.5, 24.7, 34.5, 40.7], rows = [-14, -21, -28, -35, -42, -49, -56];
+  const forced = { '2.5,-14': 1, '24.7,-35': 1, '40.7,-49': 1, '8.7,-28': 2, '34.5,-21': 3 };
+  for (const z of rows) for (const x of cols) {
+    const key = x + ',' + z;
+    let h = forced[key];
+    if (h === undefined) { const r = srand(); h = r < 0.22 ? 0 : r < 0.6 ? 1 : r < 0.88 ? 2 : 3; }
+    for (let k = 0; k < h; k++) container(x, k * 2.6, z, true, ctrMats[Math.floor(srand() * 4)]);
+  }
+  // Kisten-Treppen auf einige Container
+  for (const [x, z] of [[2.5, -14], [24.7, -35], [40.7, -49]]) for (let i = 0; i < 3; i++) addBox(x - 1.1 + i * 1.1, 0, z + 2.0, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
+  // Hafenkran über dem Kai
+  const yellow = MAT.yellow;
+  for (const [x, z] of [[47, -45], [53, -45], [47, -25], [53, -25]]) addBox(x, 0, z, 1.2, 20, 1.2, yellow, 2);
+  addBox(50, 20, -45, 8, 1.4, 1.4, yellow, 2, { decor: true }); addBox(50, 20, -25, 8, 1.4, 1.4, yellow, 2, { decor: true });
+  addBox(47, 21.4, -35, 1.2, 1.2, 22, yellow, 2, { decor: true }); addBox(53, 21.4, -35, 1.2, 1.2, 22, yellow, 2, { decor: true });
+  addBox(70, 22.6, -35, 50, 1.2, 2.2, yellow, 2, { decor: true });
+  addBox(52, 16.5, -35, 3, 3, 3, MAT.plaster2, 2.7, { decor: true });
+  addBox(68, 15.5, -35, 0.08, 7, 0.08, MAT.dark, 1, { decor: true }); addBox(68, 13.5, -35, 6.1, 2.6, 2.44, MAT.ctrOrange, 2.6, { decor: true });
+  // Hafenbüro (Container mit Treppe) + Kisten
+  container(50, 0, -55, true, MAT.ctrBlue);
+  for (let i = 0; i < 3; i++) addBox(47.8 + i * 1.1, 0, -52.7, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
+  crate(46, 0, -18, 1.3); crate(47.2, 0, -17.6, 1.1); barrel(50, -15, MAT.ctrRed); barrel(50.7, -15.6, MAT.ctrBlue);
+  jersey(15, -9.5, true); jersey(30, -9.5, true);
+
+  /* --- SÜDOST: Lagerhalle, LKWs, Parkplatz, Tanks --- */
+  const HX0 = 9, HX1 = 43, HZ0 = 25, HZ1 = 47, HH = 9, T = 0.4;
+  wallRun('x', HX0, HX1, HZ0 + T / 2, 0, HH, T, MAT.hallMetal, [[15.5, 21, 0, 5], [31, 36.5, 0, 5], [24, 28, 6.2, 7.8], [38, 41, 6.2, 7.8], [11, 13.5, 6.2, 7.8]]);
+  wallRun('x', HX0, HX1, HZ1 - T / 2, 0, HH, T, MAT.hallMetal, [[14, 17, 6.2, 7.8], [24, 27, 6.2, 7.8], [34, 37, 6.2, 7.8]]);
+  wallRun('z', HZ0 + T, HZ1 - T, HX0 + T / 2, 0, HH, T, MAT.hallMetal, [[33.5, 36, 0, 2.6]]);
+  wallRun('z', HZ0 + T, HZ1 - T, HX1 - T / 2, 0, HH, T, MAT.hallMetal, [[37.5, 42.5, 0, 5]]);
+  addBox((HX0 + HX1) / 2, HH, (HZ0 + HZ1) / 2, HX1 - HX0 + 0.4, 0.3, HZ1 - HZ0 + 0.4, MAT.hallMetal, 2.6);
+  decalT((HX0 + HX1) / 2, (HZ0 + HZ1) / 2, HX1 - HX0 - 0.8, HZ1 - HZ0 - 0.8, MAT.concreteFloor, 2.7, 0, 0.01);
+  // Laufsteg an der Südwand (Höhe 4,5 m) mit Treppe
+  const CW = 4.5;
+  addBox(26, CW - 0.2, 45.5, 32, 0.2, 2.2, MAT.metal, 1.5);
+  for (let x = 11; x <= 41; x += 6) addBox(x, 0, 45.5, 0.2, CW - 0.2, 0.2, MAT.metal, 1);
+  for (let i = 0; i < 7; i++) addBox(10.4 + i * 0.9 + 0.45, 0, 43.6, 0.9, (i + 1) * 0.643, 1.4, MAT.metal, 1.5);
+  addBox(29.6, CW, 44.38, 24.8, 1.0, 0.06, MAT.metal, 1);   // Geländer (Treppenende frei)
+  // Regale mit Kisten (Deckung, man kann durchschießen)
+  for (const z of [31, 36.5]) for (const [xa, xb] of [[13, 21], [27, 37]]) {
+    const xc = (xa + xb) / 2, L = xb - xa;
+    for (const y of [0, 1.5, 3.0]) addBox(xc, y, z, L, 0.1, 1.2, MAT.metal, 1.5);
+    for (const x of [xa, xb]) for (const o of [-0.55, 0.55]) addBox(x, 0, z + o, 0.1, 3.5, 0.1, MAT.metal, 1);
+    for (let i = 0; i < 4; i++) for (const y of [0.1, 1.6]) if (srand() < 0.75) crate(xa + 1 + i * 2, y, z, srnd(0.9, 1.1));
+  }
+  // Gabelstapler
+  addBox(22, 0.2, 41, 1.3, 1.2, 2.2, MAT.yellow, 1); addBox(22, 1.4, 41.4, 1.1, 1.0, 1.0, CAR_GLASS, 0, { decor: true });
+  addBox(22, 0, 39.6, 1.0, 2.6, 0.12, MAT.dark, 1);
+  // Draußen: LKWs an der Rampe, Parkplatz, Tanks
+  truck(18.2, 16.5, true); truck(33.7, 15, true);
+  jersey(26, 18, false); sandbags(12, 20, 3, true); crate(40, 0, 20, 1.2); crate(41.2, 0, 21, 1);
+  for (let z = 12; z <= 40; z += 4) decalT(50, z - 2, 8, 0.12, white, 0, 0, 0.014);
+  car(49.5, 12, true); car(49.5, 20, true, carPaints[3]); car(49.5, 28, true); car(49.5, 36, true, carPaints[6]);
+  for (const z of [50.5, 56.5]) {
+    const tank = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(2.2, 2.2, 6, 24)), MAT.hallMetal); tank.position.set(49.5, 3, z); tank.castShadow = true; scene.add(tank);
+    collider(49.5, 0, z, 4.2, 6, 4.2);
+  }
+  dumpster(14, 54, true); dumpster(17, 54, true); jersey(30, 52, true); crate(36, 0, 55, 1.3);
+  // Beton-Gebäude und Werkstatt zwischen Straße und Halle
+  const B4 = building(2.5, 24, 10, 12, 2, MAT.concrete, { w: [2], s: [2] });
+  building(2, 47, 10, 10, 1, MAT.brick, { n: [0], w: [2] }, { crates: 3 });
+  // Kiosk an der Straße
+  addBox(2, 0, 11, 3.5, 2.6, 2.5, MAT.plaster2, 2.7); addBox(2, 2.6, 11, 4, 0.15, 3, MAT.ctrRed, 2.6, { decor: true });
+  car(-7.8, 52, false, carPaints[0]);
+
+  /* --- Schanzen in der Stadt (Querstraße) --- */
+  MAT.rampWood = pbr('wood', 2, { mat: { color: new THREE.Color(1.35, 1.2, 1.0) } });
+  MAT.dirt = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x6e5034), mat: { color: new THREE.Color(0.68, 0.6, 0.52) }, normalScale: 1.6 });
+  addRamp(-10, -14, -Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
+  addRamp(-10, 27, Math.PI / 2, 3, P_KICK(4, 1.1), MAT.rampWood);
+
+  /* --- SÜDEN: Simson-Crosspark (z 62 … 131) mit Schanzen --- */
+  decalT(-3.5, 96.5, 115, 69, MAT.dirt, 4.5, 0, 0.004);
+  addBox(-3.5, 0, 131, 116, WALL_H, 1, MAT.concrete, 3);
+  addBox(-61, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
+  addBox(54.5, 0, 96, 1, WALL_H, 70, MAT.concrete, 3);
+  for (let i = -60; i <= 54; i += 10) addBox(i, 0, 130.3, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true });
+  for (let z = 70; z <= 130; z += 10) { addBox(-60.3, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); addBox(53.8, 0, z, 1.1, WALL_H + 0.4, 1.1, MAT.concrete, 2, { decor: true }); }
+  // Zufahrt: Betonpiste mit Schanze, Tor mit Banner
+  decalT(-10, 78, 8, 32, MAT.concreteFloor, 2.7, 0, 0.012);
+  for (let z = 64; z < 94; z += 4) decalT(-10, z, 0.16, 2.2, white, 0, 0, 0.014);
+  addRamp(-10, 71, Math.PI / 2, 3.5, P_KICK(5, 1.4), MAT.rampWood);
+  for (const x of [-15.5, -4.5]) addBox(x, 0, 64, 0.3, 5.2, 0.3, MAT.metal, 1);
+  const bc = document.createElement('canvas'); bc.width = 1024; bc.height = 128;
+  const bg = bc.getContext('2d'); bg.fillStyle = '#c0262b'; bg.fillRect(0, 0, 1024, 128);
+  bg.fillStyle = '#fff'; bg.font = 'italic 900 84px Arial'; bg.textAlign = 'center'; bg.textBaseline = 'middle'; bg.fillText('SIMSON  CROSSPARK', 512, 68);
+  const btex = new THREE.CanvasTexture(bc); btex.encoding = THREE.sRGBEncoding; btex.anisotropy = MAX_ANISO;
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(11, 1.2, 0.08), new THREE.MeshStandardMaterial({ map: btex, roughness: 0.7 }));
+  banner.position.set(-10, 4.5, 64); scene.add(banner);
+  // Tabletop (Erdhügel) und Buckelpiste
+  addRamp(-40, 74, Math.PI / 2, 7, P_TABLE(5, 6, 7, 1.8), MAT.dirt, 3);
+  for (let i = 0; i < 9; i++) addRamp(-52, 70 + i * 3.2, Math.PI / 2, 5, P_BUMP(3.2, 0.45), MAT.dirt, 3);
+  // Lückensprung über Fässer
+  addRamp(5, 105, 0, 4, P_KICK(7, 2.2), MAT.rampWood);
+  addRamp(21, 105, 0, 5, P_TABLE(3, 0.8, 12, 2.2), MAT.dirt, 3);
+  for (const [x, z] of [[14.5, 104], [16, 105.6], [17.5, 104.2], [19, 105.8], [20.5, 104.5], [15.5, 106.4]]) barrel(x, z, [MAT.ctrRed, MAT.ctrBlue, MAT.ctrOrange][Math.floor(x) % 3]);
+  // Mega-Schanze mit Landehügel
+  addRamp(-21, 121, 0, 6, P_KICK(10, 3.2), MAT.rampWood);
+  addRamp(-1, 121, 0, 7, P_TABLE(3.5, 1.5, 16, 3.2), MAT.dirt, 3);
+  // kleine Kicker
+  addRamp(22, 76, 0, 3, P_KICK(3, 0.8), MAT.rampWood);
+  addRamp(45, 113, -Math.PI / 2, 3, P_KICK(4, 1.2), MAT.rampWood);
+  addRamp(-30, 98, 0, 3, P_KICK(3.5, 0.9), MAT.rampWood);
+  // Strohballen, Reifenstapel, Fahnen
+  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
+  const tireM = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 });
+  const bale = (x, z, rot) => { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 16)), hay); m.rotation.set(Math.PI / 2, rot, 0); m.position.set(x, 0.6, z); m.castShadow = m.receiveShadow = true; scene.add(m); collider(x, 0, z, 1.2, 1.2, 1.2); };
+  const tires = (x, z, n) => { for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.14, 8, 18), tireM); m.rotation.x = Math.PI / 2; m.position.set(x, 0.14 + i * 0.27, z); m.castShadow = true; scene.add(m); } collider(x, 0, z, 1, n * 0.27 + 0.05, 1); };
+  for (let x = -34; x <= 36; x += 6) if (x < -25 || x > -4) bale(x, 113, Math.PI / 2);
+  for (let z = 68; z <= 100; z += 8) bale(-46, z, 0);
+  for (const [x, z, n] of [[-57, 66, 3], [-57, 126, 4], [50, 66, 3], [50, 126, 3], [-24, 66, 2], [3, 66, 3], [38, 92, 4], [-35, 106, 3], [26, 96, 2], [-58, 104, 3]]) tires(x, z, n);
+  const flagMats = [MAT.ctrRed, MAT.yellow, MAT.ctrBlue];
+  for (const [x, z] of [[4.5, 103], [4.5, 107], [-21.5, 118], [-21.5, 124], [-44.2, 74], [-35.8, 74]]) {
+    addBox(x, 0, z, 0.06, 3.2, 0.06, MAT.metal, 1, { decor: true });
+    addBox(x + 0.45, 2.6, z, 0.9, 0.55, 0.03, flagMats[Math.abs(Math.round(x + z)) % 3], 0, { decor: true, round: 0 });
+  }
+  // Tribüne an der Südmauer (Stufen = erhöhte Schussposition)
+  for (let i = 0; i < 4; i++) addBox(-45, 0, 129.9 - i * 1.1, 18, 0.55 * (4 - i), 1.1, MAT.concrete, 2);
+  addBox(-45, 5.4, 128.6, 19, 0.15, 4.2, MAT.hallMetal, 2.6, { decor: true });
+  for (const x of [-53.5, -45, -36.5]) addBox(x, 2.2, 127, 0.15, 3.2, 0.15, MAT.metal, 1, { decor: true });
+  // Deckung: Container, Sandsäcke, Werkstatt
+  container(-25, 0, 84, false, MAT.ctrOrange); container(35, 0, 70, true, MAT.ctrBlue); container(35, 2.6, 70, true, MAT.ctrRed);
+  container(46, 0, 88, false, MAT.ctrGreen);
+  for (let i = 0; i < 3; i++) addBox(33.4 + i * 1.1, 0, 72.2, 1.1, 0.8 * (i + 1), 1.0, MAT.crate, 0);
+  sandbags(8, 88, 3, true); sandbags(-30, 110, 3, false); sandbags(30, 124, 3, true); sandbags(-4, 98, 3, false);
+  building(18, 88, 8, 6, 1, MAT.brick, { n: [0], s: [1] });
+  for (const z of [80, 96]) lamp(-14.6, z, 1);
+  // Mopeds im Crosspark
+  car(-6.5, 66, false); car(-13.5, 67.5, false); car(-50, 120, true); car(0, 109, true); car(30, 82, true);
+
+  /* --- Bäume außerhalb (Wald) und Gras --- */
+  const N = 240, dummy = new THREE.Object3D();
+  const farLeafMat = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
+  const farTrunkMat = new THREE.MeshLambertMaterial({ map: TEX.bark });
+  const trunks = new THREE.InstancedMesh(trunkGeo, farTrunkMat, N);
+  const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
+  for (let i = 0; i < N; i++) {
+    let x, z; do { x = rnd(-240, 50); z = rnd(-240, 240); } while (window.mapEdge(x, z) < 68);
+    const s = rnd(0.9, 1.8);
+    dummy.position.set(x, window.terrainHeight(x, z) - 0.2, z); dummy.scale.set(s, s * rnd(0.9, 1.3), s); dummy.rotation.y = Math.random() * 6;
+    dummy.updateMatrix();
+    trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
+  }
+  for (const l of layers) scene.add(l);
+  scene.add(trunks);
+  const bladeGeo = (() => {
+    const g1 = new THREE.PlaneGeometry(0.7, 0.45); g1.translate(0, 0.225, 0);
+    const g2 = g1.clone(); g2.rotateY(Math.PI / 2);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([...g1.attributes.position.array, ...g2.attributes.position.array], 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute([...g1.attributes.uv.array, ...g2.attributes.uv.array], 2));
+    const nrm = []; for (let i = 0; i < 8; i++) nrm.push(0, 1, 0);
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    g.setIndex([0, 2, 1, 2, 3, 1, 4, 6, 5, 6, 7, 5]); return g;
+  })();
+  const bladeMat = new THREE.MeshLambertMaterial({ map: TEX.blades, alphaTest: 0.5, side: THREE.DoubleSide });
+  const NG = 2600, grassI = window.grassI = new THREE.InstancedMesh(bladeGeo, bladeMat, NG);
+  for (let i = 0; i < NG; i++) {
+    let x, z, y = 0.01;
+    if (i < 1300) { x = rnd(-41.5, -20.5); z = rnd(14.5, 39.5); if (Math.abs(x + 31) < 1.4 || Math.abs(z - 27) < 1.4 || Math.hypot(x + 31, z - 27) < 3.3) { x = rnd(-41.5, -33); } }
+    else if (i < 2000) { const side = i % 3; const t = rnd(-59, 59); [x, z] = side === 0 ? [rnd(-60, -58.5), t] : side === 1 ? [t * 0.95 - 3, rnd(-60, -58.6)] : [t * 0.95 - 3, rnd(58.6, 60)]; }
+    else { do { x = rnd(-110, 50); z = rnd(-110, 180); } while (window.mapEdge(x, z) < 63); y = window.terrainHeight(x, z); }
+    const s = rnd(0.7, 1.5);
+    dummy.position.set(x, y, z); dummy.scale.set(s, s, s); dummy.rotation.set(0, Math.random() * 6, 0);
+    dummy.updateMatrix(); grassI.setMatrixAt(i, dummy.matrix);
+  }
+  scene.add(grassI);
+
+  /* --- Waffen zum Aufsammeln (Position + Höhe) --- */
+  MAP_PICKUPS.push(
+    { w: 0, x: -34, y: 0, z: -38 }, { w: 0, x: 14, y: 0, z: -31.5 }, { w: 0, x: 30, y: CW, z: 45.6 }, { w: 0, x: -24, y: 0, z: 22 }, { w: 0, x: 0, y: 0, z: 8.5 },
+    { w: 1, x: -44, y: 0, z: -46 }, { w: 1, x: -44, y: 0, z: -22 }, { w: 1, x: 4, y: 0, z: 24 }, { w: 1, x: -27, y: 0, z: -24 },
+    { w: 2, x: -44, y: B1.roofY, z: -46 }, { w: 2, x: -56, y: 4, z: 32 }, { w: 2, x: 50, y: 2.6, z: -55 }, { w: 2, x: 40, y: CW, z: 45.6 },
+    { w: 1, x: 26, y: 0, z: 28 }, { w: 0, x: 50, y: 0, z: -20 },
+    { w: 0, x: -25, y: 0, z: 108 }, { w: 1, x: 40, y: 0, z: 76 }, { w: 2, x: -45, y: 2.2, z: 129.9 }, { w: 0, x: 18, y: 0, z: 88 },
+  );
+}
+
+// gewählte Karte bauen (Auswahl im Menü, wird beim Laden festgelegt)
+if (MAP_ID === 'hafen') {
+  window.MAP_STREETS = [[-14, -62, -6, 131], [-62, -5, 56, 5]]; window.FIRE_POS = [38, -1.2]; window.SHIP_SMOKE = [92, 16, 34];
+  buildHafenMap();
+} else buildTokyoMap();
 
 /* Alle festen Karten-Objekte pro Material zu einem Objekt zusammenfassen (viel weniger Zeichenaufrufe) */
 (function mergeStatic() {
@@ -969,9 +1267,14 @@ try { gfx = localStorage.getItem('kz_gfx2') || gfx; } catch (e) {}
 applyGfx(gfx);
 $('gfxIn').onchange = e => applyGfx(e.target.value);
 // Startpunkte (auch Wegpunkte der Bots): Straßen, Plätze, Gassen
-const SPAWNS = [[-12, -12], [12, -12], [-12, 12], [12, 12], [0, -40], [0, 40], [-40, 0], [40, 0], [-52, -25], [52, -25], [-52, 25], [52, 25],
+const SPAWNS_TOKIO = [[-12, -12], [12, -12], [-12, 12], [12, 12], [0, -40], [0, 40], [-40, 0], [40, 0], [-52, -25], [52, -25], [-52, 25], [52, 25],
   [-25, -52], [25, -52], [-25, 52], [25, 52], [-78, -66], [-26, -75], [-16, -63], [35, -66], [90, -73], [-88, -28], [-74.5, 22], [-14, 30], [24, 22],
   [64, -35], [59.5, 27], [79, 27], [-78, 78], [-84, 66], [-30, 64], [18, 62], [70, 72], [88, -58], [94, 0], [-94, 0], [0, 94], [0, -94], [-62, 52], [62, -4]];
+const SPAWNS_HAFEN = [[-34, -40], [-55, -30], [-20, -36], [-52, -11], [-36, 18], [-24, 33], [-54, 52], [-40, 56],
+  [-20, -10], [-20, 10], [0, 8.5], [0, -9], [6, -17.5], [29.6, -24.5], [13.6, -45.5], [50, -22], [26, 28], [5, 38], [40, 12], [20, 56],
+  [-4, -56], [52, 45], [-58, 6], [30, -11],
+  [-30, 72], [0, 82], [30, 95], [-45, 112], [12, 127], [46, 72], [-56, 90]];
+const SPAWNS = MAP_ID === 'hafen' ? SPAWNS_HAFEN : SPAWNS_TOKIO;
 
 /* ======================= Kollision (mit Raster für schnelle Suche) ======================= */
 const GRID = 8, grid = new Map();

@@ -79,6 +79,12 @@ function versionWarn(text) {
   bar.classList.remove('hidden');
   feed(esc(text + ' Bitte alle neu laden (F5).'));
 }
+function showMapSwitch(id) { const el = $('menuMsg'); if (el) el.textContent = `Der Host spielt „${id === 'hafen' ? 'Hafenviertel' : 'Tokio'}“ – Karte wird geladen und du trittst automatisch bei …`; }
+// Nach dem Kartenwechsel automatisch wieder beitreten
+try {
+  const c = sessionStorage.getItem('kz_autojoin');
+  if (c) { sessionStorage.removeItem('kz_autojoin'); $('codeIn').value = c; setTimeout(() => $('btnJoin').click(), 400); }
+} catch (e) {}
 function hostLost() {
   if (!running) return;
   alert('Die Verbindung zum Host wurde getrennt.');
@@ -132,7 +138,7 @@ function hostHandle(from, m) {
       team: H.mode === 'tdm' ? nextTeam() : -1, x: 0, y: 0, z: 0, ry: 0, rx: 0, hp: 100, alive: true, k: 0, d: 0, w: 3, f: 0,
       prot: performance.now() + 1500, lastHit: 0 };
     const sp = pickSpawn(p); p.x = sp[0]; p.y = sp[1]; p.z = sp[2];
-    sendTo(from, { t: 'welcome', id: from, spawn: sp, code: roomCode, mode: H.mode, b: BUILD });
+    sendTo(from, { t: 'welcome', id: from, spawn: sp, code: roomCode, mode: H.mode, b: BUILD, map: MAP_ID });
     broadcast({ t: 'feed', msg: `${p.name} ist beigetreten` + (p.team >= 0 ? ` (Team ${TEAM_NAMES[p.team]})` : '') });
     // Unterschiedliche Spielversionen → Mopeds, Karte usw. passen nicht zusammen
     if (m.b !== BUILD) versionWarn(`${p.name} hat eine andere Spielversion!`);
@@ -337,6 +343,11 @@ function updateBots(dt, now) {
 const radarPing = {};
 function clientHandle(m) {
   if (m.t === 'welcome') {
+    // Host spielt eine andere Karte → diese laden und automatisch wieder beitreten
+    if (m.map && m.map !== MAP_ID) {
+      showMapSwitch(m.map); try { peer && peer.destroy(); } catch (e) {}
+      return switchMap(m.map, roomCode);
+    }
     myId = m.id; world.mode = m.mode || 'ffa'; spawnAt(m.spawn);
     if (!running) startGame();
     if (m.b !== BUILD) versionWarn('Der Host hat eine andere Spielversion!');

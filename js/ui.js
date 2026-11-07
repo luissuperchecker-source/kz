@@ -87,14 +87,16 @@ function updateHUD(dt) {
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
+const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
   const g = c.getContext('2d');
   g.fillStyle = 'rgba(40,46,40,0.9)'; g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = 'rgba(78,82,78,0.95)';   // Straßen
   for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) g.fillRect((x0 - RADAR.x0) * RADAR.ppm, (z0 - RADAR.z0) * RADAR.ppm, (x1 - x0) * RADAR.ppm, (z1 - z0) * RADAR.ppm);
-  g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((101 - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
+  const seaX = MAP_ID === 'hafen' ? 55.5 : 101;
+  g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((seaX - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
+  if (MAP_ID === 'hafen') { g.fillStyle = 'rgba(92,72,48,0.95)'; g.fillRect(0, (62 - RADAR.z0) * RADAR.ppm, (54 - RADAR.x0) * RADAR.ppm, 69 * RADAR.ppm); }   // Crosspark (Erde)
   g.fillStyle = 'rgba(205,150,80,0.9)';   // Schanzen
   for (const r of RAMPS) g.fillRect((r.bx0 - RADAR.x0) * RADAR.ppm, (r.bz0 - RADAR.z0) * RADAR.ppm, (r.bx1 - r.bx0) * RADAR.ppm, (r.bz1 - r.bz0) * RADAR.ppm);
   const sorted = boxes.slice().sort((a, b) => a.max.y - b.max.y);
@@ -244,8 +246,9 @@ function frame(t) {
   } else if (!running) {
     // Kamerafahrt im Menü: langsamer Flug über das Hafenviertel
     const a = now * 0.05;
-    camera.position.set(Math.sin(a) * 75, 32 + Math.sin(now * 0.13) * 5, Math.cos(a) * 75);
-    camera.lookAt(Math.sin(a + 1.2) * 14, 6, Math.cos(a + 1.2) * 14);
+    const hf = MAP_ID === 'hafen', cx = hf ? -3 : 0, R = hf ? 58 : 75;
+    camera.position.set(cx + Math.sin(a) * R, (hf ? 24 : 32) + Math.sin(now * 0.13) * 5, Math.cos(a) * R);
+    camera.lookAt(cx + Math.sin(a + 1.2) * 13, hf ? 3 : 6, Math.cos(a + 1.2) * 13);
   }
   updateEffects(dt);
   updateVehicles(dt);

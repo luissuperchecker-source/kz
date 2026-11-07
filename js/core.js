@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261107-120114 durch eine Versionsnummer ersetzt */
-const BUILD = '20261107-120114';
+/* Update-Prüfung: beim Veröffentlichen wird 20261107-125344 durch eine Versionsnummer ersetzt */
+const BUILD = '20261107-125344';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -19,6 +19,20 @@ if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
 }
 document.getElementById('btnUpdate').onclick = () => location.reload();
+// Gewählte Karte: „tokio“ (Standard) oder „hafen“ (alte Karte). Wird beim Laden festgelegt; Wechsel = Seite neu laden.
+const MAP_ID = (() => {
+  let m = 'tokio';
+  try { m = new URLSearchParams(location.search).get('map') || localStorage.getItem('kz_map') || 'tokio'; } catch (e) {}
+  return m === 'hafen' ? 'hafen' : 'tokio';
+})();
+// Karte wechseln (im Menü) bzw. auf die Karte des Hosts umschalten: Seite mit ?map=… neu laden
+function switchMap(id, joinCode) {
+  try { localStorage.setItem('kz_map', id); if (joinCode) sessionStorage.setItem('kz_autojoin', joinCode); } catch (e) {}
+  const u = new URL(location.href); u.searchParams.set('map', id); if (joinCode) u.hash = joinCode;
+  location.replace(u.toString());
+}
+document.getElementById('mapIn').value = MAP_ID;
+document.getElementById('mapIn').onchange = e => { document.getElementById('menuMsg').textContent = 'Karte wird geladen …'; switchMap(e.target.value); };
 const KILL_LIMIT = 25;
 const PR = 0.38, PH = 1.85, EYE = 1.65, STEP = 0.8, GRAV = 24;
 const COLORS = ['#e74c3c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22','#1abc9c','#ff6fb5','#ecf0f1','#a0522d','#00e5ff','#c0ff33'];
@@ -539,9 +553,10 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
   return withUv2(g);
 }
 (function ground() {
-  // Asphalt über die ganze Spielfläche (x/z -101 … 101)
-  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(203, 203)), pbr('asphalt', 3, {}, 203 / 3, 203 / 3));
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true;
+  // Asphalt über die ganze Spielfläche (Tokio: x/z -101 … 101; Hafenviertel: x -62 … 56, z -62 … 62)
+  const hafen = MAP_ID === 'hafen', FW = hafen ? 118 : 203, FD = hafen ? 124 : 203;
+  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(FW, FD)), pbr('asphalt', 3, {}, FW / 3, FD / 3));
+  floor.rotation.x = -Math.PI / 2; floor.position.x = hafen ? -3 : 0; floor.receiveShadow = true;
   scene.add(floor); mapMeshes.push(floor);
   // Hügel per Rauschfunktion
   const hash = (x, z) => { const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -555,12 +570,13 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
   const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
   // Hügel rund um die (quadratische) Karte, im Osten Hafenbecken
   // Abstand zum Rand: Stadt + Skyline reichen bis ~225 m, erst dahinter beginnen die Hügel
-  const mapEdge = (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
+  const mapEdge = hafen ? (x, z) => Math.max(Math.abs(x + 3), z > 0 ? Math.max(0, z - 70) : -z)
+    : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
   window.mapEdge = mapEdge;
   const heightAt = (x, z) => {
     const edge = mapEdge(x, z);
     const hills = sstep(68, 200, edge) * (fbm(x * 0.008 + 3, z * 0.008) * 70 + 4) + sstep(63, 85, edge) * fbm(x * 0.06, z * 0.06) * 2;
-    const sea = sstep(101, 108, x);
+    const sea = hafen ? sstep(54, 62, x) : sstep(101, 108, x);
     return hills * (1 - sea) - 6 * sea - 0.06;
   };
   const geo = new THREE.PlaneGeometry(1000, 1000, 120, 120); geo.rotateX(-Math.PI / 2);
