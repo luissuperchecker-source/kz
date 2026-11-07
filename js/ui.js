@@ -234,6 +234,7 @@ function frame(t) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (t - last) / 1000); last = t;
   const now = t / 1000;
+  if (window.pollGamepad) pollGamepad(dt);   // Controller (gamepad.js)
   if (running && myId) {
     updateLocal(dt, now);
     netTick(now);

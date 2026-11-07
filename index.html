@@ -158,6 +158,14 @@
   .shopInfo { font-size: 13px; color: #a8c0a8; margin: 10px 0 14px; line-height: 1.5; }
   .shopItem { display: flex; gap: 14px; align-items: center; background: rgba(255,255,255,.04); border: 1px solid #34483a; border-radius: 9px; padding: 12px; margin-bottom: 10px; }
   .shopItem.eq { border-color: #ffcc33; }
+  /* Controller */
+  .padHelp { display: none; } body.hasPad .padHelp { display: block; }
+  .padKeys { font-size: 12px; color: #a8c0a8; line-height: 1.6; margin-top: 12px; text-align: center; }
+  .padFocus { outline: 3px solid #ffcc33 !important; outline-offset: 2px; box-shadow: 0 0 14px rgba(255,204,51,.55) !important; }
+  body.padPlay.playing canvas { cursor: none; }
+  #padToast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); z-index: 60; background: rgba(15,20,16,.92); color: #ffcc33;
+    border: 1px solid #5a4a1a; border-radius: 10px; padding: 9px 16px; font-weight: 700; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
+  #padToast.on { opacity: 1; transform: translate(-50%, 0); }
   .voucher { background: rgba(255,204,51,.06); border: 1px dashed #8a7430; border-radius: 9px; padding: 12px; margin-bottom: 14px; }
   .voucher .vLabel { font-weight: 800; margin-bottom: 8px; color: #ffcc33; }
   .voucher .vRow { display: flex; gap: 8px; }
@@ -254,14 +262,15 @@
       <b>Linker Daumen</b> laufen (ganz nach vorne = sprinten) · <b>Rechts wischen</b> umschauen · <b>FEUER</b> schießen · <b>ZOOM</b> zielen<br>
       <b>DUCK</b> ducken · <b>G</b> Granate · <b>MES</b> Messer · <b>R</b> nachladen · <b>⇄</b> Waffe · Handy <b>quer halten</b>
     </div>
+    <div class="help padHelp">🎮 <b>Controller:</b> A drücken = Schnellspiel · Steuerkreuz/Stick = auswählen · B = zurück</div>
   </div>
   <div id="menuNews">
-    <h4>NEU IM GROSSEN UPDATE</h4>
-    • Doppelt so große Karte „Hafenviertel“ mit begehbaren Häusern, Lagerhalle, Containerhafen und Park<br>
-    • Team-Modus Rot gegen Blau · 10-Minuten-Runden<br>
-    • Granaten, Messer, Ducken, Rutschen, Schleichen<br>
-    • Nachlade-Animationen, Einschusslöcher, Explosionen<br>
-    • Radar, Heilung, Killserien, Inventar, 3D-Sound
+    <h4>NEU</h4>
+    • Riesige Karte „Tokio“: Kreuzung, Hochstraße mit Sprung, Schrein, Gassen, Bahnhof, Hafen<br>
+    • Simson-Mopeds: fahren, lenken, schießen, Wheelies (Leertaste), Schanzen<br>
+    • 🎮 Controller-Unterstützung (Xbox, PlayStation, Switch)<br>
+    • Team-Modus Rot gegen Blau · Laden mit Gutscheincodes<br>
+    • Granaten, Messer, Ducken, Rutschen, Schleichen, Radar, Killserien
   </div>
 </div>
 
@@ -329,6 +338,12 @@
     </div>
     <button id="btnResume">Weiterspielen (klicken)</button>
     <button id="btnLeave" class="sec">Spiel verlassen</button>
+    <div class="padHelp padKeys">
+      <b>🎮 Controller</b><br>
+      <b>L-Stick</b> laufen/fahren · <b>L3</b> sprinten · <b>R-Stick</b> umsehen · <b>RT</b> schießen · <b>LT</b> zielen<br>
+      <b>A</b> springen/Wheelie · <b>B</b> ducken · <b>X</b> nachladen · <b>Y</b> Moped · <b>LB</b> Granate · <b>RB</b>/<b>R3</b> Messer<br>
+      <b>◀ ▶</b> Waffe · <b>▲</b> Ladenwaffe · <b>▼</b> ansehen · <b>View</b> Punkte · <b>Start</b> Pause / weiter
+    </div>
   </div>
 </div>
 
@@ -377,12 +392,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261106-201433"></script>
-<script src="js/map.js?v=20261106-201433"></script>
-<script src="js/models.js?v=20261106-201433"></script>
-<script src="js/game.js?v=20261106-201433"></script>
-<script src="js/vehicles.js?v=20261106-201433"></script>
-<script src="js/net.js?v=20261106-201433"></script>
-<script src="js/ui.js?v=20261106-201433"></script>
+<script src="js/core.js?v=20261107-113843"></script>
+<script src="js/map.js?v=20261107-113843"></script>
+<script src="js/models.js?v=20261107-113843"></script>
+<script src="js/game.js?v=20261107-113843"></script>
+<script src="js/vehicles.js?v=20261107-113843"></script>
+<script src="js/net.js?v=20261107-113843"></script>
+<script src="js/ui.js?v=20261107-113843"></script>
+<script src="js/gamepad.js?v=20261107-113843"></script>
 </body>
 </html>
