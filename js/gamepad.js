@@ -11,12 +11,28 @@ const PAD_ACTIONS = [
   ['sprint', 'Sprinten', 10], ['inspect', 'Waffe ansehen', 11], ['next', 'Nächste Waffe', 15], ['prev', 'Vorige Waffe', 14],
   ['shopW', 'Ladenwaffe', 12], ['inv', 'Inventar', 13], ['board', 'Punktestand', 8], ['pause', 'Pause', 9],
 ];
-const PAD_DEFAULT = () => ({ map: Object.fromEntries(PAD_ACTIONS.map(a => [a[0], a[2]])), sens: 1, dead: 0.15, invY: false, swap: false, assist: true, rumble: true });
+// Stick-Achsen: [Schlüssel, Name, Aufforderung, erwartetes Vorzeichen bei Standard-Controllern, Standard-Achse]
+const PAD_AXES = [
+  ['moveY', 'Laufen vor/zurück', 'nach VORNE (oben)', -1, 1], ['moveX', 'Laufen links/rechts', 'nach RECHTS', 1, 0],
+  ['lookY', 'Umsehen hoch/runter', 'nach OBEN', -1, 3], ['lookX', 'Umsehen links/rechts', 'nach RECHTS', 1, 2],
+];
+const AXIS_NAMES = ['L-Stick ↔', 'L-Stick ↕', 'R-Stick ↔', 'R-Stick ↕'];
+const PAD_DEFAULT = () => ({ map: Object.fromEntries(PAD_ACTIONS.map(a => [a[0], a[2]])), axes: Object.fromEntries(PAD_AXES.map(a => [a[0], { a: a[4], inv: false }])),
+  sens: 1, dead: 0.15, invY: false, assist: true, rumble: true });
 let PCFG = PAD_DEFAULT();
-try { const s = JSON.parse(localStorage.getItem('kz_pad') || 'null'); if (s && s.map) { PCFG = Object.assign(PAD_DEFAULT(), s); PCFG.map = Object.assign(PAD_DEFAULT().map, s.map); } } catch (e) {}
+try {
+  const s = JSON.parse(localStorage.getItem('kz_pad') || 'null');
+  if (s && s.map) {
+    PCFG = Object.assign(PAD_DEFAULT(), s); PCFG.map = Object.assign(PAD_DEFAULT().map, s.map); PCFG.axes = Object.assign(PAD_DEFAULT().axes, s.axes || {});
+    if (s.swap && !s.axes) PCFG.axes = { moveX: { a: 2, inv: false }, moveY: { a: 3, inv: false }, lookX: { a: 0, inv: false }, lookY: { a: 1, inv: false } };   // alte Einstellung „Sticks tauschen“
+    delete PCFG.swap;
+  }
+} catch (e) {}
+const padAxis = (gp, k) => { const c = PCFG.axes[k]; return (gp.axes[c.a] || 0) * (c.inv ? -1 : 1); };
 const savePad = () => { try { localStorage.setItem('kz_pad', JSON.stringify(PCFG)); } catch (e) {} };
 
-const PAD = { prev: [], lastUse: -1e9, menuT: 0, menuDir: '', sprint: false, moved: false, focus: null, listen: null, listenT: 0 };
+// listen = { type: 'btn' | 'axis', key }; queue = weitere Schritte beim Einrichten der Reihe nach
+const PAD = { prev: [], lastUse: -1e9, menuT: 0, menuDir: '', sprint: false, moved: false, focus: null, listen: null, listenT: 0, queue: [], base: [], waitRelease: false };
 const padDz = v => Math.abs(v) < PCFG.dead ? 0 : (v - Math.sign(v) * PCFG.dead) / (1 - PCFG.dead);
 function getPad() {
   const ps = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -76,52 +92,124 @@ function padAimSnap() {
 }
 
 /* ---------- Fenster „Controller anpassen“ ---------- */
+const axisLabel = k => { const c = PCFG.axes[k]; return (AXIS_NAMES[c.a] || 'Achse ' + c.a) + (c.inv ? ' ⇄' : ''); };
 function renderPadCfg() {
-  const gp = getPad(), st = $('padStatus');
-  st.textContent = PAD.listen ? `Drücke jetzt die neue Taste für „${PAD_ACTIONS.find(a => a[0] === PAD.listen)[1]}“ … (Esc/abwarten = abbrechen)`
+  const gp = getPad(), st = $('padStatus'), L = PAD.listen;
+  const step = PAD.queue.length || (L && PAD.wizard) ? ` (noch ${PAD.queue.length} danach)` : '';
+  st.textContent = L ? (L.type === 'axis'
+      ? `Bewege jetzt den Stick für „${PAD_AXES.find(a => a[0] === L.key)[1]}“ ${PAD_AXES.find(a => a[0] === L.key)[2]} …${step}`
+      : `Drücke jetzt die Taste für „${PAD_ACTIONS.find(a => a[0] === L.key)[1]}“ …${step}`) + '  (Esc = abbrechen)'
     : gp ? '✅ Verbunden: ' + gp.id.replace(/\(.*\)/, '').trim().slice(0, 50) : 'Kein Controller erkannt – drücke einen Knopf am Controller.';
-  st.classList.toggle('ok', !!gp && !PAD.listen);
+  st.classList.toggle('ok', !!gp && !L);
+  const isL = (t, k) => L && L.type === t && L.key === k;
+  $('padAxList').innerHTML = PAD_AXES.map(([k, label]) =>
+    `<div class="padRow" data-row-axis="${k}"><span>${label}</span><button class="${isL('axis', k) ? 'listen' : 'sec'}" data-axis="${k}">${isL('axis', k) ? '…' : axisLabel(k)}</button></div>`).join('');
   $('padList').innerHTML = PAD_ACTIONS.map(([k, label]) =>
-    `<div class="padRow"><span>${label}</span><button class="${PAD.listen === k ? 'listen' : 'sec'}" data-pad="${k}">${PAD.listen === k ? '…' : PAD_SHORT[PCFG.map[k]] || '?'}</button></div>`).join('');
+    `<div class="padRow" data-row-btn="${PCFG.map[k]}"><span>${label}</span><button class="${isL('btn', k) ? 'listen' : 'sec'}" data-pad="${k}">${isL('btn', k) ? '…' : PAD_SHORT[PCFG.map[k]] || 'Taste ' + PCFG.map[k]}</button></div>`).join('');
+  $('padWizard').textContent = PAD.wizard ? '■ Einrichten abbrechen' : '▶ Alles der Reihe nach einrichten (Sticks + Tasten)';
   $('padSensIn').value = PCFG.sens; $('padSensVal').textContent = PCFG.sens.toFixed(2);
   $('padDeadIn').value = PCFG.dead; $('padDeadVal').textContent = Math.round(PCFG.dead * 100) + ' %';
-  $('padInvY').textContent = 'Y-Achse umkehren: ' + (PCFG.invY ? 'AN' : 'AUS');
-  $('padSwap').textContent = 'Sticks tauschen: ' + (PCFG.swap ? 'AN' : 'AUS');
+  $('padInvY').textContent = 'Blick-Y umkehren: ' + (PCFG.invY ? 'AN' : 'AUS');
   $('padAssist').textContent = 'Zielhilfe: ' + (PCFG.assist ? 'AN' : 'AUS');
   $('padRumble').textContent = 'Vibration: ' + (PCFG.rumble ? 'AN' : 'AUS');
   renderPadHelp();
   if (PAD.focus && !document.body.contains(PAD.focus)) {   // Liste neu gebaut: Fokus wiederherstellen
-    const k = PAD.focus.dataset && PAD.focus.dataset.pad;
-    padSetFocus(k ? document.querySelector(`[data-pad="${k}"]`) : null);
+    const d = PAD.focus.dataset || {};
+    padSetFocus(d.pad ? document.querySelector(`[data-pad="${d.pad}"]`) : d.axis ? document.querySelector(`[data-axis="${d.axis}"]`) : null);
   }
 }
 function renderPadHelp() {
   const s = k => `<b>${PAD_SHORT[PCFG.map[k]]}</b>`;
-  const L = PCFG.swap ? 'R' : 'L', R = PCFG.swap ? 'L' : 'R';
+  const L = axisLabel('moveY').split(' ')[0], R = axisLabel('lookX').split(' ')[0];
   document.querySelectorAll('.padKeys').forEach(el => el.innerHTML = `<b>🎮 Controller</b><br>
-    <b>${L}-Stick</b> laufen/fahren · ${s('sprint')} sprinten · <b>${R}-Stick</b> umsehen · ${s('fire')} schießen · ${s('aim')} zielen<br>
+    <b>${L}</b> laufen/fahren · ${s('sprint')} sprinten · <b>${R}</b> umsehen · ${s('fire')} schießen · ${s('aim')} zielen<br>
     ${s('jump')} springen/Wheelie · ${s('crouch')} ducken · ${s('reload')} nachladen · ${s('ride')} Moped · ${s('nade')} Granate · ${s('knife')} Messer<br>
     ${s('prev')} ${s('next')} Waffe · ${s('shopW')} Ladenwaffe · ${s('inspect')} ansehen · ${s('inv')} Inventar · ${s('board')} Punkte · ${s('pause')} Pause<br>
     <span style="opacity:.8">Belegung ändern: Optionen → Controller anpassen</span>`);
 }
-function startListen(k) { PAD.listen = k; PAD.listenT = 6; renderPadCfg(); }
+function startListen(key, type = 'btn', keepRest = false) {
+  const gp = getPad();
+  PAD.listen = { type, key }; PAD.listenT = 8;
+  if (!keepRest || !PAD.base.length) PAD.base = gp ? gp.axes.slice() : [];   // Ruhestellung merken (manche Trigger ruhen bei -1)
+  PAD.waitRelease = true;                  // erst loslassen, dann zählt die nächste Bewegung
+  renderPadCfg();
+}
+function stopListen() { PAD.listen = null; PAD.queue = []; PAD.wizard = false; renderPadCfg(); }
+function nextListen() {
+  if (PAD.queue.length) { const [t, k] = PAD.queue.shift(); startListen(k, t, true); }
+  else { if (PAD.wizard) showPadToast('✅ Fertig eingerichtet!'); PAD.listen = null; PAD.wizard = false; renderPadCfg(); }
+}
 function assignPad(btn) {
-  const k = PAD.listen; PAD.listen = null;
+  const k = PAD.listen.key;
   const old = PCFG.map[k];
   for (const a in PCFG.map) if (a !== k && PCFG.map[a] === btn) PCFG.map[a] = old;   // doppelt belegt → Tasten tauschen
-  PCFG.map[k] = btn; savePad(); renderPadCfg();
+  PCFG.map[k] = btn; savePad();
   sndBeep(880, 0.08, 0.1, 'triangle');
   showPadToast(`${PAD_ACTIONS.find(a => a[0] === k)[1]} → ${PAD_NAMES[btn] || 'Taste ' + btn}`);
+  nextListen();
 }
-$('padList').addEventListener('click', e => { const b = e.target.closest('[data-pad]'); if (b) startListen(b.dataset.pad); });
+function assignAxis(ax, val) {
+  const k = PAD.listen.key, def = PAD_AXES.find(a => a[0] === k);
+  const inv = Math.sign(val) !== def[3];
+  const old = PCFG.axes[k].a;
+  for (const o in PCFG.axes) if (o !== k && PCFG.axes[o].a === ax) PCFG.axes[o].a = old;   // Achse schon vergeben → tauschen
+  PCFG.axes[k] = { a: ax, inv }; savePad();
+  sndBeep(880, 0.08, 0.1, 'triangle');
+  showPadToast(`${def[1]} → ${axisLabel(k)}`);
+  nextListen();
+}
+$('padList').addEventListener('click', e => { const b = e.target.closest('[data-pad]'); if (b) { PAD.queue = []; PAD.wizard = false; startListen(b.dataset.pad, 'btn'); } });
+$('padAxList').addEventListener('click', e => { const b = e.target.closest('[data-axis]'); if (b) { PAD.queue = []; PAD.wizard = false; startListen(b.dataset.axis, 'axis'); } });
+$('padWizard').onclick = () => {
+  if (PAD.wizard) return stopListen();
+  PAD.queue = [...PAD_AXES.map(a => ['axis', a[0]]), ...PAD_ACTIONS.map(a => ['btn', a[0]])];
+  PAD.wizard = true; PAD.base = []; nextListen();
+};
+
+/* ---------- Live-Anzeige: beide Sticks (wie belegt), alle Achsen und Tasten ---------- */
+function drawPadViz(gp) {
+  const cv = $('padViz'), g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  const stick = (cx, title, kx, ky) => {
+    const R = 46, cy = 66;
+    g.strokeStyle = '#3f5a3f'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+    g.strokeStyle = 'rgba(255,204,51,.35)'; g.beginPath(); g.arc(cx, cy, R * PCFG.dead, 0, 7); g.stroke();   // toter Bereich
+    g.strokeStyle = 'rgba(255,255,255,.12)'; g.beginPath(); g.moveTo(cx - R, cy); g.lineTo(cx + R, cy); g.moveTo(cx, cy - R); g.lineTo(cx, cy + R); g.stroke();
+    const x = gp ? padAxis(gp, kx) : 0, y = gp ? padAxis(gp, ky) : 0, on = Math.hypot(x, y) > PCFG.dead;
+    g.fillStyle = on ? '#ffcc33' : '#8aa08a'; g.beginPath(); g.arc(cx + x * R, cy + y * R, 9, 0, 7); g.fill();
+    g.fillStyle = '#cfe0cf'; g.font = 'bold 13px sans-serif'; g.textAlign = 'center'; g.fillText(title, cx, 138);
+  };
+  stick(62, 'Laufen', 'moveX', 'moveY');
+  stick(178, 'Umsehen', 'lookX', 'lookY');
+  // alle Achsen als Balken
+  const axes = gp ? gp.axes : [], n = Math.max(4, axes.length);
+  g.textAlign = 'left'; g.font = '11px sans-serif';
+  for (let i = 0; i < Math.min(n, 8); i++) {
+    const y = 14 + i * 16, x0 = 262, w = 150, v = axes[i] || 0;
+    const used = Object.values(PCFG.axes).some(c => c.a === i);
+    g.fillStyle = used ? '#cfe0cf' : '#6f826f'; g.fillText(AXIS_NAMES[i] || 'Achse ' + i, x0, y + 4);
+    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x0 + 70, y - 5, w, 10);
+    g.fillStyle = Math.abs(v) > 0.5 ? '#ffcc33' : '#5fa36a'; g.fillRect(x0 + 70 + w / 2, y - 5, v * w / 2, 10);
+  }
+  // Tasten als Punkte
+  const bs = gp ? gp.buttons : [];
+  for (let i = 0; i < Math.min(bs.length || 17, 17); i++) {
+    const on = bs[i] && (bs[i].pressed || bs[i].value > 0.35), x = 262 + (i % 9) * 28, y = 150 - (i < 9 ? 16 : 2) - 0;
+    g.fillStyle = on ? '#ffcc33' : 'rgba(255,255,255,.1)'; g.beginPath(); g.arc(x + 8, y - 6, 8, 0, 7); g.fill();
+    g.fillStyle = on ? '#1d1600' : '#8aa08a'; g.font = 'bold 8px sans-serif'; g.textAlign = 'center'; g.fillText(PAD_SHORT[i] || i, x + 8, y - 3);
+  }
+  // gedrückte Tasten in der Liste aufleuchten lassen
+  document.querySelectorAll('#padList .padRow').forEach(r => { const b = bs[+r.dataset.rowBtn]; r.classList.toggle('hot', !!(b && (b.pressed || b.value > 0.35))); });
+  document.querySelectorAll('#padAxList .padRow').forEach(r => r.classList.toggle('hot', !!gp && Math.abs(padAxis(gp, r.dataset.rowAxis)) > 0.5));
+}
 $('padSensIn').oninput = e => { PCFG.sens = parseFloat(e.target.value); savePad(); $('padSensVal').textContent = PCFG.sens.toFixed(2); };
 $('padDeadIn').oninput = e => { PCFG.dead = parseFloat(e.target.value); savePad(); $('padDeadVal').textContent = Math.round(PCFG.dead * 100) + ' %'; };
-for (const [id, key] of [['padInvY', 'invY'], ['padSwap', 'swap'], ['padAssist', 'assist'], ['padRumble', 'rumble']])
+for (const [id, key] of [['padInvY', 'invY'], ['padAssist', 'assist'], ['padRumble', 'rumble']])
   $(id).onclick = () => { PCFG[key] = !PCFG[key]; savePad(); renderPadCfg(); if (key === 'rumble' && PCFG.rumble) { PAD.lastUse = performance.now(); rumble(200, 0.6, 0.6); } };
-$('padReset').onclick = () => { PCFG = PAD_DEFAULT(); PAD.listen = null; savePad(); renderPadCfg(); showPadToast('Standard-Belegung wiederhergestellt'); };
-$('padClose').onclick = () => { PAD.listen = null; $('padCfg').classList.add('hidden'); };
-$('btnPadCfg').onclick = () => { PAD.listen = null; renderPadCfg(); $('padCfg').classList.remove('hidden'); };
-document.addEventListener('keydown', e => { if (e.code === 'Escape' && PAD.listen) { PAD.listen = null; renderPadCfg(); } });
+$('padReset').onclick = () => { PCFG = PAD_DEFAULT(); savePad(); stopListen(); showPadToast('Standard-Belegung wiederhergestellt'); };
+$('padClose').onclick = () => { stopListen(); $('padCfg').classList.add('hidden'); };
+$('btnPadCfg').onclick = () => { stopListen(); $('padCfg').classList.remove('hidden'); };
+document.addEventListener('keydown', e => { if (e.code === 'Escape' && PAD.listen) stopListen(); });
 renderPadCfg();
 
 /* ---------- Menüs mit dem Controller bedienen ---------- */
@@ -172,7 +260,7 @@ function padMenu(gp, pressed, dt) {
   const layer = padLayer(); if (!layer) return;
   const items = padItems(layer); if (!items.length) return;
   if (!items.includes(PAD.focus)) padSetFocus(layer.id === 'pause' ? (items.find(e => e.id === 'btnResume') || items[0]) : layer.id === 'menu' ? (items.find(e => e.id === 'btnQuick') || items[0]) : items[0]);
-  const ax = padDz(gp.axes[0] || 0), ay = padDz(gp.axes[1] || 0), b = i => gp.buttons[i] && gp.buttons[i].pressed;
+  const ax = padDz(padAxis(gp, 'moveX')), ay = padDz(padAxis(gp, 'moveY')), b = i => gp.buttons[i] && gp.buttons[i].pressed;
   const dir = b(12) || ay < -0.5 ? 'up' : b(13) || ay > 0.5 ? 'down' : b(14) || ax < -0.5 ? 'left' : b(15) || ax > 0.5 ? 'right' : '';
   PAD.menuT -= dt;
   if (dir && (dir !== PAD.menuDir || PAD.menuT <= 0)) {
@@ -201,8 +289,8 @@ function padMenu(gp, pressed, dt) {
 /* ---------- Steuerung im Spiel (frei belegbar) ---------- */
 function padGame(gp, pressed, released, dt) {
   const M = PCFG.map, on = a => pressed(M[a]), off = a => released(M[a]);
-  let lx = padDz(gp.axes[0] || 0), ly = padDz(gp.axes[1] || 0), rx = padDz(gp.axes[2] || 0), ry = padDz(gp.axes[3] || 0);
-  if (PCFG.swap) [lx, ly, rx, ry] = [rx, ry, lx, ly];
+  const lx = padDz(padAxis(gp, 'moveX')), ly = padDz(padAxis(gp, 'moveY')), rx = padDz(padAxis(gp, 'lookX'));
+  let ry = padDz(padAxis(gp, 'lookY'));
   if (PCFG.invY) ry = -ry;
   if (lx || ly) { touchIn.mx = lx; touchIn.my = ly; PAD.moved = true; }
   else if (PAD.moved) { touchIn.mx = touchIn.my = 0; PAD.moved = false; }
@@ -239,9 +327,10 @@ function padGame(gp, pressed, released, dt) {
 
 function pollGamepad(dt) {
   const gp = getPad();
-  if (PAD.listen) {   // wartet auf eine neue Taste
+  if (!$('padCfg').classList.contains('hidden')) drawPadViz(gp);
+  if (PAD.listen) {   // wartet auf eine neue Taste / Stick-Bewegung
     PAD.listenT -= dt;
-    if (PAD.listenT <= 0) { PAD.listen = null; renderPadCfg(); }
+    if (PAD.listenT <= 0) { stopListen(); showPadToast('Abgebrochen (keine Eingabe)'); }
   }
   if (!gp) return;
   const cur = gp.buttons.map(x => !!(x.pressed || x.value > 0.35));
@@ -251,8 +340,17 @@ function pollGamepad(dt) {
     if (!document.body.classList.contains('hasPad')) { document.body.classList.add('hasPad'); renderPadCfg(); }
   }
   if (PAD.listen) {
-    const i = cur.findIndex((v, k) => v && !PAD.prev[k]);
-    if (i >= 0) assignPad(i);
+    const moved = gp.axes.map((v, k) => v - (PAD.base[k] || 0));
+    if (PAD.waitRelease) {   // erst alles loslassen (Stick in Ruhe, keine Taste), dann zählt die nächste Eingabe
+      if (!cur.some(Boolean) && moved.every(d => Math.abs(d) < 0.3)) PAD.waitRelease = false;
+    } else if (PAD.listen.type === 'btn') {
+      const i = cur.findIndex((v, k) => v && !PAD.prev[k]);
+      if (i >= 0) assignPad(i);
+    } else {
+      let best = -1, bv = 0.6;
+      moved.forEach((d, k) => { if (Math.abs(d) > bv) { bv = Math.abs(d); best = k; } });
+      if (best >= 0) assignAxis(best, gp.axes[best] - (PAD.base[best] || 0));
+    }
     PAD.prev = cur; return;
   }
   const overlay = ['padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
