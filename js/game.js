@@ -7,8 +7,8 @@ const me = { pos: new THREE.Vector3(0, 0, 0), vel: new THREE.Vector3(), yaw: 0, 
   crouch: false, crouchT: 0, slideT: 0, slideDir: new THREE.Vector3(), sneak: false, h: PH, nades: 2,
   knifeT: 0, throwT: 0, drawT: 0, inspectT: 0, pumpT: 0, boltT: 0, recoilP: 0, recoilY: 0, swayX: 0, swayY: 0, landT: 0, shake: 0, airVy: 0 };
 const START_WEAPON = 3;  // Pistole – alles andere muss man finden
-const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21;
-const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : (WEAPONS[w] ? WEAPONS[w].short : '?');
+const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21, CAR_W = 22;
+const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : w === CAR_W ? 'ÜBERFAHREN' : (WEAPONS[w] ? WEAPONS[w].short : '?');
 let lastWTap = 0;
 let myId = null, isHost = false, running = false, locked = false, roomCode = '';
 let world = { players: {}, mode: 'ffa' };

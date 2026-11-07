@@ -159,7 +159,7 @@ function hostHandle(from, m) {
     // Abstand: Host kennt die Position ~50 ms verzögert, darum auch die mitgeschickte Position gelten lassen (wenn plausibel)
     let dist = Math.hypot(p.x - v.x, p.z - v.z);
     if (m.p && Math.hypot(m.p[0] - p.x, m.p[2] - p.z) < 4) dist = Math.min(dist, Math.hypot(m.p[0] - v.x, m.p[2] - v.z));
-    if (dist > 3.6) return sendTo(from, { t: 'enterFail', r: 'far' });
+    if (dist > (v.kind === 'car' ? 4.6 : 3.6)) return sendTo(from, { t: 'enterFail', r: 'far' });
     for (const o of vehicles) if (o.d === from) o.d = 0;
     v.d = from;
     sendTo(from, { t: 'entered', v: m.v });

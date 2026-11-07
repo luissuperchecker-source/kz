@@ -166,6 +166,13 @@
   #padToast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px); z-index: 60; background: rgba(15,20,16,.92); color: #ffcc33;
     border: 1px solid #5a4a1a; border-radius: 10px; padding: 9px 16px; font-weight: 700; font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; }
   #padToast.on { opacity: 1; transform: translate(-50%, 0); }
+  /* Jobs */
+  #jobHud { position: fixed; left: 50%; top: 92px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 12px; background: rgba(8,14,20,.78);
+    border: 1px solid #37c8ff; border-radius: 12px; padding: 8px 16px 8px 10px; color: #e8f6ff; font-size: 13.5px; line-height: 1.45; pointer-events: none; max-width: calc(100vw - 40px); }
+  #jobHud.late { border-color: #ff5a4a; }
+  #jobArrow { font-size: 26px; color: #37c8ff; width: 30px; text-align: center; transition: transform .08s linear; }
+  #jobHint { position: fixed; left: 50%; bottom: 210px; transform: translateX(-50%); z-index: 6; background: rgba(20,16,4,.82); border: 1px solid #ffcc33;
+    border-radius: 10px; padding: 8px 16px; color: #ffe9a8; font-size: 14px; text-align: center; pointer-events: none; }
   #padCfg { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); }
   #padCfg h2 { margin: 0 0 6px; color: #ffcc33; font-family: Rajdhani, sans-serif; letter-spacing: 2px; font-size: 26px; }
   .padPanel { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -251,7 +258,7 @@
     <label for="nameIn" style="margin-top:0">Dein Name</label>
     <input id="nameIn" type="text" maxlength="16" placeholder="z. B. Luis">
     <label for="mapIn">Karte</label>
-    <select id="mapIn"><option value="tokio">🗼 Tokio – große Stadt mit Hochstraße</option><option value="hafen">⚓ Hafenviertel – klassisch, mit Simson-Crosspark</option></select>
+    <select id="mapIn"><option value="tokio">🗼 Tokio – große Stadt mit Hochstraße</option><option value="hafen">⚓ Hafenviertel – klassisch, mit Simson-Crosspark</option><option value="welt">🌍 Welt – riesig: Stadt, Dorf, Hof, Wald, Autos &amp; Jobs</option></select>
     <button id="btnQuick" class="bigPlay">▶ SCHNELLSPIEL GEGEN BOTS</button>
     <div class="card">
       <h3>MIT FREUNDEN SPIELEN</h3>
@@ -440,13 +447,14 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261107-125344"></script>
-<script src="js/map.js?v=20261107-125344"></script>
-<script src="js/models.js?v=20261107-125344"></script>
-<script src="js/game.js?v=20261107-125344"></script>
-<script src="js/vehicles.js?v=20261107-125344"></script>
-<script src="js/net.js?v=20261107-125344"></script>
-<script src="js/ui.js?v=20261107-125344"></script>
-<script src="js/gamepad.js?v=20261107-125344"></script>
+<script src="js/core.js?v=20261107-182442"></script>
+<script src="js/map.js?v=20261107-182442"></script>
+<script src="js/models.js?v=20261107-182442"></script>
+<script src="js/game.js?v=20261107-182442"></script>
+<script src="js/vehicles.js?v=20261107-182442"></script>
+<script src="js/net.js?v=20261107-182442"></script>
+<script src="js/ui.js?v=20261107-182442"></script>
+<script src="js/jobs.js?v=20261107-182442"></script>
+<script src="js/gamepad.js?v=20261107-182442"></script>
 </body>
 </html>

@@ -166,14 +166,61 @@ function makeMoped(paint) {
   scene.add(root);
   return { root, wf, wr, stand, steer };
 }
+/* ---------- Auto (Sportwagen-Karosserie aus map.js), vorne = +x, 4,6 m lang ---------- */
+const CAR_WHEEL_R = 0.36;
+function makeCar(paint) {
+  const root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const body = [
+    { geo: CAR_BODY_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] }, { geo: CAR_CABIN_GEO, mat: CAR_GLASS, p: [0, 0, 0], r: [0, 0, 0] },
+    B(0.3, 0.04, 1.7, CARBON, 2.08, 0.2, 0), B(0.4, 0.18, 1.6, CARBON, -2.2, 0.3, 0),
+    B(0.06, 0.03, 0.7, TAILLIGHT, -2.28, 0.82, 0), B(0.4, 0.045, 1.95, CARBON, -1.95, 1.33, 0, 0, 0, 0.12),
+  ];
+  for (const s of [-1, 1]) body.push(
+    B(0.85, 0.26, 0.06, CAR_BLACK, -0.75, 0.6, s * 0.985, 0, 0, 0.18), B(2.3, 0.07, 0.05, CARBON, 0.05, 0.23, s * 0.95),
+    B(0.42, 0.035, 0.2, HEADLIGHT, 1.9, 0.62, s * 0.62, 0, s * 0.4, -0.26), B(0.08, 0.13, 0.5, CAR_BLACK, 2.27, 0.36, s * 0.55),
+    B(0.04, 0.04, 0.62, TAILLIGHT, -2.27, 0.8, s * 0.48), B(0.16, 0.08, 0.1, paint, 0.5, 0.93, s * 0.97), B(0.04, 0.04, 0.16, CAR_BLACK, 0.5, 0.9, s * 0.87),
+    B(0.05, 0.36, 0.05, CARBON, -1.92, 1.12, s * 0.48), B(0.4, 0.17, 0.035, CARBON, -1.95, 1.3, s * 1.0),
+    { geo: new THREE.CylinderGeometry(0.06, 0.06, 0.18, 12), mat: CHROME, p: [-2.3, 0.5, s * 0.12], r: [0, 0, Math.PI / 2] },
+    { geo: ARCH_GEO, mat: CAR_BLACK, p: [1.42, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] }, { geo: ARCH_GEO, mat: CAR_BLACK, p: [-1.45, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] });
+  root.add(partsToGroup(body, true));
+  // Räder: Lenk-Gelenk (vorne) → drehendes Rad mit Reifen, Felge, Speichen
+  const spinners = [], fronts = [];
+  for (const wx of [1.42, -1.45]) for (const s of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(wx, CAR_WHEEL_R, s * 0.9); root.add(pivot);
+    const spin = new THREE.Group(); pivot.add(spin);
+    const parts = [
+      { geo: new THREE.CylinderGeometry(CAR_WHEEL_R, CAR_WHEEL_R, 0.3, 24), mat: TIRE, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(CAR_WHEEL_R * 0.74, CAR_WHEEL_R * 0.74, 0.31, 24), mat: RIM, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), mat: CAR_BLACK, p: [0, 0, s * 0.16], r: [Math.PI / 2, 0, 0] },
+    ];
+    for (let k = 0; k < 10; k++) parts.push({ geo: SPOKE_GEO[0], mat: CHROME, p: [0, 0, s * 0.15], r: [0, 0, k / 10 * Math.PI] });
+    spin.add(partsToGroup(parts, true));
+    pivot.add(partsToGroup([B(0.16, 0.1, 0.06, CALIPER, 0.13, 0.08, s * 0.1, 0, 0, 0.6)], true));
+    spinners.push(spin); if (wx > 0) fronts.push(pivot);
+  }
+  scene.add(root);
+  const dummy = new THREE.Group();
+  return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true };
+}
+const CAR_PAINTS = [0xc0262b, 0x1f5fe0, 0xf2f2f2, 0x18191b, 0x5cc21c, 0xffc300, 0x7a7f86, 0xff7300]
+  .map(c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.25, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.3 }));
+
 /* ---------- Zustand ---------- */
 // Für alle Spieler gleich (Abstellplätze aus der Karte); Host verteilt Position/Fahrer per Snapshot
 const vehicles = MAP_VEHICLES.map((v, i) => {
-  const m = makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
-  return { i, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
+  const kind = v.kind || 'moped';
+  const m = kind === 'car' ? makeCar(CAR_PAINTS[i % CAR_PAINTS.length]) : makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
+  return { i, kind, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
 });
 const RIDER_BACK = 0.42, RIDER_UP = 0.1;   // Sitzposition des Fahrers relativ zum Moped
 const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Sprünge
+// Fahrzeug-Eigenschaften: Sitz, Größe, Tempo, Lenkung, Kamera, Ein-/Ausstieg
+const VK = {
+  moped: { name: 'Moped', back: RIDER_BACK, up: RIDER_UP, r: PR, h: 1.3, max: 16.8, acc: 6.5, top: 18, brake: 14, rev: -3.5, coast: 1.6, steer: 2.1, steerHi: 14,
+    camD: 4.2, camH: 1.55, eyeUp: 1.5, eyeF: 0.08, eyeSide: 0, exitSide: 1.1, exitBack: 1.5, enter: 3.0, farDraw: 70 },
+  car: { name: 'Auto', back: 0.1, up: 0, r: 1.25, h: 1.4, max: 32, acc: 8.5, top: 35, brake: 22, rev: -7, coast: 2.6, steer: 1.6, steerHi: 34,
+    camD: 7.2, camH: 2.4, eyeUp: 1.08, eyeF: -0.15, eyeSide: -0.38, exitSide: 2.0, exitBack: 3.3, enter: 3.8, farDraw: 140 },
+};
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
 
@@ -181,11 +228,11 @@ let myRider = null;
 const rideLeft = { v: -1, t: 0 };
 const freeForMe = v => !v.d || v.d === myId && ride.v !== v.i || (rideLeft.v === v.i && performance.now() - rideLeft.t < 1500);
 function nearestFreeVehicle() {
-  let best = -1, bd = 3.0;
+  let best = -1, bd = 1e9;
   for (const v of vehicles) {
     if (!freeForMe(v)) continue;
     const d = Math.hypot(v.x - me.pos.x, v.z - me.pos.z);
-    if (d < bd && Math.abs(v.y - me.pos.y) < 2.2) { bd = d; best = v.i; }
+    if (d < VK[v.kind].enter && d < bd && Math.abs(v.y - me.pos.y) < 2.2) { bd = d; best = v.i; }
   }
   return best;
 }
@@ -198,7 +245,7 @@ function toggleRide() {
   const i = nearestFreeVehicle();
   if (i < 0) {
     // Moped in der Nähe, aber besetzt?
-    if (vehicles.some(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < 3)) showMsg('Dieses Moped ist besetzt');
+    const busy = vehicles.find(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < VK[v.kind].enter); if (busy) showMsg(busy.kind === 'car' ? 'Dieses Auto ist besetzt' : 'Dieses Moped ist besetzt');
     return;
   }
   const t0 = enterPending = performance.now();
@@ -209,26 +256,27 @@ function toggleRide() {
 // Antwort vom Host, wenn das Aufsteigen nicht geklappt hat
 function enterFailed(reason) {
   enterPending = 0;
-  showMsg(reason === 'busy' ? 'Dieses Moped ist besetzt' : 'Zu weit weg – näher ans Moped gehen');
+  showMsg(reason === 'busy' ? 'Das ist schon besetzt' : 'Zu weit weg – näher rangehen');
 }
 function startRide(i) {
   const v = vehicles[i]; if (!v || ride.v === i || !me.alive) return;
   enterPending = 0; rideLeft.v = -1;
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
+  ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
-  myRider.g.visible = true; setAvatarGun(myRider, me.weapon);
+  myRider.g.visible = v.kind !== 'car'; setAvatarGun(myRider, me.weapon);
   engineSound(true);
-  showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie · E absteigen');
+  showMsg(v.kind === 'car' ? 'Eingestiegen!  W Gas · S Bremse/rückwärts · A/D lenken · E aussteigen' : 'Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie · E absteigen');
 }
 function exitRide(silent) {
   if (ride.v < 0) return;
   const v = vehicles[ride.v];
   // neben dem Moped absteigen: links, sonst rechts, hinten, vorne – nie in eine Wand oder Schanze
-  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
-  const spots = [[-sx * 1.1, -sz * 1.1], [sx * 1.1, sz * 1.1], [-fx * 1.5, -fz * 1.5], [fx * 1.6, fz * 1.6], [-sx * 1.8, -sz * 1.8], [sx * 1.8, sz * 1.8]];
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw), K = VK[v.kind], S = K.exitSide, Bk = K.exitBack;
+  const spots = [[-sx * S, -sz * S], [sx * S, sz * S], [-fx * Bk, -fz * Bk], [fx * Bk * 1.05, fz * Bk * 1.05], [-sx * S * 1.6, -sz * S * 1.6], [sx * S * 1.6, sz * S * 1.6]];
   const p = new THREE.Vector3();
   let placed = false;
   for (const [ox, oz] of spots) {
@@ -256,16 +304,17 @@ function updateRide(dt) {
   let thr = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
   if (touchIn.mx || touchIn.my) { thr = -touchIn.my; steer = -touchIn.mx; }
   // Gas / Bremse / Rückwärts
-  if (thr > 0) ride.speed += (ride.speed < 0 ? 14 : 6.5 * (1 - ride.speed / 18)) * thr * dt;
-  else if (thr < 0) ride.speed += (ride.speed > 0.3 ? -14 : -3) * -thr * dt;
-  else ride.speed -= Math.sign(ride.speed) * Math.min(Math.abs(ride.speed), 1.6 * dt);
-  ride.speed = Math.max(-3.5, Math.min(16.8, ride.speed));   // ca. 60 km/h Spitze
+  const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car';
+  if (thr > 0) ride.speed += (ride.speed < 0 ? K.brake : K.acc * (1 - ride.speed / K.top)) * thr * dt;
+  else if (thr < 0) ride.speed += (ride.speed > 0.3 ? -K.brake : -K.acc * 0.45) * -thr * dt;
+  else ride.speed -= Math.sign(ride.speed) * Math.min(Math.abs(ride.speed), K.coast * dt);
+  ride.speed = Math.max(K.rev, Math.min(K.max, ride.speed));   // Moped ca. 60 km/h, Auto ca. 115 km/h
   // Lenken: bei Tempo weniger stark, rückwärts umgekehrt
   const sp = Math.abs(ride.speed);
   // Wheelie: Leertaste (Handy: SPRUNG) während der Fahrt → Vorderrad hoch. Mit W geht es höher,
   // S drückt es runter. Wer zu lange Vollgas gibt, kippt nach hinten über.
   const now0 = performance.now() / 1000;
-  const wantW = keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
+  const wantW = !isCar && keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
   ride.whCreep = wantW && thr > 0 ? (ride.whCreep || 0) + dt * 0.045 : Math.max(0, (ride.whCreep || 0) - dt * 0.3);
   let wt = wantW ? 0.42 + Math.max(0, thr) * 0.24 + Math.min(0.08, sp * 0.005) + ride.whCreep + Math.sin(now0 * 2.3) * 0.03 : 0;
   if (thr < 0) wt = Math.min(wt, 0.08);
@@ -282,13 +331,13 @@ function updateRide(dt) {
     if (ride.whT > 1.5 && ride.whT < 5) showMsg(`Wheelie ${ride.whT.toFixed(1)} s`);
     ride.whT = 0;
   }
-  const turn = steer * Math.min(1, sp / 3) * (2.1 - Math.min(1.2, sp / 14)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
+  const turn = steer * Math.min(1, sp / 3) * (K.steer - Math.min(K.steer * 0.57, sp / K.steerHi)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
   ride.yaw += turn * dt;
-  ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
+  ride.lean += ((isCar ? steer * Math.min(1, sp / 15) * 0.05 : -steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
   // Lenker sichtbar einschlagen: langsam weit, schnell nur wenig
-  ride.st = (ride.st || 0) + (steer * (0.1 + 0.36 * Math.max(0, 1 - sp / 9)) - (ride.st || 0)) * Math.min(1, dt * 9);
+  ride.st = (ride.st || 0) + (steer * (isCar ? 0.1 + 0.42 * Math.max(0, 1 - sp / 16) : 0.1 + 0.36 * Math.max(0, 1 - sp / 9)) - (ride.st || 0)) * Math.min(1, dt * 9);
   // Eintauchen beim Bremsen, Heck runter beim Gasgeben
-  const diveT = thr < 0 && ride.speed > 1 ? -0.045 : thr > 0 && sp < 12 ? 0.018 : 0;
+  const diveT = (thr < 0 && ride.speed > 1 ? -0.045 : thr > 0 && sp < 12 ? 0.018 : 0) * (isCar ? 0.45 : 1);
   ride.dive = (ride.dive || 0) + (diveT - (ride.dive || 0)) * Math.min(1, dt * 6);
   ride.thr = thr;
   ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
@@ -317,7 +366,7 @@ function updateRide(dt) {
   if (ride.blocked && sp > 2.5) { if (sp > 8) { sndThud(0.8); me.shake = Math.max(me.shake, 0.4); } ride.speed *= 0.25; }
   if (ride.pos.y < -10) ride.pos.set(0, 2, 0);
   // Spielerposition = auf dem Sitz
-  me.pos.set(ride.pos.x - Math.cos(ride.yaw) * RIDER_BACK, ride.pos.y + RIDER_UP, ride.pos.z + Math.sin(ride.yaw) * RIDER_BACK);
+  me.pos.set(ride.pos.x - Math.cos(ride.yaw) * K.back, ride.pos.y + K.up, ride.pos.z + Math.sin(ride.yaw) * K.back);
   me.vel.set(ride.vel.x, 0, ride.vel.z); me.onGround = true;
   const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh; v.st = ride.st;
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
@@ -329,13 +378,14 @@ function updateRide(dt) {
   // Zielen (Schießen / Rechtsklick) = Ego-Ansicht mit der Waffe direkt neben dir, sonst Ansicht von hinten
   ride.fp = (ride.fp || 0) + ((aiming ? 1 : 0) - (ride.fp || 0)) * Math.min(1, dt * 11);
   const fpK = ride.fp * ride.fp * (3 - 2 * ride.fp);
-  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + 1.55 - (ride.land || 0) * 0.3 + (ride.wh || 0) * 0.5, ride.pos.z);
+  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + K.camH - (ride.land || 0) * 0.3 + (ride.wh || 0) * 0.5, ride.pos.z);
   const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
-  let dist = 4.2;
+  let dist = K.camD;
   const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(0.6, hit.dist - 0.3);   // nicht durch Wände schauen
   camera.position.copy(target).addScaledVector(back, dist);
-  const [ef, eu] = wheelieShift(ride.wh || 0, 0.6 - RIDER_BACK, RIDER_UP + 1.5);
-  const eye = new THREE.Vector3(me.pos.x + Math.cos(ride.yaw) * (0.08 + ef), me.pos.y + 1.5 + eu + Math.sin(performance.now() / 45) * 0.003 * Math.min(1, sp / 4), me.pos.z - Math.sin(ride.yaw) * (0.08 + ef));  camera.position.lerp(eye, fpK);
+  const [ef0, eu] = wheelieShift(ride.wh || 0, 0.6 - RIDER_BACK, RIDER_UP + 1.5), ef = ef0 + K.eyeF - 0.08;
+  const eyeSx = Math.sin(ride.yaw) * K.eyeSide, eyeSz = Math.cos(ride.yaw) * K.eyeSide;
+  const eye = new THREE.Vector3(me.pos.x + Math.cos(ride.yaw) * (0.08 + ef) + eyeSx, me.pos.y + (isCar ? K.eyeUp : 1.5 + eu) + Math.sin(performance.now() / 45) * 0.003 * Math.min(1, sp / 4), me.pos.z - Math.sin(ride.yaw) * (0.08 + ef) + eyeSz);  camera.position.lerp(eye, fpK);
   camera.rotation.set(me.pitch, me.yaw, ride.lean * 0.45 * fpK);
   // Schießen und Nachladen während der Fahrt
   const w = WEAPONS[me.weapon], now = performance.now() / 1000;
@@ -348,29 +398,44 @@ function updateRide(dt) {
   camera.rotation.x += me.recoilP; camera.rotation.y += me.recoilY;
   const targetFov = ride.fp > 0.5 ? (me.scoped ? w.zoom : fovBase + Math.min(4, sp * 0.25)) : fovBase + Math.min(10, sp * 0.6);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix();
-  engineSound(true, ride.speed, thr);
+  engineSound(true, ride.speed, thr, ride.kind);
+  if (isCar && sp > 7) runOver(sp);
   viewKnife.visible = false; viewNade.visible = false;
   if (ride.fp > 0.6) { me.bob += dt * sp * 0.6; animateViewModel(dt, w); }   // Waffe in der Hand wie zu Fuß
   else viewGun.visible = false;
 }
 document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse = performance.now(); });
+// Mit dem Auto Gegner anfahren: je nach Tempo viel Schaden (pro Gegner höchstens einmal pro Sekunde)
+function runOver(sp) {
+  const now = performance.now();
+  for (const id in world.players) {
+    if (id === myId || friendly(id)) continue;
+    const p = world.players[id]; if (!p.alive) continue;
+    if (Math.hypot(p.x - ride.pos.x, p.z - ride.pos.z) > 2.1 || Math.abs(p.y - ride.pos.y) > 1.6) continue;
+    if (now - (ride.runT[id] || 0) < 1000) continue;
+    ride.runT[id] = now;
+    net.send({ t: 'hit', target: id, dmg: Math.round(Math.min(150, sp * 6)), w: CAR_W, head: false });
+    showHitmarker(false); sndThud(0.9); me.shake = Math.max(me.shake, 0.35); ride.speed *= 0.85;
+  }
+}
 
 /* ---------- Darstellung aller Mopeds ---------- */
 function updateVehicles(dt) {
   for (const id in avatars) { const a = avatars[id]; if (!(a.flags & 8) && a.g.rotation.x) a.g.rotation.x = 0; }   // abgestiegen: wieder aufrecht
   for (const v of vehicles) {
-    const m = v.mesh;
+    const m = v.mesh, K = VK[v.kind], isCar = v.kind === 'car';
     let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null, st = 0;
     if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = (ride.pitch || 0) + (ride.dive || 0); wh = ride.wh || 0; st = ride.st || 0; }
     else if (v.d && avatars[v.d] && avatars[v.d].g.visible) {
       // Fremdes Moped: an die (weich abgespielte) Figur des Fahrers koppeln
       rider = avatars[v.d];
       const a = rider.g; yaw = a.rotation.y + Math.PI / 2;
-      x = a.position.x + Math.cos(yaw) * RIDER_BACK; z = a.position.z - Math.sin(yaw) * RIDER_BACK; y = a.position.y - RIDER_UP;
+      x = a.position.x + Math.cos(yaw) * K.back; z = a.position.z - Math.sin(yaw) * K.back; y = a.position.y - K.up;
       v.whS = (v.whS || 0) + ((v.wh || 0) - (v.whS || 0)) * Math.min(1, dt * 10); wh = v.whS;
       v.stS = (v.stS || 0) + ((v.st || 0) - (v.stS || 0)) * Math.min(1, dt * 10); st = v.stS;
     }
     m.steer.rotation.y = st;
+    if (isCar) for (const f of m.fronts) f.rotation.y = st;
     // Geschwindigkeit fürs Raddrehen
     const moved = Math.hypot(x - v.rx, z - v.rz);
     if (v.i !== ride.v) {   // fremde Mopeds: Neigung aus Bewegung (Schanze hoch/runter, Sprünge)
@@ -380,23 +445,24 @@ function updateVehicles(dt) {
     }
     v.rx = x; v.rz = z; v.ry = y;
     const fwd = Math.cos(yaw) * 1, dirSign = ((x - (m.root.position.x)) * Math.cos(yaw) - (z - m.root.position.z) * Math.sin(yaw)) >= 0 ? 1 : -1;
-    v.spin += moved / WHEEL_R * dirSign;
-    m.wf.rotation.z = m.wr.rotation.z = -v.spin;
+    v.spin += moved / (isCar ? CAR_WHEEL_R : WHEEL_R) * dirSign;
+    if (isCar) for (const s of m.spinners) s.rotation.z = -v.spin; else m.wf.rotation.z = m.wr.rotation.z = -v.spin;
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
     // Weit entfernte Mopeds nicht zeichnen (sie sind sehr detailliert, aus 70 m sieht man sie kaum)
-    const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > 70 && v.i !== ride.v;
+    const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > K.farDraw && v.i !== ride.v;
     m.root.visible = !far;
     const shadow = dCam < 32 || v.i === ride.v;   // Schatten nur bei nahen Mopeds
     if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh) o.castShadow = shadow; }); }
     // Wheelie: um den Hinterrad-Aufstandspunkt nach hinten kippen
     const [wf, wu] = wheelieShift(wh, 0.6, 0);
     // Motor läuft: leichtes Zittern (Zweitakter)
-    const vib = !parked && !far ? Math.sin(performance.now() * 0.09 + v.i) * 0.0025 : 0;
+    const vib = !parked && !far ? Math.sin(performance.now() * 0.09 + v.i) * (isCar ? 0.0008 : 0.0025) : 0;
     const landDip = v.i === ride.v ? -(ride.land || 0) * 0.07 : 0;
     m.root.position.set(x + Math.cos(yaw) * wf, y + wu + vib + landDip, z - Math.sin(yaw) * wf);
-    m.root.rotation.set(parked ? 0.12 : lean, yaw, pitch + wh);
-    if (rider) {   // fremder Fahrer kippt mit, Fuß runter im Stand, Hände am Lenker
+    m.root.rotation.set(parked && !isCar ? 0.12 : lean, yaw, pitch + wh);
+    if (rider && isCar) rider.g.visible = false;   // im Auto sitzt man drinnen
+    else if (rider) {   // fremder Fahrer kippt mit, Fuß runter im Stand, Hände am Lenker
       const [sf] = wheelieShift(wh, 0.6 - RIDER_BACK, RIDER_UP);
       rider.g.rotation.order = 'YXZ'; rider.g.rotation.x = wh * 0.9;
       rider.g.position.x += Math.cos(yaw) * sf; rider.g.position.z -= Math.sin(yaw) * sf;
@@ -408,14 +474,15 @@ function updateVehicles(dt) {
       const gas = v.i === ride.v ? (ride.thr || 0) > 0 : moved / Math.max(dt, 1e-3) > 1;
       if (v.smokeT <= 0) {
         v.smokeT = gas ? 0.09 : 0.35;
-        const ex = m.root.localToWorld(new THREE.Vector3(-0.9, 0.335, 0.18));
+        const ex = m.root.localToWorld(isCar ? new THREE.Vector3(-2.4, 0.5, 0.12) : new THREE.Vector3(-0.9, 0.335, 0.18));
         puff(ex, 0xc8c8c8, gas ? 0.22 : 0.14, gas ? 1.1 : 0.8, new THREE.Vector3(-Math.cos(yaw) * 0.6, 0.35, Math.sin(yaw) * 0.6), { opacity: gas ? 0.28 : 0.16, grow: 2.2, fadeIn: 0.05 });
       }
     }
     void fwd;
   }
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
-  if (myRider && ride.v >= 0) {
+  if (myRider && ride.v >= 0 && ride.kind === 'car') myRider.g.visible = false;
+  else if (myRider && ride.v >= 0) {
     myRider.g.visible = (ride.fp || 0) < 0.45;   // in der Ego-Ansicht eigene Figur ausblenden
     myRider.g.rotation.order = 'YXZ';
     const [sf, su] = wheelieShift(ride.wh || 0, 0.6 - RIDER_BACK, RIDER_UP);
@@ -449,20 +516,23 @@ function riderTwist(a, aimYaw, dt) {
 
 /* ---------- Motorgeräusch (Zweitakter: knatternd) ---------- */
 let eng = null;
-function engineSound(on, speed = 0, thr = 0) {
+function engineSound(on, speed = 0, thr = 0, kind = 'moped') {
   if (!actx) return;
-  if (!on) { if (eng) { const t = actx.currentTime; eng.g.gain.setTargetAtTime(0, t, 0.1); const e = eng; setTimeout(() => { try { e.o.stop(); e.o2.stop(); } catch (x) {} }, 600); eng = null; } return; }
+  if (!on || (eng && eng.kind !== kind)) { if (eng) { const t = actx.currentTime; eng.g.gain.setTargetAtTime(0, t, 0.1); const e = eng; setTimeout(() => { try { e.o.stop(); e.o2.stop(); } catch (x) {} }, 600); eng = null; } if (!on) return; }
+  const car = kind === 'car';
   if (!eng) {
     const o = actx.createOscillator(), o2 = actx.createOscillator(), f = actx.createBiquadFilter(), g = actx.createGain(), am = actx.createGain();
     o.type = 'sawtooth'; o2.type = 'square'; f.type = 'lowpass'; f.frequency.value = 900; g.gain.value = 0;
-    o2.frequency.value = 20; am.gain.value = 0.035;   // „Knattern“ des Zweitakters
+    o2.frequency.value = 20; am.gain.value = car ? 0.012 : 0.035;   // Moped: „Knattern“ des Zweitakters, Auto: ruhiges Brummen
     o.connect(f); f.connect(g); g.connect(master); o2.connect(am); am.connect(g.gain);
     o.start(); o2.start();
-    eng = { o, o2, f, g };
+    eng = { o, o2, f, g, kind };
   }
   const t = actx.currentTime, sp = Math.abs(speed);
-  eng.o.frequency.setTargetAtTime(38 + sp * 7 + thr * 14, t, 0.08);
-  eng.o2.frequency.setTargetAtTime(14 + sp * 2.2 + thr * 5, t, 0.08);
-  eng.f.frequency.setTargetAtTime(600 + sp * 80 + thr * 500, t, 0.1);
-  eng.g.gain.setTargetAtTime(0.05 + thr * 0.05 + sp * 0.003, t, 0.1);
+  // Auto: Gänge – die Drehzahl fällt bei jedem Gangwechsel wieder ab
+  const rpm = car ? (sp % 8.5) / 8.5 + Math.min(1, sp / 30) * 0.4 : 0;
+  eng.o.frequency.setTargetAtTime(car ? 32 + rpm * 46 + thr * 8 : 38 + sp * 7 + thr * 14, t, 0.08);
+  eng.o2.frequency.setTargetAtTime(car ? 10 + rpm * 14 : 14 + sp * 2.2 + thr * 5, t, 0.08);
+  eng.f.frequency.setTargetAtTime(car ? 320 + rpm * 420 + thr * 260 : 600 + sp * 80 + thr * 500, t, 0.1);
+  eng.g.gain.setTargetAtTime(car ? 0.05 + thr * 0.035 : 0.05 + thr * 0.05 + sp * 0.003, t, 0.1);
 }

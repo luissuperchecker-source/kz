@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261107-125344 durch eine Versionsnummer ersetzt */
-const BUILD = '20261107-125344';
+/* Update-Prüfung: beim Veröffentlichen wird 20261107-182442 durch eine Versionsnummer ersetzt */
+const BUILD = '20261107-182442';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -23,7 +23,7 @@ document.getElementById('btnUpdate').onclick = () => location.reload();
 const MAP_ID = (() => {
   let m = 'tokio';
   try { m = new URLSearchParams(location.search).get('map') || localStorage.getItem('kz_map') || 'tokio'; } catch (e) {}
-  return m === 'hafen' ? 'hafen' : 'tokio';
+  return m === 'hafen' || m === 'welt' ? m : 'tokio';
 })();
 // Karte wechseln (im Menü) bzw. auf die Karte des Hosts umschalten: Seite mit ?map=… neu laden
 function switchMap(id, joinCode) {
@@ -294,7 +294,7 @@ const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb9cde0);
-scene.fog = new THREE.Fog(0xb9cde0, 110, 480);
+scene.fog = MAP_ID === 'welt' ? new THREE.Fog(0xb9cde0, 140, 640) : new THREE.Fog(0xb9cde0, 110, 480);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 900);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
@@ -554,8 +554,9 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
 }
 (function ground() {
   // Asphalt über die ganze Spielfläche (Tokio: x/z -101 … 101; Hafenviertel: x -62 … 56, z -62 … 62)
-  const hafen = MAP_ID === 'hafen', FW = hafen ? 118 : 203, FD = hafen ? 124 : 203;
-  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(FW, FD)), pbr('asphalt', 3, {}, FW / 3, FD / 3));
+  const hafen = MAP_ID === 'hafen', welt = MAP_ID === 'welt', FW = hafen ? 118 : welt ? 610 : 203, FD = hafen ? 124 : welt ? 610 : 203;
+  // Welt: Wiese als Boden (Straßen kommen als Asphaltstreifen darauf), sonst Asphalt
+  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(FW, FD)), welt ? pbr('grass', 2, {}, FW / 5, FD / 5) : pbr('asphalt', 3, {}, FW / 3, FD / 3));
   floor.rotation.x = -Math.PI / 2; floor.position.x = hafen ? -3 : 0; floor.receiveShadow = true;
   scene.add(floor); mapMeshes.push(floor);
   // Hügel per Rauschfunktion
@@ -571,12 +572,12 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
   // Hügel rund um die (quadratische) Karte, im Osten Hafenbecken
   // Abstand zum Rand: Stadt + Skyline reichen bis ~225 m, erst dahinter beginnen die Hügel
   const mapEdge = hafen ? (x, z) => Math.max(Math.abs(x + 3), z > 0 ? Math.max(0, z - 70) : -z)
-    : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
+    : welt ? (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 232 : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
   window.mapEdge = mapEdge;
   const heightAt = (x, z) => {
     const edge = mapEdge(x, z);
     const hills = sstep(68, 200, edge) * (fbm(x * 0.008 + 3, z * 0.008) * 70 + 4) + sstep(63, 85, edge) * fbm(x * 0.06, z * 0.06) * 2;
-    const sea = hafen ? sstep(54, 62, x) : sstep(101, 108, x);
+    const sea = welt ? 0 : hafen ? sstep(54, 62, x) : sstep(101, 108, x);
     return hills * (1 - sea) - 6 * sea - 0.06;
   };
   const geo = new THREE.PlaneGeometry(1000, 1000, 120, 120); geo.rotateX(-Math.PI / 2);

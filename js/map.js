@@ -340,6 +340,8 @@ function car(x, z, alongX) {
   const yaw = (alongX ? 0 : -Math.PI / 2) + (srand() < 0.5 ? Math.PI : 0) + srnd(-0.25, 0.25);
   MAP_VEHICLES.push({ x, z, yaw });
 }
+// Fahrbares Auto abstellen (yaw: Fahrtrichtung, 0 = +x)
+function carSpot(x, z, yaw) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car' }); }
 function truck(x, z, alongZ) {
   // Fahrerhaus + Kofferaufbau
   const cab = MAT.ctrRed;
@@ -1214,10 +1216,269 @@ function buildHafenMap() {
   );
 }
 
+/* ======================= Riesige Karte „Welt“ (x/z -300 … 300): Großstadt, Dorf, Bauernhof, Wald, Landstraßen ======================= */
+window.MAP_ADDR = [];   // Lieferadressen (Haustüren) für Jobs
+window.MAP_JOBS = [];   // Firmen mit Jobs
+const STREET_NAMES = ['Hauptstraße', 'Lindenstraße', 'Bahnhofstraße', 'Schulstraße', 'Gartenweg', 'Kirchplatz', 'Bergstraße', 'Mühlenweg', 'Rosenstraße',
+  'Am Markt', 'Goethestraße', 'Parkallee', 'Dorfstraße', 'Feldweg', 'Industriestraße', 'Schillerstraße', 'Ahornweg', 'Brunnenstraße', 'Ringstraße', 'Talweg'];
+function addAddr(x, z, area) {
+  const n = window.MAP_ADDR.length;
+  window.MAP_ADDR.push({ x, z, area, label: STREET_NAMES[(n * 7 + 3) % STREET_NAMES.length] + ' ' + (1 + (n * 13) % 48) });
+}
+function buildWeltMap() {
+  const S = 300;
+  const white = new THREE.MeshStandardMaterial({ color: 0xe0ded4, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
+  const yel = new THREE.MeshStandardMaterial({ color: 0xd8b23a, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
+  MAT.road = pbr('asphalt', 3, { mat: { polygonOffset: true, polygonOffsetFactor: -1 } });
+  MAT.rampWood = pbr('wood', 2, { mat: { color: new THREE.Color(1.35, 1.2, 1.0) } });
+  MAT.dirt = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x6e5034), mat: { color: new THREE.Color(0.68, 0.6, 0.52) }, normalScale: 1.6 });
+  const field = hex => pbr('grass', 4, { map: tintedTex('grass', hex), mat: { color: new THREE.Color(1, 1, 1) } });
+  const F_WHEAT = field(0xcfae55), F_GREEN = field(0x7aa645), F_PLOW = field(0x6a4a30), F_RAPE = field(0xd9cf3a);
+
+  /* --- Rand: Hecke + unsichtbare Wand --- */
+  for (const s of [-1, 1]) {
+    addBox(0, 0, s * (S + 1), 2 * S + 4, 1.6, 1.2, HEDGE_MAT, 1, { decor: true, round: 0.4 }); addBox(s * (S + 1), 0, 0, 1.2, 1.6, 2 * S + 4, HEDGE_MAT, 1, { decor: true, round: 0.4 });
+    collider(0, 0, s * (S + 1.5), 2 * S + 6, 14, 2); collider(s * (S + 1.5), 0, 0, 2, 14, 2 * S + 6);
+  }
+
+  /* --- Straßen-Werkzeug: Asphalt + Mittellinie + Randlinien (achsparallel) --- */
+  const road = (x0, z0, x1, z1, w, center = 'dash', mat = MAT.road) => {
+    const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0), L = alongX ? Math.abs(x1 - x0) : Math.abs(z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    decalT(cx, cz, alongX ? L : w, alongX ? w : L, mat, 3, 0, 0.006);
+    if (mat !== MAT.road) return;
+    for (const sd of [-1, 1]) alongX ? decalT(cx, cz + sd * (w / 2 - 0.4), L, 0.15, white, 0, 0, 0.012) : decalT(cx + sd * (w / 2 - 0.4), cz, 0.15, L, white, 0, 0, 0.012);
+    if (center === 'dash') for (let t = -L / 2 + 2; t < L / 2 - 2; t += 6) alongX ? decalT(cx + t, cz, 3, 0.15, white, 0, 0, 0.013) : decalT(cx, cz + t, 0.15, 3, white, 0, 0, 0.013);
+    if (center === 'solid') alongX ? decalT(cx, cz, L, 0.2, yel, 0, 0, 0.013) : decalT(cx, cz, 0.2, L, yel, 0, 0, 0.013);
+  };
+  // Bundesstraßen durch die ganze Karte (Leitplanken an den Landstücken)
+  road(-S, 0, S, 0, 13, 'solid'); road(0, -S, 0, S, 13, 'solid');
+  for (let t = -290; t < 290; t += 4) {
+    if (Math.abs(t) < 14) continue;
+    const rural = (x, z) => !(x > 25 && z < -25) && !(x < -25 && z > 25);   // nicht in Stadt/Dorf
+    if (rural(t, -7.5)) { addBox(t, 0.5, -7.3, 4, 0.3, 0.15, MAT.metal, 1, { decor: true, round: 0 }); }
+    if (rural(t, 7.5)) { addBox(t, 0.5, 7.3, 4, 0.3, 0.15, MAT.metal, 1, { decor: true, round: 0 }); }
+    if (rural(-7.5, t)) addBox(-7.3, 0.5, t, 0.15, 0.3, 4, MAT.metal, 1, { decor: true, round: 0 });
+    if (rural(7.5, t)) addBox(7.3, 0.5, t, 0.15, 0.3, 4, MAT.metal, 1, { decor: true, round: 0 });
+  }
+  // Ortsschilder
+  const townSign = (x, z, rot, txt) => { addBox(x, 0, z, 0.12, 2.2, 0.12, MAT.metal, 1, { round: 0.05 }); tkSign(x, 2.3, z, 2.6, 0.9, rot, tkSignMat(txt, '#f2d21b', '#111111', false)); };
+  townSign(32, -10, Math.PI / 2, 'GROSSSTADT'); townSign(-32, 10, -Math.PI / 2, 'BIRKENDORF'); townSign(10, 32, 0, 'HOF HUBER'); townSign(-10, -32, Math.PI, 'WALDSEE');
+
+  /* ===== GROSSSTADT (Nordosten, x 30 … 290, z -290 … -30) ===== */
+  const CX = [40, 100, 160, 220, 280], CZ = [-40, -100, -160, -220, -280];
+  for (const x of CX) road(x, -290, x, -30, 9);
+  for (const z of CZ) road(30, z, 290, z, 9);
+  const cityMats = [TKM.glassBlue, TKM.office, TKM.officeDark, TKM.tile, TKM.glassGreen];
+  const germanShops = ['BÄCKEREI', 'APOTHEKE', 'SUPERMARKT', 'CAFÉ', 'BANK', 'KIOSK', 'FRISEUR', 'HOTEL', 'KINO', 'BUCHLADEN', 'ELEKTRO', 'DÖNER'];
+  let shopN = 0;
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    const x0 = CX[i] + 4.5, x1 = CX[i + 1] - 4.5, z1 = CZ[j] - 4.5, z0 = CZ[j + 1] + 4.5, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    decalT(cx, cz, x1 - x0, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.008);
+    const key = i + ',' + j;
+    if (key === '0,0') {   // POST (Firma)
+      building(cx - 6, cz + 2, 22, 14, 2, MAT.plaster, { s: [-4, 4] }, { crates: 3 });
+      tkSign(cx - 6, 6.9, cz + 9.05, 9, 1.6, 0, tkSignMat('📦 POST', '#ffcc00', '#1a1a1a', false));
+      window.MAP_JOBS.push({ id: 'post', x: cx - 6, z: cz + 13 });
+      for (let k = 0; k < 2; k++) carSpot(cx + 14, cz - 6 + k * 6, Math.PI / 2);
+      tkTower(cx + 12, cz - 14, 14, 10, 34, TKM.office);
+    } else if (key === '1,0') {   // TAXI-ZENTRALE (Firma)
+      building(cx, cz - 10, 16, 10, 1, MAT.plaster2, { s: [0] }, { crates: 1 });
+      tkSign(cx, 3.7, cz - 4.95, 8, 1.4, 0, tkSignMat('🚕 TAXI', '#ffd21f', '#111111', false));
+      window.MAP_JOBS.push({ id: 'taxi', x: cx, z: cz - 1 });
+      for (let k = 0; k < 4; k++) { carSpot(cx - 15 + k * 7, cz + 12, -Math.PI / 2); decalT(cx - 15 + k * 7 + 3.5, cz + 12, 0.15, 5, white, 0, 0, 0.012); }
+    } else if (key === '2,1') {   // Rathaus mit Platz und Brunnen
+      building(cx, cz - 8, 24, 14, 3, MAT.plaster, { s: [0] }, { crates: 1 });
+      tkSign(cx, 10.4, cz - 0.95, 10, 1.6, 0, tkSignMat('RATHAUS', '#ffffff', '#1b3a6d', false));
+      const basin = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3.1, 0.7, 24, 1, true)), MAT.concrete); basin.position.set(cx, 0.35, cz + 12); scene.add(basin);
+      const wd = new THREE.Mesh(new THREE.CircleGeometry(2.9, 24), TKM.water); wd.rotation.x = -Math.PI / 2; wd.position.set(cx, 0.5, cz + 12); scene.add(wd);
+      collider(cx, 0, cz + 12, 5.2, 0.7, 5.2); addBox(cx, 0.7, cz + 12, 0.6, 1.6, 0.6, MAT.concrete, 2);
+      for (const sx of [-1, 1]) { bench(cx + sx * 8, cz + 12, false); leafTree(cx + sx * 16, cz + 16, 0.9); }
+    } else if (key === '3,3') {   // Stadtpark
+      decalT(cx, cz, x1 - x0 - 2, z1 - z0 - 2, MAT.grass, 2, 0, 0.01);
+      decalT(cx, cz, 3, z1 - z0 - 2, MAT.concreteFloor, 2.7, 0, 0.012); decalT(cx, cz, x1 - x0 - 2, 3, MAT.concreteFloor, 2.7, 0, 0.012);
+      for (let k = 0; k < 10; k++) leafTree(cx + srnd(-20, 20) + (srand() < 0.5 ? 0 : 0), cz + srnd(-20, 20), srnd(0.8, 1.1));
+      bench(cx + 4, cz, false); bench(cx - 4, cz, false); bench(cx, cz + 4, true);
+    } else if (key === '1,2') {   // Parkplatz mit Autos
+      for (let k = 0; k < 6; k++) { decalT(x0 + 6 + k * 7, cz, 0.15, 5, white, 0, 0, 0.012); if (k % 2 === 0) carSpot(x0 + 9.5 + k * 7, cz, Math.PI / 2); }
+      tkTower(cx, z0 + 9, 30, 12, 22, TKM.tile);
+    } else {   // normale Blöcke: 2–4 Häuser/Türme mit Läden im Erdgeschoss
+      const n = 2 + Math.floor(srand() * 3);
+      const slots = [[x0 + 12, z0 + 12], [x1 - 12, z0 + 12], [x0 + 12, z1 - 12], [x1 - 12, z1 - 12]].sort(() => srand() - 0.5).slice(0, n);
+      for (const [bx, bz] of slots) {
+        const w = srnd(14, 20), d = srnd(14, 20), h = srnd(12, 30) + (i + (3 - j)) * srnd(2, 8);
+        tkTower(bx, bz, w, d, h, cityMats[Math.floor(srand() * cityMats.length)]);
+        const fz = bz > cz ? bz + d / 2 + 0.06 : bz - d / 2 - 0.06;
+        tkSign(bx, 4.8, fz, Math.min(w - 2, 8), 1.3, bz > cz ? 0 : Math.PI, tkSignMat(germanShops[shopN++ % germanShops.length], TK_COLORS[shopN % 8][0], TK_COLORS[shopN % 8][1], false));
+        addAddr(bx, bz > cz ? bz + d / 2 + 1.5 : bz - d / 2 - 1.5, 'stadt');
+      }
+      if (srand() < 0.5) { tkPlanter(cx, cz, 5, 1.2); bench(cx, cz + 2, true); }
+    }
+    // Laternen an den Ecken
+    tkLamp(x0 + 1, z0 + 1, 1, 0); tkLamp(x1 - 1, z1 - 1, -1, 0);
+  }
+  for (const x of CX) for (const z of CZ) if (srand() < 0.6) tkSignal(x + 5, z + 5, -1, 0);
+  // Tankstelle an der großen Kreuzung (Südost-Ecke)
+  for (const [x, z] of [[16, 16], [32, 16], [16, 30], [32, 30]]) addBox(x, 0, z, 0.4, 5, 0.4, MAT.metal, 1);
+  addBox(24, 5, 23, 22, 0.5, 20, TKM.white, 2, { decor: true });
+  tkSign(24, 5.25, 33.05, 8, 0.5, 0, tkSignMat('TANKSTELLE', '#d41f3a', '#ffffff', false));
+  for (const x of [20, 28]) { addBox(x, 0, 21, 0.8, 1.6, 0.6, MAT.ctrRed, 1); addBox(x, 0, 26, 0.8, 1.6, 0.6, MAT.ctrRed, 1); }
+  building(24, 42, 14, 8, 1, MAT.plaster2, { n: [0] }, { crates: 2 });
+  tkSign(24, 3.7, 37.95, 6, 1.1, Math.PI, tkSignMat('SHOP 24/7', '#12a05a', '#ffffff', false));
+  carSpot(24, 18.5, 0); car(36, 24, false); car(36, 27, false);
+  decalT(24, 26, 34, 26, MAT.concreteFloor, 2.7, 0, 0.009);
+
+  /* ===== DORF „Birkendorf“ (Südwesten, x -290 … -30, z 30 … 290) ===== */
+  const DX = [-40, -110, -180, -250], DZ = [40, 110, 180, 250];
+  for (const x of DX) road(x, 30, x, 290, 8);
+  for (const z of DZ) road(-290, z, -30, z, 8);
+  const houseMats = [MAT.plaster, MAT.plaster2, MAT.brick];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+    const x1 = DX[i] - 4, x0 = DX[i + 1] + 4, z0 = DZ[j] + 4, z1 = DZ[j + 1] - 4, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    if (i === 0 && j === 0) {   // Dorfmitte: Marktplatz, Kirche, Pizzeria, Feuerwehr
+      decalT(cx, cz, x1 - x0, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.008);
+      // Kirche mit Turm und Spitze
+      addBox(cx - 14, 0, cz - 9, 12, 9, 22, MAT.plaster, 2.7);
+      addBox(cx - 14, 9, cz - 9, 13, 0.3, 23, MAT.roof, 2.5, { decor: true });
+      addBox(cx - 14, 0, cz - 23, 6, 22, 6, MAT.plaster, 2.7);
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(4.3, 10, 4), TKM.roofTile); spire.position.set(cx - 14, 27, cz - 23); spire.rotation.y = Math.PI / 4; spire.castShadow = true; scene.add(spire);
+      tkSign(cx - 14, 16, cz - 26.05, 2.2, 2.2, Math.PI, tkSignMat('🕒', '#ffffff', '#111111', false, 128, 128));
+      // Pizzeria (Firma)
+      building(cx + 12, cz - 16, 14, 10, 1, MAT.brick, { s: [0] }, { crates: 1 });
+      tkSign(cx + 12, 3.6, cz - 10.95, 8, 1.4, 0, tkSignMat('🍕 PIZZERIA BELLA', '#c0262b', '#ffffff', false));
+      window.MAP_JOBS.push({ id: 'pizza', x: cx + 12, z: cz - 7 });
+      // Feuerwehr
+      addBox(cx + 12, 0, cz + 18, 16, 6, 10, MAT.ctrRed, 2.6);
+      tkSign(cx + 12, 4.5, cz + 12.95, 9, 1.2, Math.PI, tkSignMat('FEUERWEHR', '#ffffff', '#c0262b', false));
+      // Marktbrunnen + Stände
+      addBox(cx, 0, cz, 4, 0.8, 4, TKM.stone, 2); addBox(cx, 0.8, cz, 0.5, 1.6, 0.5, TKM.stone, 1);
+      for (const k of [-1, 1]) { addBox(cx + k * 7, 0, cz + 4, 3, 1, 1.6, MAT.crate, 0); addBox(cx + k * 7, 2.2, cz + 4, 3.4, 0.1, 2.2, MAT.ctrOrange, 2.6, { decor: true }); }
+      for (const [x, z] of [[cx + 6, cz - 6], [cx - 6, cz + 10]]) leafTree(x, z, 0.8);
+      car(cx + 2, cz + 8, true); car(cx - 2, cz + 8, true); car(cx + 20, cz - 6, false);
+      continue;
+    }
+    if (i === 2 && j === 2) {   // Badesee-Wiese
+      decalT(cx, cz, x1 - x0, z1 - z0, MAT.grass, 2, 0, 0.009);
+      const pond = new THREE.Mesh(new THREE.CircleGeometry(14, 32), TKM.water); pond.rotation.x = -Math.PI / 2; pond.position.set(cx, 0.03, cz); pond.userData.noMerge = true; scene.add(pond);
+      for (let gx = -10; gx <= 10; gx += 5) for (let gz = -10; gz <= 10; gz += 5) if (Math.hypot(gx, gz) < 11) collider(cx + gx, 0, cz + gz, 5.5, 3, 5.5);
+      for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2 + 0.3; leafTree(cx + Math.cos(a) * 21, cz + Math.sin(a) * 21, 0.9); }
+      continue;
+    }
+    // Wohnhäuser rundum mit Gärten
+    decalT(cx, cz, x1 - x0, z1 - z0, MAT.grass, 2, 0, 0.009);
+    for (const side of [0, 1]) for (let k = 0; k < 4; k++) {
+      const hx = x0 + 9 + k * ((x1 - x0 - 18) / 3), hz = side ? z1 - 8 : z0 + 8;
+      house(hx, hz, 8, 7, 3.4, houseMats[Math.floor(srand() * 3)]);
+      addAddr(hx, side ? hz + 5.5 : hz - 5.5, 'dorf');
+      if (srand() < 0.5) hedge(hx + 5.5, hz, 1, 7);
+    }
+    for (let k = 0; k < 3; k++) leafTree(cx + srnd(-18, 18), cz + srnd(-8, 8), srnd(0.8, 1.1));
+    if (srand() < 0.6) car(cx + srnd(-10, 10), cz, true);
+    if (srand() < 0.5) carSpot(x1 - 6, cz + srnd(-5, 5), Math.PI / 2);
+  }
+
+  /* ===== BAUERNHOF „Hof Huber“ (Südosten) ===== */
+  road(150, 8, 150, 290, 6, 'none', MAT.dirt); road(8, 150, 290, 150, 6, 'none', MAT.dirt);
+  const FIELDS = window.FARM_FIELDS = [];
+  const fieldMats = [F_WHEAT, F_GREEN, F_PLOW, F_RAPE, F_WHEAT, F_GREEN];
+  let fi = 0;
+  for (const [x0, x1] of [[16, 145], [155, 292]]) for (const [z0, z1] of [[52, 145], [155, 292]]) {
+    if (x0 === 155 && z0 === 155) continue;   // Hofgelände
+    decalT((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, fieldMats[fi++ % fieldMats.length], 4, 0, 0.007);
+    FIELDS.push([x0 + 6, z0 + 6, x1 - 6, z1 - 6]);
+    for (let z = z0 + 3; z < z1; z += 3) decalT((x0 + x1) / 2, z, x1 - x0 - 2, 0.25, F_PLOW, 4, 0, 0.009);   // Furchen
+  }
+  // Hofgebäude
+  decalT(220, 220, 130, 130, MAT.dirt, 4.5, 0, 0.007);
+  house(205, 190, 14, 10, 5, MAT.plaster);   // Bauernhaus
+  addAddr(205, 184, 'hof');
+  addBox(240, 0, 210, 24, 9, 16, MAT.ctrRed, 2.6);   // Scheune
+  addBox(240, 9, 210, 25, 0.4, 17, MAT.roof, 2.5, { decor: true });
+  tkSign(240, 7, 201.95, 10, 1.5, Math.PI, tkSignMat('HOF HUBER', '#ffffff', '#7a1e12', false));
+  window.MAP_JOBS.push({ id: 'farm', x: 228, z: 198 });
+  window.FARM_BARN = [240, 198];
+  for (const [x, z] of [[262, 200], [262, 212]]) {
+    const silo = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3, 16, 24)), MAT.hallMetal); silo.position.set(x, 8, z); silo.castShadow = true; scene.add(silo);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(3, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.hallMetal); cap.position.set(x, 16, z); scene.add(cap);
+    collider(x, 0, z, 5.6, 16, 5.6);
+  }
+  // Traktor (Kulisse + Deckung)
+  addBox(215, 0.6, 230, 3.2, 1.4, 1.9, MAT.ctrGreen, 2.6, { round: 0.15 }); addBox(214.3, 2.0, 230, 1.6, 1.4, 1.6, CAR_GLASS, 0, { decor: true, round: 0.1 });
+  for (const [x, r] of [[213.8, 0.85], [216.6, 0.5]]) for (const s of [-1, 1]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.5, 20), TIRE); wh.rotation.x = Math.PI / 2; wh.position.set(x, r, 230 + s * 1.1); wh.castShadow = true; scene.add(wh); }
+  // Zäune und Strohballen
+  for (let x = 160; x < 290; x += 4) addBox(x, 0.5, 156, 4, 0.12, 0.12, TKM.wood, 1, { decor: true, round: 0 });
+  for (let z = 160; z < 290; z += 4) addBox(156, 0.5, z, 0.12, 0.12, 4, TKM.wood, 1, { decor: true, round: 0 });
+  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
+  for (const [x, z] of [[230, 230], [232, 232], [250, 240], [195, 215], [197, 217]]) { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 16)), hay); m.rotation.z = Math.PI / 2; m.position.set(x, 0.75, z); m.castShadow = true; scene.add(m); collider(x, 0, z, 1.3, 1.5, 1.5); }
+  carSpot(222, 196, Math.PI); car(200, 200, true);
+  // Moto-Hügel am Feldrand
+  addRamp(60, 152, 0, 5, P_TABLE(5, 5, 6, 1.6), MAT.dirt, 3); addRamp(100, 152, 0, 4, P_KICK(4, 1.2), MAT.rampWood);
+
+  /* ===== WALD mit See (Nordwesten) ===== */
+  road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
+  const LX = -205, LZ = -95, LR = 26;   // Waldsee
+  const lake = new THREE.Mesh(new THREE.CircleGeometry(LR, 48), TKM.water); lake.rotation.x = -Math.PI / 2; lake.position.set(LX, 0.03, LZ); lake.userData.noMerge = true; scene.add(lake);
+  for (let gx = -LR + 4; gx < LR; gx += 8) for (let gz = -LR + 4; gz < LR; gz += 8) if (Math.hypot(gx, gz) < LR - 5) collider(LX + gx, 0, LZ + gz, 8.5, 3, 8.5);
+  house(LX + 34, LZ + 18, 7, 6, 3, TKM.wood);   // Hütte
+  addAddr(LX + 34, LZ + 22, 'wald');
+  watchtower(-95, -230, 1);
+  for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, 1.1, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, 0, z, 2, 2, 2); }
+  carSpot(LX + 34, LZ + 30, 0); car(-150, -60, false);
+  // Bäume (instanziert) mit Stamm-Kollision
+  const TN = 420, td = new THREE.Object3D();
+  const leafM = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
+  const trunksI = new THREE.InstancedMesh(trunkGeo, treeTrunkMat, TN), layersI = layerGeos.map(g => new THREE.InstancedMesh(g, leafM, TN));
+  let placed = 0, tries = 0;
+  while (placed < TN && tries++ < 6000) {
+    const x = srnd(-292, -14), z = srnd(-292, -14);
+    if (Math.abs(x + 150) < 7 || Math.abs(z + 150) < 7 || Math.abs(x) < 12 || Math.abs(z) < 12) continue;   // Wege frei
+    if (Math.hypot(x - LX, z - LZ) < LR + 6 || Math.hypot(x - LX - 34, z - LZ - 22) < 12) continue;
+    if (Math.hypot(x + 95, z + 230) < 10 || Math.hypot(x + 240, z + 242) < 10) continue;
+    const s = srnd(0.8, 1.35);
+    td.position.set(x, 0, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
+    trunksI.setMatrixAt(placed, td.matrix); for (const l of layersI) l.setMatrixAt(placed, td.matrix);
+    collider(x, 0, z, 0.6 * s, 4, 0.6 * s);
+    placed++;
+  }
+  trunksI.count = placed; for (const l of layersI) { l.count = placed; l.castShadow = true; scene.add(l); }
+  trunksI.castShadow = true; scene.add(trunksI);
+  // Bäume entlang der Landstraßen
+  for (let t = 52; t <= 280; t += 22) { leafTree(t, 13, 0.9); leafTree(-13, t, 0.9); }
+
+  /* --- Wald außerhalb + Gras --- */
+  const N = 260, dummy = new THREE.Object3D();
+  const farLeafMat = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
+  const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ map: TEX.bark }), N);
+  const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
+  for (let i = 0; i < N; i++) {
+    let x, z; do { x = rnd(-560, 560); z = rnd(-560, 560); } while (window.mapEdge(x, z) < 74);
+    const s = rnd(1.3, 2.3);
+    dummy.position.set(x, window.terrainHeight(x, z) - 0.2, z); dummy.scale.set(s, s * rnd(0.9, 1.3), s); dummy.rotation.y = Math.random() * 6;
+    dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
+  }
+  for (const l of layers) scene.add(l);
+  scene.add(trunks);
+
+  /* --- Mopeds --- */
+  for (const [x, z, ax] of [[-6, -20, false], [6, 40, false], [-60, 8, true], [70, -6, true], [-55, 70, false], [-110, 62, false], [120, -35, true], [230, -100, true], [-150, -20, false], [160, 140, true]]) car(x, z, ax);
+
+  /* --- Waffen zum Aufsammeln --- */
+  MAP_PICKUPS.push(
+    { w: 0, x: 10, y: 0, z: -14 }, { w: 1, x: -14, y: 0, z: 10 }, { w: 0, x: 70, y: 0, z: -50 }, { w: 2, x: 130, y: 0, z: -150 }, { w: 1, x: 190, y: 0, z: -130 },
+    { w: 0, x: 250, y: 0, z: -250 }, { w: 2, x: 70, y: 6.4, z: -68 }, { w: 0, x: -75, y: 0, z: 68 }, { w: 1, x: -145, y: 0, z: 145 }, { w: 0, x: -215, y: 0, z: 192 },
+    { w: 2, x: -95, y: 4, z: -230 }, { w: 0, x: -170, y: 0, z: -95 }, { w: 1, x: -150, y: 0, z: -200 }, { w: 0, x: 205, y: 0, z: 180 }, { w: 1, x: 100, y: 0, z: 80 },
+    { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 },
+  );
+}
+
 // gewählte Karte bauen (Auswahl im Menü, wird beim Laden festgelegt)
 if (MAP_ID === 'hafen') {
   window.MAP_STREETS = [[-14, -62, -6, 131], [-62, -5, 56, 5]]; window.FIRE_POS = [38, -1.2]; window.SHIP_SMOKE = [92, 16, 34];
   buildHafenMap();
+} else if (MAP_ID === 'welt') {
+  window.MAP_STREETS = [[-300, -6.5, 300, 6.5], [-6.5, -300, 6.5, 300], ...[40, 100, 160, 220, 280].map(x => [x - 4.5, -290, x + 4.5, -30]), ...[-40, -100, -160, -220, -280].map(z => [30, z - 4.5, 290, z + 4.5]),
+    ...[-40, -110, -180, -250].map(x => [x - 4, 30, x + 4, 290]), ...[40, 110, 180, 250].map(z => [-290, z - 4, -30, z + 4])];
+  window.FIRE_POS = [9999, 9999]; window.SHIP_SMOKE = [9999, 16, 9999];
+  buildWeltMap();
 } else buildTokyoMap();
 
 /* Alle festen Karten-Objekte pro Material zu einem Objekt zusammenfassen (viel weniger Zeichenaufrufe) */
@@ -1274,7 +1535,10 @@ const SPAWNS_HAFEN = [[-34, -40], [-55, -30], [-20, -36], [-52, -11], [-36, 18],
   [-20, -10], [-20, 10], [0, 8.5], [0, -9], [6, -17.5], [29.6, -24.5], [13.6, -45.5], [50, -22], [26, 28], [5, 38], [40, 12], [20, 56],
   [-4, -56], [52, 45], [-58, 6], [30, -11],
   [-30, 72], [0, 82], [30, 95], [-45, 112], [12, 127], [46, 72], [-56, 90]];
-const SPAWNS = MAP_ID === 'hafen' ? SPAWNS_HAFEN : SPAWNS_TOKIO;
+const SPAWNS_WELT = [[0, -20], [0, 20], [-20, 0], [20, 0], [70, -35], [130, -45], [190, -100], [250, -160], [160, -220], [100, -260], [280, -60], [45, -150],
+  [-75, 40], [-40, 75], [-110, 150], [-180, 110], [-250, 200], [-140, 250], [-60, 250], [150, 40], [150, 120], [200, 150], [260, 150], [150, 250], [100, 100],
+  [-150, -40], [-150, -120], [-150, -250], [-60, -150], [-250, -150], [-171, -65]];
+const SPAWNS = MAP_ID === 'hafen' ? SPAWNS_HAFEN : MAP_ID === 'welt' ? SPAWNS_WELT : SPAWNS_TOKIO;
 
 /* ======================= Kollision (mit Raster für schnelle Suche) ======================= */
 const GRID = 8, grid = new Map();
@@ -1299,9 +1563,9 @@ function nearBoxes(x, z, r) {
     }
   return out;
 }
-let _near = boxes, _h = PH;   // _h = Körperhöhe (kleiner beim Ducken)
+let _near = boxes, _h = PH, _bodyR = PR;   // _h = Körperhöhe (kleiner beim Ducken), _r = Körperradius (Auto größer)
 function overlap(p, b) {
-  return p.x + PR > b.min.x && p.x - PR < b.max.x && p.y + _h > b.min.y && p.y < b.max.y && p.z + PR > b.min.z && p.z - PR < b.max.z;
+  return p.x + _bodyR > b.min.x && p.x - _bodyR < b.max.x && p.y + _h > b.min.y && p.y < b.max.y && p.z + _bodyR > b.min.z && p.z - _bodyR < b.max.z;
 }
 function anyOverlap(p) { for (const b of _near) if (overlap(p, b)) return true; return false; }
 function moveH(e, ax, amt, grounded) {
@@ -1317,14 +1581,14 @@ function moveH(e, ax, amt, grounded) {
       if (!anyOverlap(e.pos)) continue;
       e.pos.y = oy;
     }
-    e.pos[ax] = amt > 0 ? b.min[ax] - PR - 0.001 : b.max[ax] + PR + 0.001;
+    e.pos[ax] = amt > 0 ? b.min[ax] - _bodyR - 0.001 : b.max[ax] + _bodyR + 0.001;
     e.blocked = true;
   }
 }
 function moveBody(e, dx, dy, dz) {
   const n = Math.max(1, Math.ceil(Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) / 0.3));
   _near = nearBoxes(e.pos.x, e.pos.z, 2 + Math.abs(dx) + Math.abs(dz));
-  _h = e.h || PH;
+  _h = e.h || PH; _bodyR = e.r || PR;
   e.blocked = false;
   for (let i = 0; i < n; i++) {
     const was = e.onGround; e.onGround = false;
@@ -1340,7 +1604,7 @@ function moveBody(e, dx, dy, dz) {
   }
   const gEnd = groundH(e.pos.x, e.pos.z, e.pos.y);
   if (e.pos.y < gEnd) { e.pos.y = gEnd; if (e.vel.y < 0) e.vel.y = 0; e.onGround = true; }
-  _near = boxes; _h = PH;
+  _near = boxes; _h = PH; _bodyR = PR;
 }
 /* Strahl gegen Kartenboxen + Boden: liefert {dist, point, normal} (für Schüsse und Sichtlinien) */
 function rayMap(o, d, maxDist = 300) {

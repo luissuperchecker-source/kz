@@ -79,22 +79,23 @@ function updateHUD(dt) {
   drawRadar(dt);
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1;
-  hudSet('rideHint', 'html', ride.v >= 0 ? (TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken · <b>Leertaste</b> Wheelie`)
-    : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – auf das Moped steigen` : '');
+  hudSet('rideHint', 'html', ride.v >= 0 ? (ride.kind === 'car' ? (TOUCH ? `<b>MOPED</b> aussteigen` : `<b>E</b> aussteigen · <b>W</b> Gas · <b>S</b> Bremse/rückwärts · <b>A/D</b> lenken`) : TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken · <b>Leertaste</b> Wheelie`)
+    : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – ${vehicles[near].kind === 'car' ? 'ins Auto einsteigen' : 'auf das Moped steigen'}` : '');
   hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
   hudSet('speedo', 'display', ride.v >= 0 ? 'block' : 'none');
   if (ride.v >= 0) hudSet('speedo', 'html', `${Math.round(Math.abs(ride.speed) * 3.6)}<small>km/h</small>`);
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
+const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : MAP_ID === 'welt' ? { img: null, x0: -304, z0: -304, w: 608, h: 608, ppm: 2, t: 0 }
+  : { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
   const g = c.getContext('2d');
   g.fillStyle = 'rgba(40,46,40,0.9)'; g.fillRect(0, 0, c.width, c.height);
   g.fillStyle = 'rgba(78,82,78,0.95)';   // Straßen
   for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) g.fillRect((x0 - RADAR.x0) * RADAR.ppm, (z0 - RADAR.z0) * RADAR.ppm, (x1 - x0) * RADAR.ppm, (z1 - z0) * RADAR.ppm);
-  const seaX = MAP_ID === 'hafen' ? 55.5 : 101;
+  const seaX = MAP_ID === 'hafen' ? 55.5 : MAP_ID === 'welt' ? 9999 : 101;
   g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((seaX - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
   if (MAP_ID === 'hafen') { g.fillStyle = 'rgba(92,72,48,0.95)'; g.fillRect(0, (62 - RADAR.z0) * RADAR.ppm, (54 - RADAR.x0) * RADAR.ppm, 69 * RADAR.ppm); }   // Crosspark (Erde)
   g.fillStyle = 'rgba(205,150,80,0.9)';   // Schanzen
@@ -137,6 +138,12 @@ function drawRadar(dt) {
   for (let i = 0; i < PICKUPS.length; i++) if (pickActive[i]) {
     const [x, y] = toR(PICKUPS[i].x, PICKUPS[i].z);
     if (Math.hypot(x - R, y - R) < R - 4) { g.fillStyle = 'rgba(255,210,80,.8)'; g.fillRect(x - 1.5, y - 1.5, 3, 3); }
+  }
+  // Firmen mit Jobs (gelb) und aktuelles Job-Ziel (blau, am Rand wenn weiter weg)
+  for (const c of window.MAP_JOBS || []) { const [x, y] = toR(c.x, c.z); if (Math.hypot(x - R, y - R) < R - 6) { g.fillStyle = '#ffcc33'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText('$', x, y + 4); } }
+  if (window.JOB_TGT) {
+    let [x, y] = toR(window.JOB_TGT.x, window.JOB_TGT.z); const d = Math.hypot(x - R, y - R); if (d > R - 7) { x = R + (x - R) / d * (R - 7); y = R + (y - R) / d * (R - 7); }
+    g.fillStyle = '#37c8ff'; g.beginPath(); g.moveTo(x, y - 6); g.lineTo(x + 6, y); g.lineTo(x, y + 6); g.lineTo(x - 6, y); g.closePath(); g.fill();
   }
   // Eigener Pfeil + Sichtkegel
   g.fillStyle = 'rgba(255,255,255,0.08)'; g.beginPath(); g.moveTo(R, R); g.arc(R, R, R, -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6); g.fill();
@@ -243,10 +250,11 @@ function frame(t) {
     updateAvatars(dt);
     updatePickups(now);
     updateHUD(dt);
+    if (window.updateJobs) updateJobs(dt);   // Jobs (jobs.js)
   } else if (!running) {
     // Kamerafahrt im Menü: langsamer Flug über das Hafenviertel
     const a = now * 0.05;
-    const hf = MAP_ID === 'hafen', cx = hf ? -3 : 0, R = hf ? 58 : 75;
+    const hf = MAP_ID === 'hafen', wl = MAP_ID === 'welt', cx = hf ? -3 : wl ? 120 : 0, R = hf ? 58 : wl ? 150 : 75;
     camera.position.set(cx + Math.sin(a) * R, (hf ? 24 : 32) + Math.sin(now * 0.13) * 5, Math.cos(a) * R);
     camera.lookAt(cx + Math.sin(a + 1.2) * 13, hf ? 3 : 6, Math.cos(a + 1.2) * 13);
   }
