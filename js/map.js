@@ -1222,10 +1222,20 @@ function buildHafenMap() {
 window.MAP_ADDR = [];   // Lieferadressen (Haustüren) für Jobs
 window.MAP_JOBS = [];   // Firmen mit Jobs
 const STREET_NAMES = ['Hauptstraße', 'Lindenstraße', 'Bahnhofstraße', 'Schulstraße', 'Gartenweg', 'Kirchplatz', 'Bergstraße', 'Mühlenweg', 'Rosenstraße',
-  'Am Markt', 'Goethestraße', 'Parkallee', 'Dorfstraße', 'Feldweg', 'Industriestraße', 'Schillerstraße', 'Ahornweg', 'Brunnenstraße', 'Ringstraße', 'Talweg'];
-function addAddr(x, z, area) {
-  const n = window.MAP_ADDR.length;
-  window.MAP_ADDR.push({ x, z, area, label: STREET_NAMES[(n * 7 + 3) % STREET_NAMES.length] + ' ' + (1 + (n * 13) % 48) });
+  'Am Markt', 'Goethestraße', 'Parkallee', 'Dorfstraße', 'Feldweg', 'Industriestraße', 'Schillerstraße', 'Ahornweg', 'Brunnenstraße', 'Ringstraße', 'Talweg',
+  'Eichenweg', 'Mozartstraße', 'Sonnenweg', 'Kastanienallee', 'Hafenstraße', 'Wiesenweg', 'Birkenstraße', 'Marktgasse', 'Uhlandstraße', 'Tannenweg', 'Am Bach', 'Lessingstraße'];
+// x/z = Punkt an der Straße (Taxi hält hier), dx/dz = Haustür (hier wird geklingelt)
+// Straßenname nach Straße (Häuserzeile), Hausnummern fortlaufend: eine Seite ungerade, die andere gerade
+const STREET_N = {};
+function addAddr(x, z, area, dx = x, dz = z) {
+  const alongX = Math.abs(dz - z) >= Math.abs(dx - x);   // Tür liegt in z-Richtung von der Straße → Häuserzeile entlang x
+  const line = alongX ? Math.round(z / 6) : Math.round(x / 6), side = alongX ? Math.sign(dz - z) : Math.sign(dx - x);
+  const key = area + (alongX ? 'x' : 'z') + Math.round(line / 12);
+  if (STREET_N['name' + key] === undefined) STREET_N['name' + key] = (STREET_N.next = (STREET_N.next || 0) + 1) - 1;
+  const h = STREET_N['name' + key] % STREET_NAMES.length;
+  STREET_N[key + side] = (STREET_N[key + side] || 0) + 1;
+  const num = STREET_N[key + side] * 2 - (side > 0 ? 1 : 0);
+  window.MAP_ADDR.push({ x, z, area, door: { x: dx, z: dz }, label: STREET_NAMES[h] + ' ' + num });
 }
 /* ---------- Begehbares Einfamilienhaus mit Einrichtung ----------
    face = +1: Haustür zeigt nach +z, -1: nach -z. Vorne Wohnzimmer + Küche, hinten Schlafzimmer. */
@@ -1308,7 +1318,7 @@ function weltPlot(px0, px1, zs, face, zMid, wallMat) {
   leafTree(px0 + 3, gz + face * 2, srnd(0.7, 0.95));
   if (srand() < 0.6) { addBox(px1 - 3, 0, zMid + face * 2.2, 2.4, 2.1, 2, TKM.wood, 2); addBox(px1 - 3, 2.1, zMid + face * 2.2, 2.8, 0.12, 2.4, MAT.roof, 2.5, { decor: true }); }
   else { addBox(px1 - 3.5, 0, gz, 0.08, 1.8, 0.08, MAT.metal, 1, { decor: true, round: 0 }); addBox(px1 - 3.5, 1.8, gz, 2.4, 0.04, 2.4, MAT.metal, 1, { decor: true, round: 0 }); }
-  addAddr(doorX, zs - face * 1.0, 'dorf');
+  addAddr(doorX, zs + face * 0.6, 'dorf', doorX, hz + face * 4.65);
 }
 // Begehbares Geschäftshaus: Laden im Erdgeschoss mit Theke und Regalen, Treppen nach oben, Markise, Schild
 function cityShop(bx, bz, w, d, floors, mat, faceS, shopName, colors) {
@@ -1321,7 +1331,7 @@ function cityShop(bx, bz, w, d, floors, mat, faceS, shopName, colors) {
   addBox(ix1 - 3, 0, bz, 0.7, 1.05, 3.2, MAT.crate, 0);
   for (let k = 0; k < 2; k++) addBox(ix1 - 0.4, 0, bz - d / 4 + k * (d / 2), 0.6, 2.0, d / 3, MAT.metal, 1);
   addBox(bx + 1, 0, bz + (faceS ? -1 : 1) * (d / 2 - 2), w / 3, 1.2, 0.6, MAT.metal, 1);
-  addAddr(bx, fz + out * 2, 'stadt');
+  addAddr(bx + w / 4, fz + out * 3, 'stadt', bx + w / 4, fz + out * 0.7);
 }
 // Hochhaus mit begehbarer Eingangshalle (Glas, Drehtüren-Öffnungen, Empfang, Aufzüge); oben massiv
 function towerLobby(x, z, w, d, h, mat, faceS) {
@@ -1342,7 +1352,7 @@ function towerLobby(x, z, w, d, h, mat, faceS) {
   for (const k of [-1, 0, 1]) addBox(x + k * 2.4, 0, bz, 1.6, 2.4, 0.05, MAT.metal, 1, { decor: true, round: 0 });
   tkPlanter(x0 + 1.4, z + out * (d / 2 - 2), 1.2, 1.2); tkPlanter(x1 - 1.4, z + out * (d / 2 - 2), 1.2, 1.2);
   bench(x - w / 4, z - out * 1, true);
-  addAddr(x, faceS ? z1 + 2 : z0 - 2, 'stadt');
+  addAddr(x - w / 5, faceS ? z1 + 3 : z0 - 3, 'stadt', x - w / 5, faceS ? z1 + 0.7 : z0 - 0.7);
 }
 function buildWeltMap() {
   const S = 300;
@@ -1395,7 +1405,10 @@ function buildWeltMap() {
     decalT(cx, cz, x1 - x0, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.008);
     const key = i + ',' + j;
     if (key === '0,0') {   // POST (Firma)
-      building(cx - 6, cz + 2, 22, 14, 2, MAT.plaster, { s: [-4, 4] }, { crates: 3 });
+      building(cx - 6, cz + 2, 22, 14, 2, MAT.plaster, { s: [-4, 4] }, { crates: 0 });
+      addBox(cx - 2, 0, cz + 3, 5, 1.1, 0.8, MAT.crate, 0); addBox(cx - 2, 1.1, cz + 3, 5.1, 0.06, 0.9, MAT.yellow, 1, { decor: true, round: 0 });   // Schalter
+      for (let k = 0; k < 3; k++) { addBox(cx + 3.6, 0, cz - 2 + k * 2.2, 0.8, 2.2, 1.8, MAT.metal, 1); for (let s = 0; s < 3; s++) crate(cx + 3.6, 0.1 + s * 0.7, cz - 2 + k * 2.2, 0.5); }   // Paketregale
+      window.POST_PICKUP = [cx - 2, cz + 5]; window.POST_CLERK = [cx - 2, cz + 1.8];
       tkSign(cx - 6, 6.9, cz + 9.05, 9, 1.6, 0, tkSignMat('📦 POST', '#ffcc00', '#1a1a1a', false));
       window.MAP_JOBS.push({ id: 'post', x: cx - 6, z: cz + 13 });
       for (let k = 0; k < 2; k++) carSpot(cx + 14, cz - 6 + k * 6, Math.PI / 2);
@@ -1404,6 +1417,7 @@ function buildWeltMap() {
       building(cx, cz - 10, 16, 10, 1, MAT.plaster2, { s: [0] }, { crates: 1 });
       tkSign(cx, 3.7, cz - 4.95, 8, 1.4, 0, tkSignMat('🚕 TAXI', '#ffd21f', '#111111', false));
       window.MAP_JOBS.push({ id: 'taxi', x: cx, z: cz - 1 });
+      window.TAXI_BOSS = [cx + 3, cz - 3.5];
       for (let k = 0; k < 4; k++) { carSpot(cx - 15 + k * 7, cz + 12, -Math.PI / 2); decalT(cx - 15 + k * 7 + 3.5, cz + 12, 0.15, 5, white, 0, 0, 0.012); }
     } else if (key === '2,1') {   // Rathaus mit Platz und Brunnen
       building(cx, cz - 8, 24, 14, 3, MAT.plaster, { s: [0] }, { crates: 1 });
@@ -1465,7 +1479,10 @@ function buildWeltMap() {
       const spire = new THREE.Mesh(new THREE.ConeGeometry(4.3, 10, 4), TKM.roofTile); spire.position.set(cx - 14, 27, cz - 23); spire.rotation.y = Math.PI / 4; spire.castShadow = true; scene.add(spire);
       tkSign(cx - 14, 16, cz - 26.05, 2.2, 2.2, Math.PI, tkSignMat('🕒', '#ffffff', '#111111', false, 128, 128));
       // Pizzeria (Firma)
-      building(cx + 12, cz - 16, 14, 10, 1, MAT.brick, { s: [0] }, { crates: 1 });
+      building(cx + 12, cz - 16, 14, 10, 1, MAT.brick, { s: [0] }, { crates: 0 });
+      addBox(cx + 16, 0, cz - 17.5, 3.2, 1.05, 0.8, MAT.crate, 0); addBox(cx + 16, 1.05, cz - 17.5, 3.3, 0.06, 0.9, TKM.white, 1, { decor: true, round: 0 });   // Theke
+      addBox(cx + 17.5, 0, cz - 20, 2.4, 1.9, 1.2, TKM.stone, 2); addBox(cx + 17.5, 0.6, cz - 19.38, 1.0, 0.55, 0.05, TKM.lantern, 0, { decor: true, round: 0 });   // Pizzaofen
+      window.PIZZA_PICKUP = [cx + 16, cz - 16]; window.PIZZA_CHEF = [cx + 16, cz - 18.6];
       tkSign(cx + 12, 3.6, cz - 10.95, 8, 1.4, 0, tkSignMat('🍕 PIZZERIA BELLA', '#c0262b', '#ffffff', false));
       window.MAP_JOBS.push({ id: 'pizza', x: cx + 12, z: cz - 7 });
       // Feuerwehr
@@ -1516,12 +1533,18 @@ function buildWeltMap() {
   // Hofgebäude
   decalT(220, 220, 130, 130, MAT.dirt, 4.5, 0, 0.007);
   house(205, 190, 14, 10, 5, MAT.plaster);   // Bauernhaus
-  addAddr(205, 184, 'hof');
-  addBox(240, 0, 210, 24, 9, 16, MAT.ctrRed, 2.6);   // Scheune
-  addBox(240, 9, 210, 25, 0.4, 17, MAT.roof, 2.5, { decor: true });
+  addAddr(205, 180, 'hof', 205, 184.4);
+  // Scheune (begehbar, großes Tor nach Norden), innen Stellfläche für die Strohballen
+  wallRun('x', 228, 252, 202.2, 0, 9, 0.4, MAT.ctrRed, [[234, 246, 0, 6]], { round: 0 });
+  wallRun('x', 228, 252, 217.8, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
+  wallRun('z', 202.4, 217.6, 228.2, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
+  wallRun('z', 202.4, 217.6, 251.8, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
+  addBox(240, 9, 210, 25, 0.4, 17, MAT.roof, 2.5, { round: 0 });
+  decalT(240, 210, 23, 15, MAT.dirt, 4.5, 0, 0.013);
+  for (const [x, z] of [[231, 215], [232.4, 215], [231, 213.6]]) crate(x, 0, z, 1.1);
   tkSign(240, 7, 201.95, 10, 1.5, Math.PI, tkSignMat('HOF HUBER', '#ffffff', '#7a1e12', false));
   window.MAP_JOBS.push({ id: 'farm', x: 228, z: 198 });
-  window.FARM_BARN = [240, 198];
+  window.FARM_BARN = [240, 207]; window.FARM_BOSS = [224, 198];
   for (const [x, z] of [[262, 200], [262, 212]]) {
     const silo = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(3, 3, 16, 24)), MAT.hallMetal); silo.position.set(x, 8, z); silo.castShadow = true; scene.add(silo);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(3, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), MAT.hallMetal); cap.position.set(x, 16, z); scene.add(cap);
@@ -1545,7 +1568,7 @@ function buildWeltMap() {
   const lake = new THREE.Mesh(new THREE.CircleGeometry(LR, 48), TKM.water); lake.rotation.x = -Math.PI / 2; lake.position.set(LX, 0.03, LZ); lake.userData.noMerge = true; scene.add(lake);
   for (let gx = -LR + 4; gx < LR; gx += 8) for (let gz = -LR + 4; gz < LR; gz += 8) if (Math.hypot(gx, gz) < LR - 5) collider(LX + gx, 0, LZ + gz, 8.5, 3, 8.5);
   house(LX + 34, LZ + 18, 7, 6, 3, TKM.wood);   // Hütte
-  addAddr(LX + 34, LZ + 22, 'wald');
+  addAddr(LX + 34, LZ + 25, 'wald', LX + 34, LZ + 21.6);
   watchtower(-95, -230, 1);
   for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, 1.1, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, 0, z, 2, 2, 2); }
   carSpot(LX + 34, LZ + 30, 0); car(-150, -60, false);

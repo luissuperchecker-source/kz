@@ -173,6 +173,17 @@
   #jobArrow { font-size: 26px; color: #37c8ff; width: 30px; text-align: center; transition: transform .08s linear; }
   #jobHint { position: fixed; left: 50%; bottom: 210px; transform: translateX(-50%); z-index: 6; background: rgba(20,16,4,.82); border: 1px solid #ffcc33;
     border-radius: 10px; padding: 8px 16px; color: #ffe9a8; font-size: 14px; text-align: center; pointer-events: none; }
+  #jobHud .jTop { font-size: 12px; color: #9fd8ff; }
+  #jobHud .jInfo { font-size: 12.5px; color: #cfe6f5; margin-top: 2px; }
+  .jbar { display: inline-block; width: 54px; height: 7px; background: rgba(255,255,255,.15); border-radius: 4px; vertical-align: middle; overflow: hidden; }
+  .jbar i { display: block; height: 100%; border-radius: 4px; }
+  #jobReceipt { position: fixed; right: 18px; top: 150px; z-index: 7; width: 300px; background: #fbf8ef; color: #2a2a2a; border-radius: 10px; padding: 12px 14px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.45); font-size: 13px; pointer-events: none; font-family: 'Courier New', monospace; }
+  #jobReceipt .rTitle { font-weight: 800; font-family: sans-serif; margin-bottom: 6px; border-bottom: 1px dashed #999; padding-bottom: 5px; }
+  #jobReceipt .rRow { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+  #jobReceipt .rRow b { color: #1d7a2e; white-space: nowrap; }
+  #jobReceipt .rSum { border-top: 1px dashed #999; margin-top: 5px; padding-top: 5px; font-size: 15px; }
+  #jobReceipt .rFoot { font-size: 11px; color: #777; margin-top: 4px; font-family: sans-serif; }
   #padCfg { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); }
   #padCfg h2 { margin: 0 0 6px; color: #ffcc33; font-family: Rajdhani, sans-serif; letter-spacing: 2px; font-size: 26px; }
   .padPanel { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -447,14 +458,14 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261109-175422"></script>
-<script src="js/map.js?v=20261109-175422"></script>
-<script src="js/models.js?v=20261109-175422"></script>
-<script src="js/game.js?v=20261109-175422"></script>
-<script src="js/vehicles.js?v=20261109-175422"></script>
-<script src="js/net.js?v=20261109-175422"></script>
-<script src="js/ui.js?v=20261109-175422"></script>
-<script src="js/jobs.js?v=20261109-175422"></script>
-<script src="js/gamepad.js?v=20261109-175422"></script>
+<script src="js/core.js?v=20261109-181344"></script>
+<script src="js/map.js?v=20261109-181344"></script>
+<script src="js/models.js?v=20261109-181344"></script>
+<script src="js/game.js?v=20261109-181344"></script>
+<script src="js/vehicles.js?v=20261109-181344"></script>
+<script src="js/net.js?v=20261109-181344"></script>
+<script src="js/ui.js?v=20261109-181344"></script>
+<script src="js/jobs.js?v=20261109-181344"></script>
+<script src="js/gamepad.js?v=20261109-181344"></script>
 </body>
 </html>
