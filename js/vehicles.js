@@ -212,6 +212,44 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   const m = kind === 'car' ? makeCar(CAR_PAINTS[i % CAR_PAINTS.length]) : makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
   return { i, kind, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
 });
+// Echtes 3D-Modell (Ferrari aus den three.js-Beispielen, wie in Drift-Welt) – ersetzt die einfachen Autos, sobald es geladen ist
+(function loadFerrari() {
+  if (!vehicles.some(v => v.kind === 'car') || !THREE.GLTFLoader || !THREE.DRACOLoader) return;
+  const BASE = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/models/gltf/';
+  const draco = new THREE.DRACOLoader(); draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/gltf/');
+  const loader = new THREE.GLTFLoader(); loader.setDRACOLoader(draco);
+  loader.load(BASE + 'ferrari.glb', g => {
+    const src = g.scene.children[0];
+    const detail = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 1, roughness: 0.35 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0x141c25, metalness: 0.3, roughness: 0.02, transparent: true, opacity: 0.88 });
+    // Innenraum (Sitze, Leder, Lenkrad, Armaturen) weglassen: ~120.000 Dreiecke, hinter getönten Scheiben kaum zu sehen
+    const inner = o => /interior|leather|steering|seat|dash|brake/i.test((o.name || '') + ' ' + ((o.material && o.material.name) || ''));
+    const drop = []; src.traverse(o => { if (o.isMesh && inner(o)) drop.push(o); });
+    for (const o of drop) o.parent.remove(o);
+    let ao = null;
+    new THREE.TextureLoader().load(BASE + 'ferrari_ao.png', t => {
+      ao = new THREE.MeshBasicMaterial({ map: t, blending: THREE.MultiplyBlending, toneMapped: false, transparent: true, depthWrite: false });
+      for (const v of vehicles) if (v.mesh.gltf && !v.mesh.aoAdded) addAO(v.mesh);
+    });
+    const addAO = m => { const p = new THREE.Mesh(new THREE.PlaneGeometry(0.655 * 4, 1.3 * 4), ao); p.rotation.x = -Math.PI / 2; p.position.y = 0.05; p.renderOrder = 2; m.model.add(p); m.aoAdded = true; };
+    for (const v of vehicles) {
+      if (v.kind !== 'car') continue;
+      const m = v.mesh, model = src.clone(true);
+      const set = (n, mat) => { const o = model.getObjectByName(n); if (o) o.material = mat; };
+      set('body', CAR_PAINTS[v.i % CAR_PAINTS.length]); set('glass', glass);
+      for (const n of ['rim_fl', 'rim_fr', 'rim_rr', 'rim_rl', 'trim']) set(n, detail);
+      const wheels = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'].map(n => model.getObjectByName(n));
+      if (wheels.some(w => !w)) return;
+      wheels.forEach(w => w.rotation.order = 'YXZ');
+      model.traverse(o => { if (o.isMesh) { o.castShadow = false; o.userData.noShadow = true; } });   // Schatten kommt aus dem AO-Bild
+      const holder = new THREE.Group(); holder.rotation.y = -Math.PI / 2; holder.add(model);   // Modell schaut nach -z, bei uns ist vorne +x
+      // Detailstufen: einfaches Auto (weit weg) ↔ Ferrari (eigenes Auto + die 2 nächsten)
+      m.lo = m.root.children.slice(); holder.visible = false; m.root.add(holder); m.hi = holder;
+      m.gltf = true; m.model = model; m.wheels = wheels; m.frontW = [wheels[0], wheels[1]]; m.shadow = undefined;
+      if (ao) addAO(m);
+    }
+  }, undefined, () => {});
+})();
 const RIDER_BACK = 0.42, RIDER_UP = 0.1;   // Sitzposition des Fahrers relativ zum Moped
 const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Sprünge
 // Fahrzeug-Eigenschaften: Sitz, Größe, Tempo, Lenkung, Kamera, Ein-/Ausstieg
@@ -264,6 +302,7 @@ function startRide(i) {
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
   ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
+  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
@@ -293,6 +332,7 @@ function exitRide(silent) {
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
   rideLeft.v = ride.v; rideLeft.t = performance.now();
+  DRIFT.pts = 0; DRIFT.time = 0; driftHud.classList.remove('on'); lastSkid = null;
   ride.v = -1; ride.speed = 0;
   if (myRider) myRider.g.visible = false;
   engineSound(false);
@@ -305,12 +345,15 @@ function updateRide(dt) {
   if (touchIn.mx || touchIn.my) { thr = -touchIn.my; steer = -touchIn.mx; }
   // Gas / Bremse / Rückwärts
   const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car';
-  if (thr > 0) ride.speed += (ride.speed < 0 ? K.brake : K.acc * (1 - ride.speed / K.top)) * thr * dt;
-  else if (thr < 0) ride.speed += (ride.speed > 0.3 ? -K.brake : -K.acc * 0.45) * -thr * dt;
-  else ride.speed -= Math.sign(ride.speed) * Math.min(Math.abs(ride.speed), K.coast * dt);
-  ride.speed = Math.max(K.rev, Math.min(K.max, ride.speed));   // Moped ca. 60 km/h, Auto ca. 115 km/h
+  if (isCar) carDrive(dt, thr, steer, !!keys.Space, !!(touchIn.mx || touchIn.my));   // Auto: Drift-Physik (wie in Drift-Welt)
+  else {
+    if (thr > 0) ride.speed += (ride.speed < 0 ? K.brake : K.acc * (1 - ride.speed / K.top)) * thr * dt;
+    else if (thr < 0) ride.speed += (ride.speed > 0.3 ? -K.brake : -K.acc * 0.45) * -thr * dt;
+    else ride.speed -= Math.sign(ride.speed) * Math.min(Math.abs(ride.speed), K.coast * dt);
+    ride.speed = Math.max(K.rev, Math.min(K.max, ride.speed));   // Moped ca. 60 km/h
+  }
   // Lenken: bei Tempo weniger stark, rückwärts umgekehrt
-  const sp = Math.abs(ride.speed);
+  const sp = isCar ? Math.hypot(ride.vel.x, ride.vel.z) : Math.abs(ride.speed);
   // Wheelie: Leertaste (Handy: SPRUNG) während der Fahrt → Vorderrad hoch. Mit W geht es höher,
   // S drückt es runter. Wer zu lange Vollgas gibt, kippt nach hinten über.
   const now0 = performance.now() / 1000;
@@ -331,16 +374,18 @@ function updateRide(dt) {
     if (ride.whT > 1.5 && ride.whT < 5) showMsg(`Wheelie ${ride.whT.toFixed(1)} s`);
     ride.whT = 0;
   }
-  const turn = steer * Math.min(1, sp / 3) * (K.steer - Math.min(K.steer * 0.57, sp / K.steerHi)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
-  ride.yaw += turn * dt;
-  ride.lean += ((isCar ? steer * Math.min(1, sp / 15) * 0.05 : -steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
-  // Lenker sichtbar einschlagen: langsam weit, schnell nur wenig
-  ride.st = (ride.st || 0) + (steer * (isCar ? 0.1 + 0.42 * Math.max(0, 1 - sp / 16) : 0.1 + 0.36 * Math.max(0, 1 - sp / 9)) - (ride.st || 0)) * Math.min(1, dt * 9);
+  if (!isCar) {
+    const turn = steer * Math.min(1, sp / 3) * (K.steer - Math.min(K.steer * 0.57, sp / K.steerHi)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
+    ride.yaw += turn * dt;
+    ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
+    // Lenker sichtbar einschlagen: langsam weit, schnell nur wenig
+    ride.st = (ride.st || 0) + (steer * (0.1 + 0.36 * Math.max(0, 1 - sp / 9)) - (ride.st || 0)) * Math.min(1, dt * 9);
+    ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
+  }
   // Eintauchen beim Bremsen, Heck runter beim Gasgeben
   const diveT = (thr < 0 && ride.speed > 1 ? -0.045 : thr > 0 && sp < 12 ? 0.018 : 0) * (isCar ? 0.45 : 1);
   ride.dive = (ride.dive || 0) + (diveT - (ride.dive || 0)) * Math.min(1, dt * 6);
   ride.thr = thr;
-  ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
   // Schanzen: am Boden übernimmt das Moped die Steigung als Aufwärtstempo → an der Kante hebt es ab
   const gh0 = groundH(ride.pos.x, ride.pos.z, ride.pos.y), wasAir = !ride.onGround;
   if (ride.onGround) ride.vel.y = ride.climb || 0;
@@ -363,7 +408,12 @@ function updateRide(dt) {
   const pitchT = ride.onGround ? Math.atan2(groundH(ride.pos.x + fx * 0.6, ride.pos.z + fz * 0.6, ride.pos.y) - groundH(ride.pos.x - fx * 0.6, ride.pos.z - fz * 0.6, ride.pos.y), 1.2)
     : Math.atan2(ride.vel.y, Math.max(4, sp)) * 0.7;
   ride.pitch = (ride.pitch || 0) + (pitchT - (ride.pitch || 0)) * Math.min(1, dt * (ride.onGround ? 14 : 3));
-  if (ride.blocked && sp > 2.5) { if (sp > 8) { sndThud(0.8); me.shake = Math.max(me.shake, 0.4); } ride.speed *= 0.25; }
+  if (ride.blocked && sp > 2.5) {
+    if (sp > 8) { sndThud(0.8); me.shake = Math.max(me.shake, 0.4); }
+    ride.speed *= 0.25;
+    if (isCar) { ride.cvx *= 0.3; ride.cvz *= 0.3; ride.yawRate *= 0.3; if (sp > 6 && DRIFT.pts > 0) { showMsg('💥 CRASH! Drift verloren'); DRIFT.pts = 0; DRIFT.time = 0; } }
+  }
+  if (isCar) driftScore(dt);
   if (ride.pos.y < -10) ride.pos.set(0, 2, 0);
   // Spielerposition = auf dem Sitz
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * K.back, ride.pos.y + K.up, ride.pos.z + Math.sin(ride.yaw) * K.back);
@@ -371,9 +421,9 @@ function updateRide(dt) {
   const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh; v.st = ride.st;
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
   const aiming = riderAiming();
-  if (performance.now() - ride.lastMouse > 1500 && sp > 3 && !aiming) {
+  if (performance.now() - ride.lastMouse > (isCar ? 700 : 1500) && sp > (isCar ? 1 : 3) && !aiming) {
     let d = (ride.yaw - Math.PI / 2) - me.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-    me.yaw += d * Math.min(1, dt * 2.5); me.pitch += (-0.15 - me.pitch) * Math.min(1, dt * 2);
+    me.yaw += d * Math.min(1, dt * (isCar ? 3.5 : 2.5)); me.pitch += ((isCar ? -0.2 : -0.15) - me.pitch) * Math.min(1, dt * 2);
   }
   // Zielen (Schießen / Rechtsklick) = Ego-Ansicht mit der Waffe direkt neben dir, sonst Ansicht von hinten
   ride.fp = (ride.fp || 0) + ((aiming ? 1 : 0) - (ride.fp || 0)) * Math.min(1, dt * 11);
@@ -398,13 +448,104 @@ function updateRide(dt) {
   camera.rotation.x += me.recoilP; camera.rotation.y += me.recoilY;
   const targetFov = ride.fp > 0.5 ? (me.scoped ? w.zoom : fovBase + Math.min(4, sp * 0.25)) : fovBase + Math.min(10, sp * 0.6);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix();
-  engineSound(true, ride.speed, thr, ride.kind);
+  engineSound(true, sp * Math.sign(ride.speed || 1), thr, ride.kind, isCar && (ride.drifting || ride.hand));
+  if (isCar) carSkids(dt);
   if (isCar && sp > 7) runOver(sp);
   viewKnife.visible = false; viewNade.visible = false;
   if (ride.fp > 0.6) { me.bob += dt * sp * 0.6; animateViewModel(dt, w); }   // Waffe in der Hand wie zu Fuß
   else viewGun.visible = false;
 }
 document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse = performance.now(); });
+/* ---------- Auto-Fahrphysik aus „Drift-Welt“: Längs- und Quergeschwindigkeit, Reifenhaftung, Handbremse ----------
+   Gas im Drift hält das Heck draußen, Handbremse (Leertaste / Sprung-Taste) bricht das Heck aus, abseits der Straße bremst Gras. */
+function carOnRoad(x, z) {
+  if (MAP_ID !== 'welt') return true;   // Tokio/Hafen: überall Asphalt
+  if (x > 28 && x < 292 && z > -292 && z < -28) return true;   // Großstadt
+  if (x > 8 && x < 46 && z > 8 && z < 46) return true;          // Tankstelle
+  for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) if (x > x0 - 1 && x < x1 + 1 && z > z0 - 1 && z < z1 + 1) return true;
+  return false;
+}
+function carDrive(dt, thr, steerIn, hand, analog) {
+  const gas = Math.max(0, thr), brake = Math.max(0, -thr);
+  let vF = 0, vR = 0, slip = 0, speed = 0;
+  for (let k = 0; k < 2; k++) {
+    const h = dt / 2;
+    const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
+    vF = ride.cvx * fx + ride.cvz * fz; vR = ride.cvx * sx + ride.cvz * sz;
+    speed = Math.hypot(ride.cvx, ride.cvz);
+    ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 12 : 6) * h);
+    if (gas) vF += gas * 15 * Math.max(0, 1 - Math.max(0, vF) / 52) * h;   // bis ca. 185 km/h
+    if (brake) { if (vF > 0.5) vF -= 28 * brake * h; else vF = Math.max(-12, vF - 8 * brake * h); }
+    if (hand) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 5 * h);
+    const onRoad = carOnRoad(ride.pos.x, ride.pos.z);
+    vF -= vF * (onRoad ? 0.12 : 0.9) * h + Math.sign(vF) * 0.0012 * vF * vF * h;
+    slip = speed > 3 ? Math.abs(Math.atan2(vR, Math.abs(vF))) : 0;
+    let grip = 6;
+    if (slip > 0.15) grip = gas > 0.2 ? 0.9 : 1.8;
+    if (hand) grip = 0.6;
+    if (!onRoad) grip *= 1.4;
+    vR *= Math.exp(-grip * h);
+    const dir = vF >= -0.5 ? 1 : -1;
+    let yaw = ride.steerS * (2.6 / (1 + speed / 35)) * Math.min(1, speed / 7) * dir;
+    if (hand && speed > 5) yaw *= 1.5; else if (slip > 0.15 && gas > 0.2) yaw *= 1.25;
+    ride.yawRate += (yaw - ride.yawRate) * Math.min(1, 8 * h);
+    ride.yaw += ride.yawRate * h;
+    // Geschwindigkeit bleibt in der alten Richtung – das Auto dreht sich schneller als es die Richtung ändert = Rutschen/Drift
+    ride.cvx = fx * vF + sx * vR; ride.cvz = fz * vF + sz * vR;
+    ride.onRoad = onRoad;
+  }
+  ride.vel.x = ride.cvx; ride.vel.z = ride.cvz;
+  ride.speed = vF; ride.slip = slip; ride.hand = hand && speed > 4;
+  ride.lean += (Math.max(-0.07, Math.min(0.07, vR * 0.015)) - ride.lean) * Math.min(1, dt * 6);   // Karosserie neigt sich nach außen
+  ride.st = ride.steerS * 0.5;
+}
+// Drift-Punkte → Coins (lange Drifts geben einen Multiplikator, ein Crash löscht den Drift)
+const DRIFT = { pts: 0, time: 0, idle: 0 };
+const driftHud = document.createElement('div'); driftHud.id = 'driftHud'; document.getElementById('hud').appendChild(driftHud);
+function driftScore(dt) {
+  const sp = Math.hypot(ride.vel.x, ride.vel.z), drifting = (ride.slip || 0) > 0.28 && sp > 8 && ride.speed > 0 && ride.onGround;
+  if (drifting) { DRIFT.pts += ride.slip * sp * dt * 12; DRIFT.time += dt; DRIFT.idle = 0; }
+  else if (DRIFT.pts > 0) {
+    DRIFT.idle += dt;
+    if (DRIFT.idle > 1) {
+      const mult = Math.min(5, 1 + Math.floor(DRIFT.time / 2)), gain = Math.round(DRIFT.pts * mult), coins = Math.floor(gain / 60);
+      if (coins > 0) { shopState.coins += coins; saveShop(); updateCoins(true); }
+      showMsg(`DRIFT ${gain.toLocaleString('de-DE')} Punkte (×${mult})${coins ? `  +${coins} Coins` : ''}`);
+      DRIFT.pts = 0; DRIFT.time = 0;
+    }
+  }
+  const mult = Math.min(5, 1 + Math.floor(DRIFT.time / 2));
+  driftHud.classList.toggle('on', DRIFT.pts > 0 && ride.v >= 0);
+  if (DRIFT.pts > 0) driftHud.innerHTML = `<b>${Math.round(DRIFT.pts).toLocaleString('de-DE')}</b><span>DRIFT ×${mult}</span>`;
+  ride.drifting = drifting;
+}
+// Reifenspuren (schwarze Streifen auf dem Boden) und Reifenrauch an den Hinterrädern
+const SKID = 2500, skidPos = new Float32Array(SKID * 18), skidGeo = new THREE.BufferGeometry();
+skidGeo.setAttribute('position', new THREE.BufferAttribute(skidPos, 3));
+const skidMesh = new THREE.Mesh(skidGeo, new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+skidMesh.frustumCulled = false; scene.add(skidMesh);
+let skidIdx = 0, lastSkid = null, skidSmokeT = 0;
+function skidQuad(a, b, y) {
+  const dx = b[0] - a[0], dz = b[1] - a[1], L = Math.hypot(dx, dz);
+  if (L < 0.05 || L > 4) return;
+  const nx = -dz / L * 0.16, nz = dx / L * 0.16, o = (skidIdx++ % SKID) * 18;
+  skidPos.set([a[0] + nx, y, a[1] + nz, b[0] + nx, y, b[1] + nz, b[0] - nx, y, b[1] - nz, a[0] + nx, y, a[1] + nz, b[0] - nx, y, b[1] - nz, a[0] - nx, y, a[1] - nz], o);
+}
+function carSkids(dt) {
+  const sp = Math.hypot(ride.vel.x, ride.vel.z);
+  const marking = ride.onGround && sp > 4 && ((ride.slip || 0) > 0.22 || ride.hand);
+  if (!marking) { lastSkid = null; return; }
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
+  const wl = [ride.pos.x - fx * 1.35 - sx * 0.85, ride.pos.z - fz * 1.35 - sz * 0.85], wr = [ride.pos.x - fx * 1.35 + sx * 0.85, ride.pos.z - fz * 1.35 + sz * 0.85];
+  const y = ride.pos.y + 0.03;
+  if (lastSkid) { skidQuad(lastSkid[0], wl, y); skidQuad(lastSkid[1], wr, y); skidGeo.attributes.position.needsUpdate = true; }
+  lastSkid = [wl, wr];
+  skidSmokeT -= dt;
+  if (skidSmokeT <= 0 && ride.onRoad) {
+    skidSmokeT = 0.05;
+    for (const w of [wl, wr]) puff(new THREE.Vector3(w[0], ride.pos.y + 0.35, w[1]), 0xe8e8e8, 0.7, 1.4, new THREE.Vector3(rnd(-0.7, 0.7), 0.6, rnd(-0.7, 0.7)), { opacity: 0.32, grow: 3.2, fadeIn: 0.05 });
+  }
+}
 // Mit dem Auto Gegner anfahren: je nach Tempo viel Schaden (pro Gegner höchstens einmal pro Sekunde)
 function runOver(sp) {
   const now = performance.now();
@@ -422,6 +563,16 @@ function runOver(sp) {
 /* ---------- Darstellung aller Mopeds ---------- */
 function updateVehicles(dt) {
   for (const id in avatars) { const a = avatars[id]; if (!(a.flags & 8) && a.g.rotation.x) a.g.rotation.x = 0; }   // abgestiegen: wieder aufrecht
+  // Detailstufe der Autos: das eigene Auto und das nächste (bis 20 m) als Ferrari, alle anderen einfach
+  const hiSet = new Set();
+  if (ride.v >= 0 && ride.kind === 'car') hiSet.add(ride.v);
+  vehicles.filter(v => v.kind === 'car' && v.mesh.gltf && v.i !== ride.v).map(v => [v, Math.hypot(v.x - camera.position.x, v.z - camera.position.z)])
+    .filter(a => a[1] < 20).sort((a, b) => a[1] - b[1]).slice(0, gfx === 'low' ? 0 : 1).forEach(([v]) => hiSet.add(v.i));
+  for (const v of vehicles) {
+    const m = v.mesh; if (!m.gltf) continue;
+    const hi = hiSet.has(v.i);
+    if (m.isHi !== hi) { m.isHi = hi; m.hi.visible = hi; for (const c of m.lo) c.visible = !hi; }
+  }
   for (const v of vehicles) {
     const m = v.mesh, K = VK[v.kind], isCar = v.kind === 'car';
     let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null, st = 0;
@@ -435,7 +586,7 @@ function updateVehicles(dt) {
       v.stS = (v.stS || 0) + ((v.st || 0) - (v.stS || 0)) * Math.min(1, dt * 10); st = v.stS;
     }
     m.steer.rotation.y = st;
-    if (isCar) for (const f of m.fronts) f.rotation.y = st;
+    if (isCar) { for (const f of m.fronts) f.rotation.y = st; if (m.gltf) for (const f of m.frontW) f.rotation.y = st; }
     // Geschwindigkeit fürs Raddrehen
     const moved = Math.hypot(x - v.rx, z - v.rz);
     if (v.i !== ride.v) {   // fremde Mopeds: Neigung aus Bewegung (Schanze hoch/runter, Sprünge)
@@ -446,14 +597,14 @@ function updateVehicles(dt) {
     v.rx = x; v.rz = z; v.ry = y;
     const fwd = Math.cos(yaw) * 1, dirSign = ((x - (m.root.position.x)) * Math.cos(yaw) - (z - m.root.position.z) * Math.sin(yaw)) >= 0 ? 1 : -1;
     v.spin += moved / (isCar ? CAR_WHEEL_R : WHEEL_R) * dirSign;
-    if (isCar) for (const s of m.spinners) s.rotation.z = -v.spin; else m.wf.rotation.z = m.wr.rotation.z = -v.spin;
+    if (isCar) { for (const s of m.spinners) s.rotation.z = -v.spin; if (m.gltf) for (const w of m.wheels) w.rotation.x = v.spin; } else m.wf.rotation.z = m.wr.rotation.z = -v.spin;
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
     // Weit entfernte Mopeds nicht zeichnen (sie sind sehr detailliert, aus 70 m sieht man sie kaum)
     const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > K.farDraw && v.i !== ride.v;
     m.root.visible = !far;
     const shadow = dCam < 32 || v.i === ride.v;   // Schatten nur bei nahen Mopeds
-    if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh) o.castShadow = shadow; }); }
+    if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh && !o.userData.noShadow) o.castShadow = shadow; }); }
     // Wheelie: um den Hinterrad-Aufstandspunkt nach hinten kippen
     const [wf, wu] = wheelieShift(wh, 0.6, 0);
     // Motor läuft: leichtes Zittern (Zweitakter)
@@ -516,8 +667,23 @@ function riderTwist(a, aimYaw, dt) {
 
 /* ---------- Motorgeräusch (Zweitakter: knatternd) ---------- */
 let eng = null;
-function engineSound(on, speed = 0, thr = 0, kind = 'moped') {
+// Reifenquietschen beim Driften (gefiltertes Rauschen)
+let squealG = null;
+function tireSqueal(on) {
   if (!actx) return;
+  if (!squealG) {
+    const buf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 3;
+    squealG = actx.createGain(); squealG.gain.value = 0;
+    src.connect(bp); bp.connect(squealG); squealG.connect(master); src.start();
+  }
+  squealG.gain.setTargetAtTime(on ? 0.06 : 0, actx.currentTime, 0.05);
+}
+function engineSound(on, speed = 0, thr = 0, kind = 'moped', squeal = false) {
+  if (!actx) return;
+  tireSqueal(on && squeal);
   if (!on || (eng && eng.kind !== kind)) { if (eng) { const t = actx.currentTime; eng.g.gain.setTargetAtTime(0, t, 0.1); const e = eng; setTimeout(() => { try { e.o.stop(); e.o2.stop(); } catch (x) {} }, 600); eng = null; } if (!on) return; }
   const car = kind === 'car';
   if (!eng) {
