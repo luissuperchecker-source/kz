@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261107-182442 durch eine Versionsnummer ersetzt */
-const BUILD = '20261107-182442';
+/* Update-Prüfung: beim Veröffentlichen wird 20261109-175422 durch eine Versionsnummer ersetzt */
+const BUILD = '20261109-175422';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -294,7 +294,7 @@ const MAX_ANISO = renderer.capabilities.getMaxAnisotropy();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xb9cde0);
-scene.fog = MAP_ID === 'welt' ? new THREE.Fog(0xb9cde0, 140, 640) : new THREE.Fog(0xb9cde0, 110, 480);
+scene.fog = MAP_ID === 'welt' ? new THREE.Fog(0xb9cde0, 90, 300) : new THREE.Fog(0xb9cde0, 110, 480);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 900);
 camera.rotation.order = 'YXZ';
 scene.add(camera);
