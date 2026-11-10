@@ -556,7 +556,7 @@ function carOnRoad(x, z) {
    - Handbremse blockiert die Hinterräder → Heck kommt sofort
    - Vorderräder richten sich von selbst nach der Fahrtrichtung aus (Nachlauf) → Gegenlenken im Drift fühlt sich natürlich an */
 const CARP = { m: 1250, a: 1.42, b: 1.45, h: 0.5, Iz: 2300, muF: 1.0, muR: 1.1, BF: 8, BR: 10, C: 1.45, P: 200000, Fmax: 7600, drag: 1.15, roll: 160, brake: 1.05,
-  maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2, mw: 55, rev: 66 };
+  maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2, mw: 55, rev: 66, pull: 3 };
 /* Hinterreifen mit echter Raddrehzahl: Schlupf längs (Rad dreht schneller als das Auto fährt) und quer (Heck rutscht)
    teilen sich EINEN Haftungskreis. Dreht das Rad durch, bleibt kaum Seitenhalt → Heck kommt; mehr Gas = mehr Driftwinkel,
    Gas weg = Rad greift wieder → Auto fängt sich. So lässt sich der Drift wie bei einem echten Hecktriebler mit dem Gas dosieren. */
@@ -614,7 +614,14 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     r += ((K.a * (FyF * cd + FxF * sd)) - K.b * FyR) / K.Iz * h;
     // Drift-Hilfe (Tastatur stark, Lenkrad schwächer): ab ~40° Querstellung bremst sie das Weiterdrehen, damit man sich nicht sofort dreht
     const beta = Math.atan2(vy, Math.max(Math.abs(u), 1));
-    if (Math.abs(u) > 4 && Math.abs(beta) > 0.7 && Math.sign(r) === -Math.sign(beta)) r -= r * Math.min(1, K.assist * (analog ? 0.6 : 1) * (Math.abs(beta) - 0.7) * 6 * h);
+    // Drift-Hilfe: bis ~30° frei driften; darüber greift das Heck wieder etwas → Auto dreht nicht weiter auf und
+    // die Fahrtrichtung folgt der Nase (Tempo bleibt), damit man in der Kurve nicht nach außen wegrutscht
+    const lim = analog ? 0.58 : 0.52, ex = Math.abs(beta) - lim;
+    if (Math.abs(u) > 4 && ex > 0) {
+      if (Math.sign(r) === -Math.sign(beta)) r -= r * Math.min(1, K.assist * ex * 9 * h);
+      const sp = Math.hypot(u, vy), nb = beta - Math.sign(beta) * Math.min(ex, ex * K.pull * h);
+      u = sp * Math.cos(nb) * Math.sign(u || 1); vy = sp * Math.sin(nb);
+    }
     ax += (axNew - ax) * Math.min(1, 10 * h);
     // sehr langsam: stabil wie ein normales Auto (keine Zitter-Bewegungen)
     if (Math.abs(u) < 3 && (!gas || wheelspin < 0.5)) { const k2 = Math.min(1, (Math.abs(u) < 1.5 ? 30 : 6) * h); vy -= vy * k2; r += (u * Math.tan(delta) / L - r) * k2; }
