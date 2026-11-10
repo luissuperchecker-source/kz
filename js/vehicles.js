@@ -383,7 +383,7 @@ function startRide(i) {
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
   ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
-  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; ride.wR = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
+  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; ride.wR = 0; ride.gasS = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
@@ -555,7 +555,7 @@ function carOnRoad(x, z) {
    - Gewichtsverlagerung: Bremsen belastet vorne (Auto lenkt besser ein), Gas belastet hinten
    - Handbremse blockiert die Hinterräder → Heck kommt sofort
    - Vorderräder richten sich von selbst nach der Fahrtrichtung aus (Nachlauf) → Gegenlenken im Drift fühlt sich natürlich an */
-const CARP = { m: 1250, a: 1.42, b: 1.45, h: 0.5, Iz: 2300, muF: 1.0, muR: 1.1, BF: 8, BR: 10, C: 1.45, P: 200000, Fmax: 7600, drag: 1.15, roll: 160, brake: 1.05,
+const CARP = { m: 1250, a: 1.42, b: 1.45, h: 0.5, Iz: 2050, muF: 1.0, muR: 1.1, BF: 8, BR: 10, C: 1.45, P: 200000, Fmax: 7600, drag: 1.15, roll: 160, brake: 1.05,
   maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2, mw: 55, rev: 66, pull: 3 };
 /* Hinterreifen mit echter Raddrehzahl: Schlupf längs (Rad dreht schneller als das Auto fährt) und quer (Heck rutscht)
    teilen sich EINEN Haftungskreis. Dreht das Rad durch, bleibt kaum Seitenhalt → Heck kommt; mehr Gas = mehr Driftwinkel,
@@ -568,7 +568,10 @@ function rearTire(wR, u, vyR, Fz, mu) {
 }
 const pacejka = (alpha, Fz, mu, B) => -mu * Fz * Math.sin(CARP.C * Math.atan(B * alpha));
 function carDrive(dt, thr, steerIn, hand, analog) {
-  const K = CARP, L = K.a + K.b, g = 9.81, gas = Math.max(0, thr), brakeIn = Math.max(0, -thr);
+  // Tastatur: Gas kommt weich (statt sofort 100 %), damit sich ein Drift ruhiger halten lässt
+  const g0 = Math.max(0, thr);
+  ride.gasS = analog ? g0 : (ride.gasS || 0) + (g0 - (ride.gasS || 0)) * Math.min(1, (g0 > (ride.gasS || 0) ? 7 : 14) * dt);
+  const K = CARP, L = K.a + K.b, g = 9.81, gas = g0 > 0 ? Math.max(0.05, ride.gasS) : 0, brakeIn = Math.max(0, -thr);
   const fx = () => Math.cos(ride.yaw), fz = () => -Math.sin(ride.yaw);
   // Fahrzeug-Koordinaten: u = vorwärts, vy = nach links, r = Gierrate (links positiv)
   let u = ride.cvx * fx() + ride.cvz * fz(), vy = -(ride.cvx * Math.sin(ride.yaw) + ride.cvz * Math.cos(ride.yaw)), r = ride.yawRate || 0;
@@ -618,7 +621,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     // die Fahrtrichtung folgt der Nase (Tempo bleibt), damit man in der Kurve nicht nach außen wegrutscht
     const lim = analog ? 0.58 : 0.52, ex = Math.abs(beta) - lim;
     if (Math.abs(u) > 4 && ex > 0) {
-      if (Math.sign(r) === -Math.sign(beta)) r -= r * Math.min(1, K.assist * ex * 9 * h);
+      if (Math.sign(r) === -Math.sign(beta)) r -= r * Math.min(1, K.assist * (ex * 9 + ex * ex * 70) * h);   // je weiter drüber, desto stärker
       const sp = Math.hypot(u, vy), nb = beta - Math.sign(beta) * Math.min(ex, ex * K.pull * h);
       u = sp * Math.cos(nb) * Math.sign(u || 1); vy = sp * Math.sin(nb);
     }
