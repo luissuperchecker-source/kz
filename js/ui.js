@@ -232,7 +232,7 @@ function updateAtmosphere(dt) {
     a.setXYZ(i, x, y, z);
   }
   a.needsUpdate = true;
-  dust.visible = gfx !== 'low';
+  dust.visible = !gfxLow();
   // Brennender Bus auf der Hauptstraße + Schornstein des Schiffs
   fireT -= dt;
   if (fireT <= 0) {

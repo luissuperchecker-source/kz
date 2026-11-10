@@ -1839,7 +1839,8 @@ if (MAP_ID === 'hafen') {
 
 /* Alle festen Karten-Objekte pro Material zu einem Objekt zusammenfassen (viel weniger Zeichenaufrufe) */
 // Auf der großen Karte „Welt“ in 70-m-Stücken zusammenfassen: dann zeichnet die Grafikkarte nur, was im Blick und nah genug ist
-const CHUNK = MAP_ID === 'welt' ? 110 : 0, CULL_DIST = 250;
+const CHUNK = MAP_ID === 'welt' ? 110 : 0;
+let CULL_DIST = 250;
 (function mergeStatic() {
   scene.updateMatrixWorld(true);
   const byMat = new Map(), old = [], bb = new THREE.Box3(), ctr = new THREE.Vector3();
@@ -1875,19 +1876,66 @@ const CHUNK = MAP_ID === 'welt' ? 110 : 0, CULL_DIST = 250;
 // Weit entfernte Stücke ausblenden (liegen im Nebel)
 let cullT = 0;
 window.cullChunks = dt => {
+  if (gfx === 'potato') potatoTick(dt);
   if (!CHUNK) return;
   cullT -= dt; if (cullT > 0) return; cullT = 0.2;
   const c = camera.position;
   for (const m of mapMeshes) { const s = m.userData.cull; if (s) m.visible = c.distanceTo(s.center) - s.radius < CULL_DIST; }
 };
 
-// Grafikstufen: Hoch / Mittel / Niedrig
+/* „Sehr niedrig“ für schwache PCs: einfache Licht-Berechnung (Lambert statt PBR), halbe Auflösung, kurze Sichtweite.
+   Die Original-Materialien bleiben gespeichert und kommen beim Umschalten zurück. */
+const LAMB = new Map(), FOG0 = { near: scene.fog.near, far: scene.fog.far, cam: camera.far, cull: CULL_DIST };
+const MAT_DEFAULT_OBC = THREE.Material.prototype.onBeforeCompile;
+function toLambert(m) {
+  if (!m || !(m.isMeshStandardMaterial || m.isMeshPhongMaterial) || m.onBeforeCompile !== MAT_DEFAULT_OBC) return m;   // eigene Shader (Lackierung) bleiben
+  let l = LAMB.get(m); if (l) return l;
+  l = new THREE.MeshLambertMaterial({ map: m.map, emissiveMap: m.emissiveMap, emissiveIntensity: m.emissiveIntensity, transparent: m.transparent, opacity: m.opacity,
+    side: m.side, alphaTest: m.alphaTest, vertexColors: m.vertexColors, depthWrite: m.depthWrite, depthTest: m.depthTest, fog: m.fog, skinning: m.skinning,
+    morphTargets: m.morphTargets, polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor, polygonOffsetUnits: m.polygonOffsetUnits, visible: m.visible });
+  l.color = m.color; l.emissive = m.emissive;   // gleiche Farb-Objekte → Farbwechsel (Treffer, Tag/Nacht) wirken weiter
+  l.userData.orig = m; l.userData.last = [m.opacity, m.visible, m.transparent, m.map, m.emissiveIntensity];
+  LAMB.set(m, l); return l;
+}
+function swapMats(toLow) {
+  scene.traverse(o => {
+    if (!o.material || o === skyMesh) return;
+    if (toLow) {
+      if (Array.isArray(o.material)) o.material = o.material.map(toLambert); else o.material = toLambert(o.material);
+    } else {
+      const back = m => (m && m.userData && m.userData.orig) || m;
+      if (Array.isArray(o.material)) o.material = o.material.map(back); else o.material = back(o.material);
+    }
+  });
+}
+let potatoT = 0;
+function potatoTick(dt) {
+  // Änderungen am Original (Ausblenden, Durchsichtigkeit) übernehmen
+  for (const [m, l] of LAMB) {
+    const L = l.userData.last;
+    if (m.opacity !== L[0]) { l.opacity = L[0] = m.opacity; }
+    if (m.visible !== L[1]) { l.visible = L[1] = m.visible; }
+    if (m.transparent !== L[2]) { l.transparent = L[2] = m.transparent; l.needsUpdate = true; }
+    if (m.map !== L[3]) { l.map = L[3] = m.map; l.needsUpdate = true; }
+    if (m.emissiveIntensity !== L[4]) { l.emissiveIntensity = L[4] = m.emissiveIntensity; }
+  }
+  potatoT -= dt; if (potatoT > 0) return; potatoT = 1;   // neue Objekte (Spieler, Autos, Effekte) jede Sekunde umstellen
+  swapMats(true);
+}
+const gfxLow = () => gfx === 'low' || gfx === 'potato';
+// Grafikstufen: Hoch / Mittel / Niedrig / Sehr niedrig
 function applyGfx(v) {
+  const wasPotato = gfx === 'potato' && LAMB.size;
   gfx = v;
   const dpr = devicePixelRatio || 1;
-  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : 0.7);
-  sun.castShadow = v !== 'low';
-  if (window.grassI) window.grassI.visible = v !== 'low';
+  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : v === 'low' ? 0.7 : 0.5);
+  sun.castShadow = !gfxLow();
+  if (window.grassI) window.grassI.visible = !gfxLow();
+  const P = v === 'potato';
+  scene.fog.near = P ? FOG0.near * 0.45 : FOG0.near; scene.fog.far = P ? FOG0.far * 0.55 : FOG0.far;
+  camera.far = P ? scene.fog.far + 10 : FOG0.cam; camera.updateProjectionMatrix();
+  CULL_DIST = P ? 150 : FOG0.cull;
+  if (P) swapMats(true); else if (wasPotato) swapMats(false);
   const size = v === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== size) {
     sun.shadow.mapSize.set(size, size);

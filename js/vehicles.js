@@ -740,7 +740,7 @@ function updateVehicles(dt) {
   const hiSet = new Set();
   if (ride.v >= 0 && ride.kind === 'car') hiSet.add(ride.v);
   vehicles.filter(v => v.kind === 'car' && v.mesh.gltf && v.i !== ride.v).map(v => [v, Math.hypot(v.x - camera.position.x, v.z - camera.position.z)])
-    .filter(a => a[1] < 20).sort((a, b) => a[1] - b[1]).slice(0, gfx === 'low' ? 0 : 1).forEach(([v]) => hiSet.add(v.i));
+    .filter(a => a[1] < 20).sort((a, b) => a[1] - b[1]).slice(0, gfxLow() ? 0 : 1).forEach(([v]) => hiSet.add(v.i));
   for (const v of vehicles) {
     const m = v.mesh; if (!m.gltf) continue;
     const hi = hiSet.has(v.i);
