@@ -363,7 +363,8 @@ function padMenu(gp, pressed, dt) {
 /* ---------- Steuerung im Spiel (frei belegbar) ---------- */
 function padGame(gp, pressed, released, dt) {
   const M = PCFG.map, on = a => pressed(btnIndex(M[a])), off = a => released(btnIndex(M[a]));
-  const lx = padDz(padAxis(gp, 'moveX')), ly = padDz(padAxis(gp, 'moveY')), rx = padDz(padAxis(gp, 'lookX'));
+  // Im Fahrzeug: Lenken fast ohne Totzone (Lenkrad soll sofort reagieren)
+  const rawX = padAxis(gp, 'moveX'), lx = ride.v >= 0 ? (Math.abs(rawX) < 0.02 ? 0 : (rawX - Math.sign(rawX) * 0.02) / 0.98) : padDz(rawX), ly = padDz(padAxis(gp, 'moveY')), rx = padDz(padAxis(gp, 'lookX'));
   let ry = padDz(padAxis(gp, 'lookY'));
   if (PCFG.invY) ry = -ry;
   // Pedale (Lenkrad): Gas nach vorne, Bremse nach hinten – überschreiben den Stick, wenn getreten

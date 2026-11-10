@@ -565,13 +565,14 @@ function carDrive(dt, thr, steerIn, hand, analog) {
   let u = ride.cvx * fx() + ride.cvz * fz(), vy = -(ride.cvx * Math.sin(ride.yaw) + ride.cvz * Math.cos(ride.yaw)), r = ride.yawRate || 0;
   let ax = ride.ax || 0, wheelspin = 0;
   const N = Math.max(2, Math.ceil(dt / 0.006)), h = dt / N;
-  ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 14 : 7) * dt);
+  if (analog) steerIn = Math.sign(steerIn) * Math.pow(Math.abs(steerIn), 0.7);   // Lenkrad: kleine Ausschläge wirken schon spürbar
+  ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 20 : 7) * dt);
   for (let k = 0; k < N; k++) {
     const au = Math.max(Math.abs(u), 2.5), sgn = u < -0.5 ? -1 : 1;
     // Lenkwinkel: Fahrer + Selbstausrichtung (Nachlauf) zur Fahrtrichtung der Vorderachse
     const free = Math.atan2(vy + K.a * r, au) * sgn;
     const sens = analog ? 1 / (1 + Math.abs(u) / 40) : 1 / (1 + Math.abs(u) / K.steerFade);
-    const align = Math.min(1, Math.abs(u) / 6) * (analog ? 0.65 : 0.8);
+    const align = Math.min(1, Math.abs(u) / 6) * (analog ? 0.5 : 0.8);
     const delta = Math.max(-K.maxSteer, Math.min(K.maxSteer, ride.steerS * K.maxSteer * sens + free * align));
     // Radlasten mit Gewichtsverlagerung
     const W = K.m * g, FzF = Math.max(800, W * K.b / L - K.m * ax * K.h / L), FzR = Math.max(800, W * K.a / L + K.m * ax * K.h / L);
