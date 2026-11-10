@@ -80,8 +80,22 @@ function rampH(r, x, z) {
 }
 // Bodenhöhe an einer Stelle (0 = flach, sonst Schanze). y = Höhe des Körpers: Schanzen weit darüber
 // (z. B. auf der Hochstraße) zählen für jemanden unten auf der Straße nicht.
-function groundH(x, z, y = Infinity) {
+/* ---------- Hügel & Berg (nur Karte „Welt“, im Wald im Nordwesten) ----------
+   Höhe = Summe weicher Buckel, an Wegen, See, Hütte, Turm und am Gebietsrand sanft auf 0 abgeflacht. */
+let HILL = null;
+const _sst = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+function hillH(x, z) {
+  const H = HILL; if (!H || x < H.x0 || x > H.x1 || z < H.z0 || z > H.z1) return 0;
+  let m = _sst(0, 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
+  for (const [cx, cz, r] of H.flatC) { const d = Math.hypot(x - cx, z - cz); if (d < r + 14) m *= _sst(r, r + 14, d); }
+  for (const [ax, v] of H.flatL) m *= _sst(5, 18, Math.abs((ax === 'x' ? x : z) - v));
+  if (m <= 0) return 0;
   let h = 0;
+  for (const [cx, cz, a, s] of H.bumps) { const dx = x - cx, dz = z - cz; h += a * Math.exp(-(dx * dx + dz * dz) / (2 * s * s)); }
+  return h * m;
+}
+function groundH(x, z, y = Infinity) {
+  let h = HILL ? hillH(x, z) : 0;
   for (const r of RAMPS) {
     if (x < r.bx0 || x > r.bx1 || z < r.bz0 || z > r.bz1 || r.base > y + 1) continue;
     const hh = rampH(r, x, z); if (hh > h) h = hh;
@@ -1705,12 +1719,42 @@ function buildWeltMap() {
   /* ===== WALD mit See (Nordwesten) ===== */
   road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
   const LX = -205, LZ = -95, LR = 26;   // Waldsee
+  // Hügel und ein Berg (ca. 32 m) in der Waldecke; Wege, See, Hütte und Aussichtsturm bleiben flach
+  HILL = { x0: -292, x1: -12, z0: -292, z1: -12, max: 0,
+    flatC: [[LX, LZ, LR + 6], [LX + 34, LZ + 20, 16], [-95, -230, 10]], flatL: [['x', -150], ['z', -150]],
+    bumps: [[-228, -228, 32, 30], [-200, -258, 13, 17], [-258, -196, 12, 17],                      // Berg mit Schultern
+      [-60, -205, 12, 20], [-112, -268, 9, 15], [-38, -262, 8, 14],                                  // Hügel nördlich
+      [-262, -40, 11, 18], [-264, -128, 8, 14],                                                     // Hügel westlich vom See
+      [-92, -92, 10, 20], [-45, -48, 6, 14], [-122, -40, 7, 15]] };                                  // Hügel nahe der Kreuzung
+  {
+    const S = 2, n = Math.round((HILL.x1 - HILL.x0) / S), pos = [], uv = [], idx = [];
+    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
+      const x = HILL.x0 + j * S, z = HILL.z0 + i * S, h = hillH(x, z);
+      HILL.max = Math.max(HILL.max, h);
+      pos.push(x, h > 0.02 ? h + 0.03 : -0.08, z); uv.push(x / 2, -z / 2);
+    }
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const a = i * (n + 1) + j, b = a + n + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx); g.computeVertexNormals();
+    const hillMesh = new THREE.Mesh(withUv2(g), MAT.grass); hillMesh.receiveShadow = true; scene.add(hillMesh);
+    // Felsen auf dem Gipfel
+    const rock = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95, flatShading: true });
+    for (let k = 0; k < 9; k++) {
+      const a = k / 9 * Math.PI * 2 + srnd(-0.3, 0.3), r = srnd(4, 13), x = -228 + Math.cos(a) * r, z = -228 + Math.sin(a) * r, s = srnd(1.2, 2.6);
+      const m = new THREE.Mesh(new THREE.DodecahedronGeometry(s, 0), rock); m.position.set(x, hillH(x, z) + s * 0.25, z); m.rotation.set(srand() * 3, srand() * 3, 0); m.scale.y = 0.7; m.castShadow = true; scene.add(m);
+      collider(x, hillH(x, z) - 0.5, z, s * 1.4, s * 1.1, s * 1.4);
+    }
+    // Gipfelkreuz
+    const top = hillH(-228, -228);
+    addBox(-228, top, -228, 0.25, 4.2, 0.25, TKM.wood, 1, { round: 0 }); addBox(-228, top + 2.9, -228, 0.2, 0.22, 1.8, TKM.wood, 1, { decor: true, round: 0 });
+  }
   const lake = new THREE.Mesh(new THREE.CircleGeometry(LR, 48), TKM.water); lake.rotation.x = -Math.PI / 2; lake.position.set(LX, 0.03, LZ); lake.userData.noMerge = true; scene.add(lake);
   for (let gx = -LR + 4; gx < LR; gx += 8) for (let gz = -LR + 4; gz < LR; gz += 8) if (Math.hypot(gx, gz) < LR - 5) collider(LX + gx, 0, LZ + gz, 8.5, 3, 8.5);
   house(LX + 34, LZ + 18, 7, 6, 3, TKM.wood);   // Hütte
   addAddr(LX + 34, LZ + 25, 'wald', LX + 34, LZ + 21.6);
   watchtower(-95, -230, 1);
-  for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, 1.1, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, 0, z, 2, 2, 2); }
+  for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const y = hillH(x, z), t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, y + 1.0, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, y - 0.3, z, 2, 2.3, 2); }
   carSpot(LX + 34, LZ + 30, 0); car(-150, -60, false);
   // Bäume (instanziert) mit Stamm-Kollision
   const TN = 420, td = new THREE.Object3D();
@@ -1722,10 +1766,11 @@ function buildWeltMap() {
     if (Math.abs(x + 150) < 7 || Math.abs(z + 150) < 7 || Math.abs(x) < 12 || Math.abs(z) < 12) continue;   // Wege frei
     if (Math.hypot(x - LX, z - LZ) < LR + 6 || Math.hypot(x - LX - 34, z - LZ - 22) < 12) continue;
     if (Math.hypot(x + 95, z + 230) < 10 || Math.hypot(x + 240, z + 242) < 10) continue;
-    const s = srnd(0.8, 1.35);
-    td.position.set(x, 0, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
+    const s = srnd(0.8, 1.35), y = hillH(x, z);
+    if (y > 24 || Math.hypot(x + 228, z + 228) < 16) continue;   // Gipfel bleibt kahl
+    td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
     trunksI.setMatrixAt(placed, td.matrix); for (const l of layersI) l.setMatrixAt(placed, td.matrix);
-    collider(x, 0, z, 0.6 * s, 4, 0.6 * s);
+    collider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s);
     placed++;
   }
   trunksI.count = placed; for (const l of layersI) { l.count = placed; l.castShadow = true; scene.add(l); }
@@ -1755,8 +1800,9 @@ function buildWeltMap() {
     { w: 0, x: 10, y: 0, z: -14 }, { w: 1, x: -14, y: 0, z: 10 }, { w: 0, x: 70, y: 0, z: -50 }, { w: 2, x: 130, y: 0, z: -150 }, { w: 1, x: 190, y: 0, z: -130 },
     { w: 0, x: 250, y: 0, z: -250 }, { w: 2, x: 70, y: 6.4, z: -68 }, { w: 0, x: -75, y: 0, z: 68 }, { w: 1, x: -145, y: 0, z: 177 }, { w: 0, x: -215, y: 0, z: 192 },
     { w: 2, x: -95, y: 4, z: -230 }, { w: 0, x: -170, y: 0, z: -95 }, { w: 1, x: -150, y: 0, z: -200 }, { w: 0, x: 205, y: 0, z: 180 }, { w: 1, x: 100, y: 0, z: 80 },
-    { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 },
+    { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 }, { w: 2, x: -226, y: 0, z: -232 },
   );
+  for (const p of MAP_PICKUPS) if (!p.y) p.y = hillH(p.x, p.z);   // auf die Hügel setzen
 }
 
 // gewählte Karte bauen (Auswahl im Menü, wird beim Laden festgelegt)
@@ -1878,7 +1924,7 @@ function moveH(e, ax, amt, grounded) {
   if (!amt) return;
   e.pos[ax] += amt;
   // Schanzen: hohe Seiten-/Stirnflächen sind Wände, flache Schrägen kann man hochfahren
-  if (RAMPS.length && groundH(e.pos.x, e.pos.z, e.pos.y) - e.pos.y > STEP * 0.6) { e.pos[ax] -= amt; e.blocked = true; return; }
+  if ((RAMPS.length || HILL) && groundH(e.pos.x, e.pos.z, e.pos.y) - e.pos.y > STEP * 0.6) { e.pos[ax] -= amt; e.blocked = true; return; }
   for (const b of _near) {
     if (!overlap(e.pos, b)) continue;
     const rise = b.max.y - e.pos.y;
@@ -1963,6 +2009,26 @@ function rayMap(o, d, maxDist = 300) {
       for (let k = 0; k < 6; k++) { const mid = (lo + hi) / 2; if (below(mid)) hi = mid; else lo = mid; }
       if (hi < best) { best = hi; nrm = [0, 1, 0]; }
       break;
+    }
+  }
+  // Hügel: Strahl in 1-m-Schritten durch das Hügelgebiet verfolgen, dann genau nachsuchen
+  if (HILL) {
+    const H = HILL; let t0 = 0, t1 = best;
+    const mn = [H.x0, -1, H.z0], mx = [H.x1, H.max + 0.5, H.z1], oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
+    for (let a = 0; a < 3 && t0 <= t1; a++) {
+      if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < mn[a] || oo[a] > mx[a]) t0 = Infinity; continue; }
+      let ta = (mn[a] - oo[a]) / dd[a], tb = (mx[a] - oo[a]) / dd[a]; if (ta > tb) [ta, tb] = [tb, ta];
+      t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
+    }
+    if (t0 <= t1) {
+      const below = t => o.y + d.y * t <= hillH(o.x + d.x * t, o.z + d.z * t) - 0.001;
+      for (let t = Math.max(t0, 0.001); t <= t1 + 1; t += 1) {
+        if (!below(t)) continue;
+        let lo = Math.max(0, t - 1), hi = t;
+        for (let k = 0; k < 8; k++) { const mid = (lo + hi) / 2; if (below(mid)) hi = mid; else lo = mid; }
+        if (hi < best && hi > 0.02) { best = hi; nrm = [0, 1, 0]; }
+        break;
+      }
     }
   }
   if (!nrm) return null;
