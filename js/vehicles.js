@@ -168,21 +168,21 @@ function makeMoped(paint) {
 }
 /* ---------- Auto (Sportwagen-Karosserie aus map.js), vorne = +x, 4,6 m lang ---------- */
 const CAR_WHEEL_R = 0.36;
-function makeCar(paint) {
+function makeCar(paint, rim = RIM) {
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
   const body = [
     { geo: CAR_BODY_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] }, { geo: CAR_CABIN_GEO, mat: CAR_GLASS, p: [0, 0, 0], r: [0, 0, 0] },
     B(0.3, 0.04, 1.7, CARBON, 2.08, 0.2, 0), B(0.4, 0.18, 1.6, CARBON, -2.2, 0.3, 0),
-    B(0.06, 0.03, 0.7, TAILLIGHT, -2.28, 0.82, 0), B(0.4, 0.045, 1.95, CARBON, -1.95, 1.33, 0, 0, 0, 0.12),
+    B(0.06, 0.03, 0.7, TAILLIGHT, -2.28, 0.82, 0),
   ];
   for (const s of [-1, 1]) body.push(
     B(0.85, 0.26, 0.06, CAR_BLACK, -0.75, 0.6, s * 0.985, 0, 0, 0.18), B(2.3, 0.07, 0.05, CARBON, 0.05, 0.23, s * 0.95),
     B(0.42, 0.035, 0.2, HEADLIGHT, 1.9, 0.62, s * 0.62, 0, s * 0.4, -0.26), B(0.08, 0.13, 0.5, CAR_BLACK, 2.27, 0.36, s * 0.55),
     B(0.04, 0.04, 0.62, TAILLIGHT, -2.27, 0.8, s * 0.48), B(0.16, 0.08, 0.1, paint, 0.5, 0.93, s * 0.97), B(0.04, 0.04, 0.16, CAR_BLACK, 0.5, 0.9, s * 0.87),
-    B(0.05, 0.36, 0.05, CARBON, -1.92, 1.12, s * 0.48), B(0.4, 0.17, 0.035, CARBON, -1.95, 1.3, s * 1.0),
     { geo: new THREE.CylinderGeometry(0.06, 0.06, 0.18, 12), mat: CHROME, p: [-2.3, 0.5, s * 0.12], r: [0, 0, Math.PI / 2] },
     { geo: ARCH_GEO, mat: CAR_BLACK, p: [1.42, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] }, { geo: ARCH_GEO, mat: CAR_BLACK, p: [-1.45, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] });
   root.add(partsToGroup(body, true));
+  const wing = makeWing(paint); wing.userData.isWing = true; root.add(wing);   // bleibt auch beim Ferrari-Modell sichtbar
   // Räder: Lenk-Gelenk (vorne) → drehendes Rad mit Reifen, Felge, Speichen
   const spinners = [], fronts = [];
   for (const wx of [1.42, -1.45]) for (const s of [-1, 1]) {
@@ -190,10 +190,10 @@ function makeCar(paint) {
     const spin = new THREE.Group(); pivot.add(spin);
     const parts = [
       { geo: new THREE.CylinderGeometry(CAR_WHEEL_R, CAR_WHEEL_R, 0.3, 24), mat: TIRE, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
-      { geo: new THREE.CylinderGeometry(CAR_WHEEL_R * 0.74, CAR_WHEEL_R * 0.74, 0.31, 24), mat: RIM, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(CAR_WHEEL_R * 0.74, CAR_WHEEL_R * 0.74, 0.31, 24), mat: rim, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
       { geo: new THREE.CylinderGeometry(0.05, 0.05, 0.04, 12), mat: CAR_BLACK, p: [0, 0, s * 0.16], r: [Math.PI / 2, 0, 0] },
     ];
-    for (let k = 0; k < 10; k++) parts.push({ geo: SPOKE_GEO[0], mat: CHROME, p: [0, 0, s * 0.15], r: [0, 0, k / 10 * Math.PI] });
+    for (let k = 0; k < 10; k++) parts.push({ geo: SPOKE_GEO[0], mat: rim, p: [0, 0, s * 0.15], r: [0, 0, k / 10 * Math.PI] });
     spin.add(partsToGroup(parts, true));
     pivot.add(partsToGroup([B(0.16, 0.1, 0.06, CALIPER, 0.13, 0.08, s * 0.1, 0, 0, 0.6)], true));
     spinners.push(spin); if (wx > 0) fronts.push(pivot);
@@ -202,14 +202,83 @@ function makeCar(paint) {
   const dummy = new THREE.Group();
   return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true };
 }
-const CAR_PAINTS = [0xc0262b, 0x1f5fe0, 0xf2f2f2, 0x18191b, 0x5cc21c, 0xffc300, 0x7a7f86, 0xff7300]
-  .map(c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.25, metalness: 0.55, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.3 }));
+/* ---------- Drift-Look: bunte Folierung (Livery), Neon-Felgen, großer Heckflügel ----------
+   Die Folierung wird von der Seite auf die Karosserie projiziert (braucht keine Textur-Koordinaten des Modells),
+   auf Dach/Motorhaube bleibt die Grundfarbe. Auf beiden Seiten ist die Schrift lesbar. */
+const LIV_BASE = [0x1f5fe0, 0x7b2ff7, 0x18191b, 0xf2f2f2, 0xff5a00, 0x0bb3a6, 0xd4145a, 0xffc300];
+const LIV_RIM = [0x9dff00, 0xffe600, 0xff2e9a, 0x00e5ff, 0x9dff00, 0xff7a00, 0xffffff, 0x39ff14];
+const LIV_WORDS = ['DRIFT', 'SIDEWAYS', 'KAMPFZONE', 'TURBO', 'NEON', 'SMOKE', 'ZONE 47', 'SLIDE'];
+function liveryTex(i) {
+  let s = 1234567 + i * 7919; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const g = c.getContext('2d');
+  const hex = n => '#' + n.toString(16).padStart(6, '0'), base = LIV_BASE[i % LIV_BASE.length];
+  g.fillStyle = hex(base); g.fillRect(0, 0, 1024, 256);
+  const cols = ['#ff2e9a', '#ffe600', '#39ff14', '#00e5ff', '#8a2be2', '#ff7a00', '#ffffff', '#ff3b3b'].filter(x => x !== hex(base));
+  // Schwünge und Streifen in Neonfarben (vorne stärker, nach hinten auslaufend)
+  g.lineCap = 'round';
+  for (let k = 0; k < 26; k++) {
+    g.strokeStyle = cols[Math.floor(r() * cols.length)]; g.lineWidth = 6 + r() * 34; g.globalAlpha = 0.85;
+    const x0 = r() * 1100 - 40, y0 = 40 + r() * 200, dx = 120 + r() * 380;
+    g.beginPath(); g.moveTo(x0, y0); g.bezierCurveTo(x0 + dx * 0.3, y0 - 90 + r() * 180, x0 + dx * 0.7, y0 - 90 + r() * 180, x0 + dx, y0 - 60 + r() * 120); g.stroke();
+  }
+  for (let k = 0; k < 60; k++) { g.fillStyle = cols[Math.floor(r() * cols.length)]; g.globalAlpha = 0.9; g.beginPath(); g.arc(r() * 1024, 30 + r() * 220, 2 + r() * 9, 0, 7); g.fill(); }
+  g.globalAlpha = 1;
+  // dunkler Schweller unten
+  g.fillStyle = 'rgba(10,10,14,0.9)'; g.fillRect(0, 222, 1024, 34);
+  // großer Schriftzug auf der Tür
+  const word = LIV_WORDS[i % LIV_WORDS.length];
+  g.font = 'italic 900 92px Impact, Arial Black, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 12; g.strokeStyle = '#111'; g.strokeText(word, 540, 150);
+  g.fillStyle = cols[Math.floor(r() * cols.length)]; g.fillText(word, 540, 150);
+  // Startnummer im Kreis
+  g.fillStyle = '#fff'; g.beginPath(); g.arc(300, 112, 46, 0, 7); g.fill(); g.lineWidth = 6; g.strokeStyle = '#111'; g.stroke();
+  g.fillStyle = '#111'; g.font = '900 54px Arial Black, sans-serif'; g.fillText(String(11 + i * 7 % 89), 300, 115);
+  // kleine Aufkleber am Schweller
+  const st = ['RACING', 'GRIP', 'BOOST', 'SPEED', 'TURBO', 'APEX', 'SLIDE'];
+  g.font = 'bold 20px Arial, sans-serif';
+  for (let k = 0; k < 6; k++) { const x = 230 + k * 110; g.fillStyle = k % 2 ? '#fff' : '#ffe600'; g.fillRect(x, 226, 96, 26); g.fillStyle = '#111'; g.fillText(st[(k + i) % st.length], x + 48, 240); }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = MAX_ANISO; t.wrapS = THREE.ClampToEdgeWrapping;
+  return t;
+}
+// cfg: long/up = Achse + Maßstab, lat = Querachse + Höhen-Versatz
+function liveryMat(tex, base, cfg) {
+  const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.28, metalness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.2 });
+  const baseLin = new THREE.Color(base).convertSRGBToLinear();
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, { uLiv: { value: tex }, uBase: { value: baseLin }, uLong: { value: new THREE.Vector4(...cfg.long) }, uLat: { value: new THREE.Vector4(...cfg.lat) }, uUp: { value: new THREE.Vector4(...cfg.up) } });
+    sh.vertexShader = 'varying vec3 vLivP;\nvarying vec3 vLivN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vLivP = position; vLivN = normal;');
+    sh.fragmentShader = 'uniform sampler2D uLiv;\nuniform vec3 uBase;\nuniform vec4 uLong;\nuniform vec4 uLat;\nuniform vec4 uUp;\nvarying vec3 vLivP;\nvarying vec3 vLivN;\n' +
+      sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+  {
+    vec3 ln = normalize(vLivN);
+    float sd = dot(ln, uLat.xyz) < 0.0 ? -1.0 : 1.0;
+    vec2 luv = vec2(dot(vLivP, uLong.xyz) * uLong.w * sd + 0.5, dot(vLivP, uUp.xyz) * uUp.w + uLat.w);
+    vec3 lc = pow(texture2D(uLiv, clamp(luv, 0.001, 0.999)).rgb, vec3(2.2));
+    float top = smoothstep(0.5, 0.85, abs(dot(ln, uUp.xyz)));
+    diffuseColor.rgb *= mix(lc, uBase, top);
+  }`);
+  };
+  m.customProgramCacheKey = () => 'livery1';
+  return m;
+}
+const LIV_TEX = [], CAR_PAINTS = [], CAR_RIMS = [];
+for (let i = 0; i < 8; i++) {
+  LIV_TEX.push(liveryTex(i));
+  CAR_PAINTS.push(liveryMat(LIV_TEX[i], LIV_BASE[i], { long: [1, 0, 0, 1 / 4.7], lat: [0, 0, 1, -0.26], up: [0, 1, 0, 1.3] }));   // einfaches Auto
+  CAR_RIMS.push(new THREE.MeshStandardMaterial({ color: LIV_RIM[i], roughness: 0.3, metalness: 0.45, emissive: LIV_RIM[i], emissiveIntensity: 0.08 }));
+}
+// Großer GT-Heckflügel (Auto-Koordinaten: vorne = +x), für beide Detailstufen
+function makeWing(paint) {
+  const parts = [B(0.62, 0.05, 2.0, CARBON, -2.12, 1.48, 0, 0, 0, 0.14), B(0.22, 0.04, 2.0, paint, -2.38, 1.52, 0, 0, 0, 0.5)];
+  for (const s of [-1, 1]) parts.push(B(0.12, 0.5, 0.05, CARBON, -2.05, 1.2, s * 0.5, 0, 0, -0.25), B(0.75, 0.34, 0.03, CARBON, -2.17, 1.46, s * 1.01));
+  return partsToGroup(parts, true);
+}
 
 /* ---------- Zustand ---------- */
 // Für alle Spieler gleich (Abstellplätze aus der Karte); Host verteilt Position/Fahrer per Snapshot
 const vehicles = MAP_VEHICLES.map((v, i) => {
   const kind = v.kind || 'moped';
-  const m = kind === 'car' ? makeCar(CAR_PAINTS[i % CAR_PAINTS.length]) : makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
+  const m = kind === 'car' ? makeCar(CAR_PAINTS[(i + 5) % CAR_PAINTS.length], CAR_RIMS[(i + 5) % CAR_RIMS.length]) : makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length]);
   return { i, kind, x: v.x, y: 0, z: v.z, yaw: v.yaw, lean: 0, d: 0, mesh: m, spin: 0, rx: v.x, rz: v.z, ry: 0 };
 });
 // Echtes 3D-Modell (Ferrari aus den three.js-Beispielen, wie in Drift-Welt) – ersetzt die einfachen Autos, sobald es geladen ist
@@ -236,15 +305,17 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
       if (v.kind !== 'car') continue;
       const m = v.mesh, model = src.clone(true);
       const set = (n, mat) => { const o = model.getObjectByName(n); if (o) o.material = mat; };
-      set('body', CAR_PAINTS[v.i % CAR_PAINTS.length]); set('glass', glass);
-      for (const n of ['rim_fl', 'rim_fr', 'rim_rr', 'rim_rl', 'trim']) set(n, detail);
+      const li = (v.i + 5) % LIV_TEX.length;   // gleiche Folierung wie beim einfachen Modell (Auto an der Drift-Arena-Startlinie = blau)
+      set('body', liveryMat(LIV_TEX[li], LIV_BASE[li], { long: [1, 0, 0, 1 / 4.7], lat: [0, 1, 0, 0.5], up: [0, 0, 1, 1 / 1.1] })); set('glass', glass);
+      for (const n of ['rim_fl', 'rim_fr', 'rim_rr', 'rim_rl']) set(n, CAR_RIMS[li]);
+      set('trim', detail);
       const wheels = ['wheel_fl', 'wheel_fr', 'wheel_rl', 'wheel_rr'].map(n => model.getObjectByName(n));
       if (wheels.some(w => !w)) return;
       wheels.forEach(w => w.rotation.order = 'YXZ');
       model.traverse(o => { if (o.isMesh) { o.castShadow = false; o.userData.noShadow = true; } });   // Schatten kommt aus dem AO-Bild
       const holder = new THREE.Group(); holder.rotation.y = -Math.PI / 2; holder.add(model);   // Modell schaut nach -z, bei uns ist vorne +x
       // Detailstufen: einfaches Auto (weit weg) ↔ Ferrari (eigenes Auto + die 2 nächsten)
-      m.lo = m.root.children.slice(); holder.visible = false; m.root.add(holder); m.hi = holder;
+      m.lo = m.root.children.filter(c => !c.userData.isWing); holder.visible = false; m.root.add(holder); m.hi = holder;
       m.gltf = true; m.model = model; m.wheels = wheels; m.frontW = [wheels[0], wheels[1]]; m.shadow = undefined;
       if (ao) addAO(m);
     }
