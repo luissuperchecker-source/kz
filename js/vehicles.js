@@ -383,7 +383,7 @@ function startRide(i) {
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
   ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
-  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
+  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
@@ -548,39 +548,76 @@ function carOnRoad(x, z) {
   for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) if (x > x0 - 1 && x < x1 + 1 && z > z0 - 1 && z < z1 + 1) return true;
   return false;
 }
+/* Realistischeres Fahrmodell (Einspur-Modell mit Hinterradantrieb):
+   - Vorder- und Hinterreifen haben je eine Haftungskurve (Pacejka): bis ~10° Schräglauf greift der Reifen immer stärker,
+     darüber rutscht er mit weniger Kraft weiter → das Heck kann wirklich ausbrechen
+   - Reibungskreis hinten: wer viel Gas gibt, nimmt den Hinterreifen Seitenhalt → Power-Oversteer, Drift mit Gas halten
+   - Gewichtsverlagerung: Bremsen belastet vorne (Auto lenkt besser ein), Gas belastet hinten
+   - Handbremse blockiert die Hinterräder → Heck kommt sofort
+   - Vorderräder richten sich von selbst nach der Fahrtrichtung aus (Nachlauf) → Gegenlenken im Drift fühlt sich natürlich an */
+const CARP = { m: 1250, a: 1.42, b: 1.45, h: 0.5, Iz: 2300, muF: 1.0, muR: 1.1, BF: 8, BR: 10, C: 1.45, P: 200000, Fmax: 7600, drag: 1.15, roll: 160, brake: 1.05,
+  maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2 };
+const pacejka = (alpha, Fz, mu, B) => -mu * Fz * Math.sin(CARP.C * Math.atan(B * alpha));
 function carDrive(dt, thr, steerIn, hand, analog) {
-  const gas = Math.max(0, thr), brake = Math.max(0, -thr);
-  let vF = 0, vR = 0, slip = 0, speed = 0;
-  for (let k = 0; k < 2; k++) {
-    const h = dt / 2;
-    const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
-    vF = ride.cvx * fx + ride.cvz * fz; vR = ride.cvx * sx + ride.cvz * sz;
-    speed = Math.hypot(ride.cvx, ride.cvz);
-    ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 12 : 6) * h);
-    if (gas) vF += gas * 15 * Math.max(0, 1 - Math.max(0, vF) / 52) * h;   // bis ca. 185 km/h
-    if (brake) { if (vF > 0.5) vF -= 28 * brake * h; else vF = Math.max(-12, vF - 8 * brake * h); }
-    if (hand) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 5 * h);
-    const onRoad = carOnRoad(ride.pos.x, ride.pos.z);
-    vF -= vF * 0.12 * h +Math.sign(vF) * 0.0012 * vF * vF * h;
-    slip = speed > 3 ? Math.abs(Math.atan2(vR, Math.abs(vF))) : 0;
-    let grip = 6;
-    if (slip > 0.15) grip = gas > 0.2 ? 0.9 : 1.8;
-    if (hand) grip = 0.6;
-    if (!onRoad) grip *= 1.4;
-    vR *= Math.exp(-grip * h);
-    const dir = vF >= -0.5 ? 1 : -1;
-    let yaw = ride.steerS * (2.6 / (1 + speed / 35)) * Math.min(1, speed / 7) * dir;
-    if (hand && speed > 5) yaw *= 1.5; else if (slip > 0.15 && gas > 0.2) yaw *= 1.25;
-    ride.yawRate += (yaw - ride.yawRate) * Math.min(1, 8 * h);
-    ride.yaw += ride.yawRate * h;
-    // Geschwindigkeit bleibt in der alten Richtung – das Auto dreht sich schneller als es die Richtung ändert = Rutschen/Drift
-    ride.cvx = fx * vF + sx * vR; ride.cvz = fz * vF + sz * vR;
-    ride.onRoad = onRoad;
+  const K = CARP, L = K.a + K.b, g = 9.81, gas = Math.max(0, thr), brakeIn = Math.max(0, -thr);
+  const fx = () => Math.cos(ride.yaw), fz = () => -Math.sin(ride.yaw);
+  // Fahrzeug-Koordinaten: u = vorwärts, vy = nach links, r = Gierrate (links positiv)
+  let u = ride.cvx * fx() + ride.cvz * fz(), vy = -(ride.cvx * Math.sin(ride.yaw) + ride.cvz * Math.cos(ride.yaw)), r = ride.yawRate || 0;
+  let ax = ride.ax || 0, wheelspin = 0;
+  const N = Math.max(2, Math.ceil(dt / 0.006)), h = dt / N;
+  ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 14 : 7) * dt);
+  for (let k = 0; k < N; k++) {
+    const au = Math.max(Math.abs(u), 2.5), sgn = u < -0.5 ? -1 : 1;
+    // Lenkwinkel: Fahrer + Selbstausrichtung (Nachlauf) zur Fahrtrichtung der Vorderachse
+    const free = Math.atan2(vy + K.a * r, au) * sgn;
+    const sens = analog ? 1 / (1 + Math.abs(u) / 40) : 1 / (1 + Math.abs(u) / K.steerFade);
+    const align = Math.min(1, Math.abs(u) / 6) * (analog ? 0.65 : 0.8);
+    const delta = Math.max(-K.maxSteer, Math.min(K.maxSteer, ride.steerS * K.maxSteer * sens + free * align));
+    // Radlasten mit Gewichtsverlagerung
+    const W = K.m * g, FzF = Math.max(800, W * K.b / L - K.m * ax * K.h / L), FzR = Math.max(800, W * K.a / L + K.m * ax * K.h / L);
+    // Längskräfte: Antrieb hinten, Bremse 65/35, Handbremse blockiert hinten, rückwärts fahren
+    let FxR = 0, FxF = 0;
+    const capR = K.muR * FzR;
+    if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W; FxF = -Fb * 0.65; FxR = -Fb * 0.35; }
+    else if (brakeIn) FxR = u > -12 ? -brakeIn * 4200 : 0;
+    else if (gas) {
+      const want = gas * Math.min(K.Fmax, K.P / Math.max(Math.abs(u), 4));
+      if (want > capR * K.spinCap) { wheelspin = Math.min(1, (want - capR * K.spinCap) / (capR * 0.5) + 0.3); FxR = capR * K.spinCap; } else FxR = want;
+    }
+    FxF = Math.max(-K.muF * FzF, FxF);
+    if (hand && Math.abs(u) > 1) { FxR = -Math.sign(u) * capR * 0.85; wheelspin = 1; }
+    // Seitenkräfte: Schräglauf → Haftungskurve, hinten durch den Reibungskreis begrenzt
+    const alphaF = Math.atan2(vy + K.a * r, au) - delta * sgn, alphaR = Math.atan2(vy - K.b * r, au);
+    const FyF = pacejka(alphaF, FzF, K.muF, K.BF) * Math.min(1, Math.hypot(u, vy) / 3) * Math.sqrt(Math.max(0, 1 - (FxF / (K.muF * FzF)) ** 2));
+    const latR = Math.sqrt(Math.max(0, 1 - (FxR / capR) ** 2));
+    const lowK = Math.min(1, Math.hypot(u, vy) / 3);   // fast im Stand: keine Reifen-Seitenkräfte (sonst dreht sich das Auto auf der Stelle)
+    const FyR = pacejka(alphaR, FzR, K.muR, K.BR) * Math.max(0.12, latR) * (1 - K.spinLat * wheelspin) * lowK;
+    // Bewegungsgleichungen
+    const cd = Math.cos(delta), sd = Math.sin(delta);
+    const Fdrag = K.drag * u * Math.abs(u) + K.roll * Math.sign(u) * Math.min(1, Math.abs(u));
+    const Fx = FxR + FxF * cd - FyF * sd - Fdrag, Fy = FyR + FxF * sd + FyF * cd;
+    const axNew = Fx / K.m;
+    u += (axNew + r * vy) * h; vy += (Fy / K.m - r * u) * h;
+    r += ((K.a * (FyF * cd + FxF * sd)) - K.b * FyR) / K.Iz * h;
+    // Drift-Hilfe (Tastatur stark, Lenkrad schwächer): ab ~40° Querstellung bremst sie das Weiterdrehen, damit man sich nicht sofort dreht
+    const beta = Math.atan2(vy, Math.max(Math.abs(u), 1));
+    if (Math.abs(u) > 4 && Math.abs(beta) > 0.7 && Math.sign(r) === -Math.sign(beta)) r -= r * Math.min(1, K.assist * (analog ? 0.6 : 1) * (Math.abs(beta) - 0.7) * 6 * h);
+    ax += (axNew - ax) * Math.min(1, 10 * h);
+    // sehr langsam: stabil wie ein normales Auto (keine Zitter-Bewegungen)
+    if (Math.abs(u) < 3 && (!gas || wheelspin < 0.5)) { const k2 = Math.min(1, (Math.abs(u) < 1.5 ? 30 : 6) * h); vy -= vy * k2; r += (u * Math.tan(delta) / L - r) * k2; }
+    if (!gas && !brakeIn && Math.abs(u) < 1) u *= 1 - Math.min(1, 8 * h);
+    ride.yaw += r * h;
   }
+  const sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
+  ride.cvx = fx() * u - sx * vy; ride.cvz = fz() * u - sz * vy;
+  ride.yawRate = r; ride.ax = ax; ride.wspin = wheelspin;
+  const speed = Math.hypot(u, vy);
+  ride.onRoad = carOnRoad(ride.pos.x, ride.pos.z);
   ride.vel.x = ride.cvx; ride.vel.z = ride.cvz;
-  ride.speed = vF; ride.slip = slip; ride.hand = hand && speed > 4;
-  ride.lean += (Math.max(-0.07, Math.min(0.07, vR * 0.015)) - ride.lean) * Math.min(1, dt * 6);   // Karosserie neigt sich nach außen
-  ride.st = ride.steerS * 0.5;
+  ride.speed = u; ride.slip = speed > 3 ? Math.abs(Math.atan2(vy, Math.abs(u))) : 0; ride.hand = hand && speed > 4;
+  ride.lean += (Math.max(-0.06, Math.min(0.06, r * u * 0.005)) - ride.lean) * Math.min(1, dt * 6);   // Karosserie neigt sich nach außen
+  ride.dive = (ride.dive || 0) + (Math.max(-0.04, Math.min(0.04, -ax * 0.004)) - (ride.dive || 0)) * Math.min(1, dt * 5);   // Nicken beim Bremsen/Gasgeben
+  ride.st = Math.max(-0.6, Math.min(0.6, ride.steerS * K.maxSteer + Math.atan2(vy + K.a * r, Math.max(Math.abs(u), 2.5)) * (analog ? 0.45 : 0.8)));   // sichtbarer Radeinschlag inkl. Gegenlenken
 }
 // Drift-Punkte → Coins (lange Drifts geben einen Multiplikator, ein Crash löscht den Drift)
 const DRIFT = { pts: 0, time: 0, idle: 0 };
@@ -656,7 +693,7 @@ function skidQuad(a, b, y) {
 }
 function carSkids(dt) {
   const sp = Math.hypot(ride.vel.x, ride.vel.z);
-  const marking = ride.onGround && sp > 4 && ((ride.slip || 0) > 0.22 || ride.hand);
+  const marking = ride.onGround && ((sp > 4 && ((ride.slip || 0) > 0.22 || ride.hand)) || (ride.wspin || 0) > 0.45);   // auch beim Durchdrehen (Burnout)
   if (!marking) { lastSkid = null; return; }
   const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
   const wl = [ride.pos.x - fx * 1.35 - sx * 0.85, ride.pos.z - fz * 1.35 - sz * 0.85], wr = [ride.pos.x - fx * 1.35 + sx * 0.85, ride.pos.z - fz * 1.35 + sz * 0.85];
