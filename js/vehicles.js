@@ -332,7 +332,7 @@ function exitRide(silent) {
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
   rideLeft.v = ride.v; rideLeft.t = performance.now();
-  DRIFT.pts = 0; DRIFT.time = 0; driftHud.classList.remove('on'); lastSkid = null;
+  DRIFT.pts = 0; DRIFT.time = 0; driftHud.classList.remove('on'); lastSkid = null; lapReset();
   ride.v = -1; ride.speed = 0;
   if (myRider) myRider.g.visible = false;
   engineSound(false);
@@ -415,7 +415,7 @@ function updateRide(dt) {
     ride.speed *= 0.25;
     if (isCar) { ride.cvx *= 0.3; ride.cvz *= 0.3; ride.yawRate *= 0.3; if (sp > 6 && DRIFT.pts > 0) { showMsg('💥 CRASH! Drift verloren'); DRIFT.pts = 0; DRIFT.time = 0; } }
   }
-  if (isCar) driftScore(dt);
+  if (isCar) { driftScore(dt); trackLap(dt); }
   if (ride.pos.y < -10) ride.pos.set(0, 2, 0);
   // Spielerposition = auf dem Sitz
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * K.back, ride.pos.y + K.up, ride.pos.z + Math.sin(ride.yaw) * K.back);
@@ -520,6 +520,46 @@ function driftScore(dt) {
   driftHud.classList.toggle('on', DRIFT.pts > 0 && ride.v >= 0);
   if (DRIFT.pts > 0) driftHud.innerHTML = `<b>${Math.round(DRIFT.pts).toLocaleString('de-DE')}</b><span>DRIFT ×${mult}</span>`;
   ride.drifting = drifting;
+}
+// Drift-Arena: Rundenzeit (Start/Ziel überqueren, mindestens 85 % der Strecke abfahren, keine Abkürzung)
+const LAP = { idx: -1, seen: 0, t: 0, on: false, n: 0, best: 0 };
+try { LAP.best = +localStorage.getItem('kz_bestlap') || 0; } catch (e) {}
+const lapHud = document.createElement('div');
+lapHud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#fff;font:700 18px system-ui;padding:6px 14px;border-radius:8px;pointer-events:none;display:none;white-space:nowrap';
+document.getElementById('hud').appendChild(lapHud);
+const lapFmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+function lapReset() { LAP.on = false; LAP.idx = -1; lapHud.style.display = 'none'; }
+function trackLap(dt) {
+  const T = window.DRIFT_TRACK; if (!T) return;
+  const x = ride.pos.x, z = ride.pos.z, B = T.box;
+  if (x < B[0] || x > B[2] || z < B[1] || z > B[3]) { if (LAP.idx >= 0) lapReset(); return; }
+  const P = T.pts, N = P.length;
+  let best = -1, bd = 1e9;
+  const from = LAP.idx < 0 ? 0 : LAP.idx - 30, to = LAP.idx < 0 ? N : LAP.idx + 30;
+  for (let k = from; k < to; k++) { const i = (k + N) % N, d = (P[i][0] - x) ** 2 + (P[i][1] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+  lapHud.style.display = 'block';
+  if (LAP.on) LAP.t += dt;
+  lapHud.innerHTML = `🏁 ${LAP.on ? 'Runde ' + (LAP.n + 1) + ' · ' + lapFmt(LAP.t) : 'Fahr über die Startlinie'}${LAP.best ? ' · Bestzeit ' + lapFmt(LAP.best) : ''}`;
+  if (bd > (T.W / 2 + 7) ** 2) { LAP.idx = -1; return; }   // neben der Strecke: neu suchen, zählt nicht
+  if (LAP.idx < 0) { LAP.idx = best; return; }
+  const d = (best - LAP.idx + N) % N;
+  if (d > N / 2) {   // rückwärts
+    LAP.seen -= N - d;
+    if (LAP.idx < N * 0.1 && best > N * 0.9) { LAP.on = false; showMsg('Falsche Richtung!'); }
+  } else {
+    LAP.seen += d;
+    if (LAP.idx > N * 0.9 && best < N * 0.1) {   // Start/Ziel überquert
+      if (LAP.on && LAP.seen > N * 0.85) {
+        const t = LAP.t, rec = !LAP.best || t < LAP.best, coins = rec && LAP.best ? 50 : 20;
+        if (rec) { LAP.best = t; try { localStorage.setItem('kz_bestlap', t); } catch (e) {} }
+        shopState.coins += coins; saveShop(); updateCoins(true);
+        showMsg(`🏁 Runde ${lapFmt(t)}${rec ? '  NEUE BESTZEIT!' : ''}  +${coins} Coins`);
+        LAP.n++;
+      } else if (!LAP.on) LAP.n = 0;
+      LAP.on = true; LAP.t = 0; LAP.seen = 0;
+    }
+  }
+  LAP.idx = best;
 }
 // Reifenspuren (schwarze Streifen auf dem Boden) und Reifenrauch an den Hinterrädern
 const SKID = 2500, skidPos = new Float32Array(SKID * 18), skidGeo = new THREE.BufferGeometry();

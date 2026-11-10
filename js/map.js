@@ -1354,6 +1354,94 @@ function towerLobby(x, z, w, d, h, mat, faceS) {
   bench(x - w / 4, z - out * 1, true);
   addAddr(x - w / 5, faceS ? z1 + 3 : z0 - 3, 'stadt', x - w / 5, faceS ? z1 + 0.7 : z0 - 0.7);
 }
+/* ===== DRIFT-ARENA auf dem Feld im Südosten (x 155 … 292, z 52 … 145) =====
+   Rundkurs mit S-Kurven, Haarnadeln, rot-weißen Randsteinen an den Kurven, Reifenstapeln außen
+   und einer großen Drift-Fläche mit Donut-Kreis. Die Mittellinie (window.DRIFT_TRACK) nutzt die Rundenzeit. */
+function weltDriftArena() {
+  const X0 = 160, Z0 = 56, SX = 128 / 497, SZ = 86 / 338, W = 11;
+  // Streckenverlauf nach Vorlage (Bild-Pixel → Meter), im Uhrzeigersinn; Start/Ziel auf der langen Geraden oben
+  const P = [[140, 38], [260, 35], [380, 45], [440, 72], [462, 140], [452, 235], [412, 293], [330, 305], [270, 282], [240, 232], [228, 182],
+    [195, 150], [148, 160], [118, 212], [82, 250], [42, 240], [25, 180], [30, 95], [70, 48]].map(([px, pz]) => new THREE.Vector3(X0 + px * SX, 0, Z0 + pz * SZ));
+  const curve = new THREE.CatmullRomCurve3(P, true, 'centripetal');
+  const N = 720, L = curve.getLength(), pts = curve.getSpacedPoints(N); pts.pop();
+  const nrm = pts.map((p, i) => { const a = pts[(i + N - 1) % N], b = pts[(i + 1) % N], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz); return [-dz / l, dx / l]; });
+  const seg = L / N;
+  const curv = nrm.map((_, i) => { const a = nrm[(i + N - 4) % N], b = nrm[(i + 4) % N]; return Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) / (8 * seg); });
+  // Band entlang der Strecke zwischen seitlichem Abstand o0 … o1 (u = Länge / uS, v = Abstand / vS)
+  const band = (o0, o1, y, mat, uS, vS, keep) => {
+    const pos = [], uv = [];
+    for (let i = 0; i < N; i++) {
+      if (keep && !keep(i)) continue;
+      const j = (i + 1) % N, q = [[i, o0], [i, o1], [j, o0], [j, o1]].map(([k, o]) => [pts[k].x + nrm[k][0] * o, pts[k].z + nrm[k][1] * o]);
+      const u0 = i * seg / uS, u1 = (i + 1) * seg / uS, vv0 = vS ? o0 / vS : 0, vv1 = vS ? o1 / vS : 1;
+      const T = [[0, u0, vv0], [1, u0, vv1], [2, u1, vv0], [1, u0, vv1], [3, u1, vv1], [2, u1, vv0]];
+      for (const [k, u, v] of T) { pos.push(q[k][0], y, q[k][1]); uv.push(u, v); }
+    }
+    if (!pos.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+    const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
+  };
+  const stripeMat = (a, b, n) => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 8; const g = c.getContext('2d');
+    for (let k = 0; k < n; k++) { g.fillStyle = k % 2 ? b : a; g.fillRect(k * 64 / n, 0, 64 / n, 8); }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
+  };
+  const CURB = stripeMat('#d42a2a', '#f2f2f2', 2), LINE = new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
+  const SAND = pbr('asphalt', 3, { map: tintedTex('asphalt', 0xc4a874), mat: { color: new THREE.Color(1.05, 0.98, 0.86) }, normalScale: 1.4 });
+  const PAD = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x3c8c84), mat: { color: new THREE.Color(0.85, 1, 0.98), polygonOffset: true, polygonOffsetFactor: -1 } });
+
+  // Untergrund: Sand mit ein paar Grasinseln
+  decalT(223.5, 98.5, 137, 93, SAND, 4, 0, 0.007);
+  for (const [x, z, w, d] of [[176, 78, 8, 6], [190, 118, 9, 7], [210, 140, 12, 4], [168, 140, 7, 5]]) decalT(x, z, w, d, MAT.grass, 2, 0, 0.009);
+  // Asphalt, weiße Randlinien, Randsteine an den Kurven
+  band(-W / 2, W / 2, 0.02, MAT.road, 3, 3);
+  band(W / 2 - 0.5, W / 2 - 0.35, 0.026, LINE, 0, 0); band(-W / 2 + 0.35, -W / 2 + 0.5, 0.026, LINE, 0, 0);
+  const sharp = i => Math.abs(curv[i]) > 1 / 38;
+  band(W / 2, W / 2 + 1.3, 0.03, CURB, 2, 0, sharp); band(-W / 2 - 1.3, -W / 2, 0.03, CURB, 2, 0, sharp);
+  // Drift-Fläche (türkis) rechts im Innenfeld, mit Donut-Kreis aus Randsteinen und Reifen in der Mitte
+  const pcx = X0 + 368 * SX, pcz = Z0 + 172 * SZ, rx = 22.5, rz = 20;
+  const pg = new THREE.CircleGeometry(1, 64), pp = pg.attributes.position, puv = pg.attributes.uv;
+  for (let i = 0; i < pp.count; i++) { pp.setXY(i, pp.getX(i) * rx, pp.getY(i) * rz); puv.setXY(i, pp.getX(i) / 3, pp.getY(i) / 3); }
+  const pad = new THREE.Mesh(withUv2(pg), PAD); pad.rotation.x = -Math.PI / 2; pad.position.set(pcx, 0.018, pcz); pad.receiveShadow = true; scene.add(pad);
+  const K = 48, ringPos = [], ringUv = [];
+  for (let k = 0; k < K; k++) for (const [a, b, r, u] of [[k, k, 3.6, 0], [k, k, 4.8, 0], [k + 1, k + 1, 3.6, 1], [k, k, 4.8, 0], [k + 1, k + 1, 4.8, 1], [k + 1, k + 1, 3.6, 1]]) {
+    const ang = a / K * Math.PI * 2; ringPos.push(pcx + Math.cos(ang) * r, 0.03, pcz - Math.sin(ang) * r); ringUv.push((k + u) / 2, r > 4 ? 1 : 0);
+  }
+  const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.Float32BufferAttribute(ringPos, 3)); rg.setAttribute('uv', new THREE.Float32BufferAttribute(ringUv, 2)); rg.computeVertexNormals();
+  scene.add(new THREE.Mesh(withUv2(rg), CURB));
+  const tireStack = (x, z, n) => {
+    for (let k = 0; k < n; k++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.17, 6, 12), TIRE); t.rotation.x = Math.PI / 2; t.position.set(x, 0.17 + k * 0.32, z); t.castShadow = true; scene.add(t); }
+    collider(x, 0, z, 1.1, n * 0.32 + 0.1, 1.1);
+  };
+  tireStack(pcx, pcz, 4);
+  // Reifenstapel außen an den engen Kurven (Abstand halten zu anderen Streckenteilen)
+  let lastT = -99;
+  for (let i = 0; i < N; i++) {
+    if (Math.abs(curv[i]) < 1 / 26 || (i - lastT) * seg < 5) continue;
+    const s = -Math.sign(curv[i]), x = pts[i].x + nrm[i][0] * s * (W / 2 + 3.2), z = pts[i].z + nrm[i][1] * s * (W / 2 + 3.2);
+    let clear = x > 157 && x < 290 && z > 54 && z < 143 && Math.hypot(x - pcx, (z - pcz) * rx / rz) > rx + 2;
+    for (let k = 0; clear && k < N; k += 3) if (Math.hypot(pts[k].x - x, pts[k].z - z) < W / 2 + 2.5) clear = false;
+    if (clear) { tireStack(x, z, 2); lastT = i; }
+  }
+  // Start/Ziel: Schachbrett-Linie + Torbogen
+  const st = pts[0];
+  const chk = document.createElement('canvas'); chk.width = 128; chk.height = 32; const cg = chk.getContext('2d');
+  for (let a = 0; a < 16; a++) for (let b = 0; b < 4; b++) { cg.fillStyle = (a + b) % 2 ? '#111' : '#f4f4f4'; cg.fillRect(a * 8, b * 8, 8, 8); }
+  const ct = new THREE.CanvasTexture(chk); ct.encoding = THREE.sRGBEncoding;
+  decalT(st.x, st.z, W, 1.6, new THREE.MeshStandardMaterial({ map: ct, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }), 0, Math.atan2(-nrm[0][1], nrm[0][0]), 0.032);
+  for (const s of [-1, 1]) addBox(st.x + nrm[0][0] * s * (W / 2 + 1.2), 0, st.z + nrm[0][1] * s * (W / 2 + 1.2), 0.5, 6, 0.5, MAT.metal, 1, { round: 0.05 });
+  addBox(st.x, 5.6, st.z, 0.5, 0.9, W + 3, MAT.metal, 1, { decor: true, round: 0 });
+  for (const s of [-1, 1]) tkSign(st.x + s * 0.27, 6.05, st.z, W + 2, 1.6, s * Math.PI / 2, tkSignMat('🏁 DRIFT-ARENA', '#111111', '#ffd23f', false));
+  // Zuschauer-Tribüne an der Startgeraden, Fahnen, Autos zum Losfahren
+  addBox(st.x + 16, 0, Z0 - 0.5, 30, 0.6, 3, MAT.concrete, 2); addBox(st.x + 16, 0.6, Z0 - 1.2, 30, 0.6, 1.6, MAT.concrete, 2);
+  for (let k = 0; k < 6; k++) { addBox(st.x + 3 + k * 5, 0, Z0 + 1.1, 0.1, 3, 0.1, MAT.metal, 1, { decor: true, round: 0 }); addBox(st.x + 3.5 + k * 5, 2.2, Z0 + 1.1, 0.9, 0.6, 0.03, [MAT.ctrRed, TKM.white][k % 2], 0, { decor: true, round: 0 }); }
+  tkSign(X0 - 2.5, 1.6, 96, 6, 1.2, -Math.PI / 2, tkSignMat('DRIFT-ARENA →', '#d42a2a', '#ffffff', false));
+  carSpot(st.x - 10, st.z - 2.5, 0); carSpot(st.x - 10, st.z + 2.5, 0); carSpot(pcx, pcz + 12, 0);
+  window.DRIFT_TRACK = { pts: pts.map(p => [p.x, p.z]), W, box: [155, 52, 292, 145], start: [st.x, st.z] };
+}
+
 function buildWeltMap() {
   const S = 300;
   const white = new THREE.MeshStandardMaterial({ color: 0xe0ded4, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -1526,6 +1614,7 @@ function buildWeltMap() {
   let fi = 0;
   for (const [x0, x1] of [[16, 145], [155, 292]]) for (const [z0, z1] of [[52, 145], [155, 292]]) {
     if (x0 === 155 && z0 === 155) continue;   // Hofgelände
+    if (x0 === 155 && z0 === 52) continue;    // Drift-Arena
     decalT((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, fieldMats[fi++ % fieldMats.length], 4, 0, 0.007);
     FIELDS.push([x0 + 6, z0 + 6, x1 - 6, z1 - 6]);
     for (let z = z0 + 3; z < z1; z += 3) decalT((x0 + x1) / 2, z, x1 - x0 - 2, 0.25, F_PLOW, 4, 0, 0.009);   // Furchen
@@ -1561,6 +1650,8 @@ function buildWeltMap() {
   carSpot(222, 196, Math.PI); car(200, 200, true);
   // Moto-Hügel am Feldrand
   addRamp(60, 152, 0, 5, P_TABLE(5, 5, 6, 1.6), MAT.dirt, 3); addRamp(100, 152, 0, 4, P_KICK(4, 1.2), MAT.rampWood);
+
+  weltDriftArena();
 
   /* ===== WALD mit See (Nordwesten) ===== */
   road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
