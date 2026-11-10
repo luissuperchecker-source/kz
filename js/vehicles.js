@@ -660,17 +660,23 @@ lapHud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-5
 document.getElementById('hud').appendChild(lapHud);
 const lapFmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 function lapReset() { LAP.on = false; LAP.idx = -1; lapHud.style.display = 'none'; }
+const lapKey = T => 'kz_bestlap' + (T.key ? '_' + T.key : '');
 function trackLap(dt) {
-  const T = window.DRIFT_TRACK; if (!T) return;
-  const x = ride.pos.x, z = ride.pos.z, B = T.box;
-  if (x < B[0] || x > B[2] || z < B[1] || z > B[3]) { if (LAP.idx >= 0) lapReset(); return; }
+  const TS = window.DRIFT_TRACKS; if (!TS) return;
+  const x = ride.pos.x, z = ride.pos.z, inB = T => T.box[0] <= x && x <= T.box[2] && T.box[1] <= z && z <= T.box[3];
+  const T = LAP.T && inB(LAP.T) ? LAP.T : TS.find(inB);
+  if (!T) { if (LAP.T) { lapReset(); LAP.T = null; } return; }
+  if (T !== LAP.T) {   // andere Strecke: eigene Bestzeit
+    lapReset(); LAP.T = T; LAP.n = 0; LAP.seen = 0;
+    try { LAP.best = +localStorage.getItem(lapKey(T)) || 0; } catch (e) { LAP.best = 0; }
+  }
   const P = T.pts, N = P.length;
   let best = -1, bd = 1e9;
   const from = LAP.idx < 0 ? 0 : LAP.idx - 30, to = LAP.idx < 0 ? N : LAP.idx + 30;
   for (let k = from; k < to; k++) { const i = (k + N) % N, d = (P[i][0] - x) ** 2 + (P[i][1] - z) ** 2; if (d < bd) { bd = d; best = i; } }
   lapHud.style.display = 'block';
   if (LAP.on) LAP.t += dt;
-  lapHud.innerHTML = `🏁 ${LAP.on ? 'Runde ' + (LAP.n + 1) + ' · ' + lapFmt(LAP.t) : 'Fahr über die Startlinie'}${LAP.best ? ' · Bestzeit ' + lapFmt(LAP.best) : ''}`;
+  lapHud.innerHTML = `🏁 ${T.name} · ${LAP.on ? 'Runde ' + (LAP.n + 1) + ' · ' + lapFmt(LAP.t) : 'Fahr über die Startlinie'}${LAP.best ? ' · Bestzeit ' + lapFmt(LAP.best) : ''}`;
   if (bd > (T.W / 2 + 7) ** 2) { LAP.idx = -1; return; }   // neben der Strecke: neu suchen, zählt nicht
   if (LAP.idx < 0) { LAP.idx = best; return; }
   const d = (best - LAP.idx + N) % N;
@@ -682,7 +688,7 @@ function trackLap(dt) {
     if (LAP.idx > N * 0.9 && best < N * 0.1) {   // Start/Ziel überquert
       if (LAP.on && LAP.seen > N * 0.85) {
         const t = LAP.t, rec = !LAP.best || t < LAP.best, coins = rec && LAP.best ? 50 : 20;
-        if (rec) { LAP.best = t; try { localStorage.setItem('kz_bestlap', t); } catch (e) {} }
+        if (rec) { LAP.best = t; try { localStorage.setItem(lapKey(T), t); } catch (e) {} }
         shopState.coins += coins; saveShop(); updateCoins(true);
         showMsg(`🏁 Runde ${lapFmt(t)}${rec ? '  NEUE BESTZEIT!' : ''}  +${coins} Coins`);
         LAP.n++;

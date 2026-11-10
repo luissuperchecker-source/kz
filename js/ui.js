@@ -104,9 +104,9 @@ const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194
       g.fillStyle = `rgba(40,70,35,${Math.min(0.65, h / 40).toFixed(2)})`; g.fillRect((x - RADAR.x0) * RADAR.ppm, (z - RADAR.z0) * RADAR.ppm, 4 * RADAR.ppm, 4 * RADAR.ppm);
     }
   }
-  if (window.DRIFT_TRACK) {   // Drift-Arena als Linie
-    g.strokeStyle = 'rgba(70,70,74,0.95)'; g.lineWidth = window.DRIFT_TRACK.W * RADAR.ppm; g.lineJoin = 'round'; g.beginPath();
-    for (const [x, z] of window.DRIFT_TRACK.pts) g.lineTo((x - RADAR.x0) * RADAR.ppm, (z - RADAR.z0) * RADAR.ppm);
+  for (const T of window.DRIFT_TRACKS || []) {   // Drift-Strecken als Linie
+    g.strokeStyle = 'rgba(70,70,74,0.95)'; g.lineWidth = T.W * RADAR.ppm; g.lineJoin = 'round'; g.beginPath();
+    for (const [x, z] of T.pts) g.lineTo((x - RADAR.x0) * RADAR.ppm, (z - RADAR.z0) * RADAR.ppm);
     g.closePath(); g.stroke();
   }
   g.fillStyle = 'rgba(205,150,80,0.9)';   // Schanzen
@@ -151,7 +151,7 @@ function drawRadar(dt) {
     if (Math.hypot(x - R, y - R) < R - 4) { g.fillStyle = 'rgba(255,210,80,.8)'; g.fillRect(x - 1.5, y - 1.5, 3, 3); }
   }
   // Firmen mit Jobs (gelb) und aktuelles Job-Ziel (blau, am Rand wenn weiter weg)
-  if (window.DRIFT_TRACK) { const [x, y] = toR(...window.DRIFT_TRACK.start); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', x, y + 4); } }
+  for (const T of window.DRIFT_TRACKS || []) { const [x, y] = toR(...T.start); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', x, y + 4); } }
   for (const c of window.MAP_JOBS || []) { const [x, y] = toR(c.x, c.z); if (Math.hypot(x - R, y - R) < R - 6) { g.fillStyle = '#ffcc33'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText('$', x, y + 4); } }
   if (window.JOB_TGT) {
     let [x, y] = toR(window.JOB_TGT.x, window.JOB_TGT.z); const d = Math.hypot(x - R, y - R); if (d > R - 7) { x = R + (x - R) / d * (R - 7); y = R + (y - R) / d * (R - 7); }

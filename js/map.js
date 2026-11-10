@@ -93,10 +93,31 @@ function hillRegionH(H, x, z) {
   let m = _sst(0, H.edge || 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
   for (const [cx, cz, r] of H.flatC) { const d = Math.hypot(x - cx, z - cz); if (d < r + 14) m *= _sst(r, r + 14, d); }
   for (const [ax, v] of H.flatL) m *= _sst(5, 18, Math.abs((ax === 'x' ? x : z) - v));
+  if (H.track && m > 0) { const d = trackDist(x, z); if (d < TRK_CELL) m *= _sst(9, TRK_CELL, d); }   // Drift-Strecke: flacher Korridor, Hügel steigen daneben an
   if (m <= 0) return 0;
   let h = 0;
   for (const [cx, cz, a, s] of H.bumps) { const dx = x - cx, dz = z - cz; h += a * Math.exp(-(dx * dx + dz * dz) / (2 * s * s)); }
   return h * m;
+}
+// Drift-Strecken durch die Hügel: Mittellinien-Punkte in einem Raster (schnelle Abstands-Suche bis 20 m)
+const TRK_CELL = 20, TRK_GRID = new Map();
+const trkKey = (cx, cz) => (cx + 500) * 1000 + cz + 500;
+function addTrackPts(pts) {
+  for (const p of pts) { const k = trkKey(Math.floor(p.x / TRK_CELL), Math.floor(p.z / TRK_CELL)); let a = TRK_GRID.get(k); if (!a) TRK_GRID.set(k, a = []); a.push(p.x, p.z); }
+}
+function trackDist(x, z) {
+  const cx = Math.floor(x / TRK_CELL), cz = Math.floor(z / TRK_CELL); let best = TRK_CELL * TRK_CELL;
+  for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) {
+    const a = TRK_GRID.get(trkKey(cx + i, cz + j)); if (!a) continue;
+    for (let k = 0; k < a.length; k += 2) { const dx = a[k] - x, dz = a[k + 1] - z, d = dx * dx + dz * dz; if (d < best) best = d; }
+  }
+  return Math.sqrt(best);
+}
+// Geschlossener Rundkurs aus Stützpunkten [x, z] → gleichmäßig verteilte Mittellinien-Punkte
+function driftLoop(P) {
+  const curve = new THREE.CatmullRomCurve3(P.map(([x, z]) => new THREE.Vector3(x, 0, z)), true, 'centripetal');
+  const L = curve.getLength(), N = Math.round(L / 1.2), pts = curve.getSpacedPoints(N); pts.pop();
+  return { pts, N, L };
 }
 function groundH(x, z, y = Infinity) {
   let h = HILL ? hillH(x, z) : 0;
@@ -1431,31 +1452,9 @@ function weltDriftArena() {
     [195, 150], [148, 160], [118, 212], [82, 250], [42, 240], [25, 180], [30, 95], [70, 48]].map(([px, pz]) => new THREE.Vector3(X0 + px * SX, 0, Z0 + pz * SZ));
   const curve = new THREE.CatmullRomCurve3(P, true, 'centripetal');
   const N = 720, L = curve.getLength(), pts = curve.getSpacedPoints(N); pts.pop();
-  const nrm = pts.map((p, i) => { const a = pts[(i + N - 1) % N], b = pts[(i + 1) % N], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz); return [-dz / l, dx / l]; });
+  const { nrm, curv, band } = trackKit({ pts, N, L });
   const seg = L / N;
-  const curv = nrm.map((_, i) => { const a = nrm[(i + N - 4) % N], b = nrm[(i + 4) % N]; return Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) / (8 * seg); });
-  // Band entlang der Strecke zwischen seitlichem Abstand o0 … o1 (u = Länge / uS, v = Abstand / vS)
-  const band = (o0, o1, y, mat, uS, vS, keep) => {
-    const pos = [], uv = [];
-    for (let i = 0; i < N; i++) {
-      if (keep && !keep(i)) continue;
-      const j = (i + 1) % N, q = [[i, o0], [i, o1], [j, o0], [j, o1]].map(([k, o]) => [pts[k].x + nrm[k][0] * o, pts[k].z + nrm[k][1] * o]);
-      const u0 = i * seg / uS, u1 = (i + 1) * seg / uS, vv0 = vS ? o0 / vS : 0, vv1 = vS ? o1 / vS : 1;
-      const T = [[0, u0, vv0], [1, u0, vv1], [2, u1, vv0], [1, u0, vv1], [3, u1, vv1], [2, u1, vv0]];
-      for (const [k, u, v] of T) { pos.push(q[k][0], y, q[k][1]); uv.push(u, v); }
-    }
-    if (!pos.length) return;
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
-    const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
-  };
-  const stripeMat = (a, b, n) => {
-    const c = document.createElement('canvas'); c.width = 64; c.height = 8; const g = c.getContext('2d');
-    for (let k = 0; k < n; k++) { g.fillStyle = k % 2 ? b : a; g.fillRect(k * 64 / n, 0, 64 / n, 8); }
-    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
-    return new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 });
-  };
-  const CURB = stripeMat('#d42a2a', '#f2f2f2', 2), LINE = new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
+  const { CURB, LINE } = trackMats();
   const SAND = pbr('asphalt', 3, { map: tintedTex('asphalt', 0xc4a874), mat: { color: new THREE.Color(1.05, 0.98, 0.86) }, normalScale: 1.4 });
   const PAD = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x3c8c84), mat: { color: new THREE.Color(0.85, 1, 0.98), polygonOffset: true, polygonOffsetFactor: -1 } });
 
@@ -1506,7 +1505,79 @@ function weltDriftArena() {
   for (let k = 0; k < 6; k++) { addBox(st.x + 3 + k * 5, 0, Z0 + 1.1, 0.1, 3, 0.1, MAT.metal, 1, { decor: true, round: 0 }); addBox(st.x + 3.5 + k * 5, 2.2, Z0 + 1.1, 0.9, 0.6, 0.03, [MAT.ctrRed, TKM.white][k % 2], 0, { decor: true, round: 0 }); }
   tkSign(X0 - 2.5, 1.6, 96, 6, 1.2, -Math.PI / 2, tkSignMat('DRIFT-ARENA →', '#d42a2a', '#ffffff', false));
   carSpot(st.x - 10, st.z - 2.5, 0); carSpot(st.x - 10, st.z + 2.5, 0); carSpot(pcx, pcz + 12, 0);
-  window.DRIFT_TRACK = { pts: pts.map(p => [p.x, p.z]), W, box: [155, 52, 292, 145], start: [st.x, st.z] };
+  window.DRIFT_TRACK = { pts: pts.map(p => [p.x, p.z]), W, box: [155, 52, 292, 145], start: [st.x, st.z], name: 'Drift-Arena', key: '' };
+  (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push(window.DRIFT_TRACK);
+}
+/* Bausteine für Drift-Strecken: Seitenrichtung, Krümmung und Bänder entlang der Mittellinie */
+function trackKit(T) {
+  const { pts, N, L } = T, seg = L / N;
+  const nrm = pts.map((p, i) => { const a = pts[(i + N - 1) % N], b = pts[(i + 1) % N], dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz); return [-dz / l, dx / l]; });
+  const curv = nrm.map((_, i) => { const a = nrm[(i + N - 4) % N], b = nrm[(i + 4) % N]; return Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1]) / (8 * seg); });
+  // Band zwischen seitlichem Abstand o0 … o1 (u = Länge / uS, v = Abstand / vS)
+  const band = (o0, o1, y, mat, uS, vS, keep) => {
+    const pos = [], uv = [];
+    for (let i = 0; i < N; i++) {
+      if (keep && !keep(i)) continue;
+      const j = (i + 1) % N, q = [[i, o0], [i, o1], [j, o0], [j, o1]].map(([k, o]) => [pts[k].x + nrm[k][0] * o, pts[k].z + nrm[k][1] * o]);
+      const u0 = i * seg / uS, u1 = (i + 1) * seg / uS, vv0 = vS ? o0 / vS : 0, vv1 = vS ? o1 / vS : 1;
+      const Q = [[0, u0, vv0], [1, u0, vv1], [2, u1, vv0], [1, u0, vv1], [3, u1, vv1], [2, u1, vv0]];
+      for (const [k, u, v] of Q) { pos.push(q[k][0], y, q[k][1]); uv.push(u, v); }
+    }
+    if (!pos.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); g.computeVertexNormals();
+    const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
+  };
+  return { nrm, curv, seg, band };
+}
+let TRACK_MATS = null;
+function trackMats() {
+  if (TRACK_MATS) return TRACK_MATS;
+  const c = document.createElement('canvas'); c.width = 64; c.height = 8; const g = c.getContext('2d');
+  for (let k = 0; k < 2; k++) { g.fillStyle = k % 2 ? '#f2f2f2' : '#d42a2a'; g.fillRect(k * 32, 0, 32, 8); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  const chk = document.createElement('canvas'); chk.width = 128; chk.height = 32; const cg = chk.getContext('2d');
+  for (let a = 0; a < 16; a++) for (let b = 0; b < 4; b++) { cg.fillStyle = (a + b) % 2 ? '#111' : '#f4f4f4'; cg.fillRect(a * 8, b * 8, 8, 8); }
+  const ct = new THREE.CanvasTexture(chk); ct.encoding = THREE.sRGBEncoding;
+  return TRACK_MATS = {
+    CURB: new THREE.MeshStandardMaterial({ map: t, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }),
+    LINE: new THREE.MeshStandardMaterial({ color: 0xe8e8e2, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }),
+    CHECK: new THREE.MeshStandardMaterial({ map: ct, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }),
+  };
+}
+/* Drift-Rundkurs zwischen den Hügeln (Wald, Felder): Asphalt mit Randlinien, Schotter-Auslauf, Randsteine und Reifenstapel
+   an den engen Kurven, Start-/Zieltor mit Namen und zwei Autos. Die Hügel sind entlang der Strecke flach (H.track). */
+function driftTrackBuild(T, name, key, sideMat) {
+  const { pts, N } = T, W = 10, { nrm, curv, seg, band } = trackKit(T), { CURB, LINE, CHECK } = trackMats();
+  band(-W / 2 - 3, W / 2 + 3, 0.014, sideMat, 3, 3);   // Auslauf (Schotter/Erde)
+  band(-W / 2, W / 2, 0.02, MAT.road, 3, 3);
+  band(W / 2 - 0.5, W / 2 - 0.35, 0.026, LINE, 0, 0); band(-W / 2 + 0.35, -W / 2 + 0.5, 0.026, LINE, 0, 0);
+  const sharp = i => Math.abs(curv[i]) > 1 / 32;
+  band(W / 2, W / 2 + 1.3, 0.03, CURB, 2, 0, sharp); band(-W / 2 - 1.3, -W / 2, 0.03, CURB, 2, 0, sharp);
+  const tireStack = (x, z, n) => {
+    const y = hillH(x, z);
+    for (let k = 0; k < n; k++) { const t = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.17, 6, 12), TIRE); t.rotation.x = Math.PI / 2; t.position.set(x, y + 0.17 + k * 0.32, z); t.castShadow = true; scene.add(t); }
+    collider(x, y, z, 1.1, n * 0.32 + 0.1, 1.1);
+  };
+  let lastT = -99;
+  for (let i = 0; i < N; i++) {
+    if (Math.abs(curv[i]) < 1 / 22 || (i - lastT) * seg < 6) continue;
+    const s = -Math.sign(curv[i]), x = pts[i].x + nrm[i][0] * s * (W / 2 + 3.4), z = pts[i].z + nrm[i][1] * s * (W / 2 + 3.4);
+    let clear = true;
+    for (let k = 0; clear && k < N; k += 2) if (Math.hypot(pts[k].x - x, pts[k].z - z) < W / 2 + 2.5) clear = false;
+    if (clear) { tireStack(x, z, 2); lastT = i; }
+  }
+  // Start/Ziel
+  const st = pts[0], dx = pts[2].x - pts[0].x, dz = pts[2].z - pts[0].z, dl = Math.hypot(dx, dz), fx = dx / dl, fz = dz / dl;
+  decalT(st.x, st.z, W, 1.6, CHECK, 0, Math.atan2(-nrm[0][1], nrm[0][0]), 0.032);
+  for (const s of [-1, 1]) addBox(st.x + nrm[0][0] * s * (W / 2 + 1.2), 0, st.z + nrm[0][1] * s * (W / 2 + 1.2), 0.5, 6, 0.5, MAT.metal, 1, { round: 0.05 });
+  addBox(st.x, 5.6, st.z, 0.5, 0.9, W + 3, MAT.metal, 1, { decor: true, round: 0 });
+  for (const s of [-1, 1]) tkSign(st.x + s * 0.27, 6.05, st.z, W + 2, 1.6, s * Math.PI / 2, tkSignMat('🏁 ' + name.toUpperCase(), '#111111', '#ffd23f', false));
+  const yaw = Math.atan2(-fz, fx);
+  for (const s of [-1, 1]) carSpot(st.x - fx * 10 + nrm[0][0] * s * 2.5, st.z - fz * 10 + nrm[0][1] * s * 2.5, yaw);
+  const xs = pts.map(p => p.x), zs = pts.map(p => p.z);
+  (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push({ pts: pts.map(p => [p.x, p.z]), W, name, key, start: [st.x, st.z],
+    box: [Math.min(...xs) - 12, Math.min(...zs) - 12, Math.max(...xs) + 12, Math.max(...zs) + 12] });
 }
 
 // Hügel-Gebiet anlegen (max. Höhe wird für die Schuss-Prüfung gemessen)
@@ -1534,13 +1605,17 @@ function buildWeltMap() {
   const S = 300;
   /* --- Hügel: Wald (Berg), Felder beim Bauernhof --- */
   const LX0 = -205, LZ0 = -95, LR0 = 26;   // Waldsee (gleiche Werte wie unten)
-  addHillRegion({ x0: -292, x1: -12, z0: -292, z1: -12,
+  // Drift-Strecken zwischen den Hügeln (Verlauf zuerst, damit die Hügel entlang der Strecke flach werden)
+  const TRK_WALD = driftLoop([[-128, -132], [-96, -136], [-60, -130], [-38, -114], [-31, -90], [-42, -72], [-60, -60], [-64, -40], [-78, -26], [-98, -27], [-108, -44], [-122, -60], [-132, -82], [-138, -108]]);
+  const TRK_FELD = driftLoop([[36, 166], [64, 161], [94, 163], [104, 178], [99, 200], [86, 224], [72, 250], [52, 272], [33, 268], [27, 244], [23, 216], [25, 188]]);
+  addTrackPts(TRK_WALD.pts); addTrackPts(TRK_FELD.pts);
+  addHillRegion({ x0: -292, x1: -12, z0: -292, z1: -12, track: true,
     flatC: [[LX0, LZ0, LR0 + 6], [LX0 + 34, LZ0 + 20, 16], [-95, -230, 10]], flatL: [['x', -150], ['z', -150]],
     bumps: [[-228, -228, 32, 30], [-200, -258, 13, 17], [-258, -196, 12, 17],                      // Berg mit Schultern
       [-60, -205, 12, 20], [-112, -268, 9, 15], [-38, -262, 8, 14],                                  // Hügel nördlich
       [-262, -40, 11, 18], [-264, -128, 8, 14],                                                     // Hügel westlich vom See
-      [-92, -92, 10, 20], [-45, -48, 6, 14], [-122, -40, 7, 15]] });                                 // Hügel nahe der Kreuzung
-  addHillRegion({ x0: 14, x1: 147, z0: 48, z1: 294, edge: 16, flatC: [], flatL: [['z', 150]],      // sanfte Hügel auf den Feldern
+      [-92, -92, 10, 20], [-45, -48, 6, 14], [-130, -34, 8, 13]] });                                 // Hügel nahe der Kreuzung
+  addHillRegion({ x0: 14, x1: 147, z0: 48, z1: 294, edge: 16, flatC: [], flatL: [['z', 150]], track: true,      // sanfte Hügel auf den Feldern
     bumps: [[58, 95, 11, 20], [112, 82, 7, 15], [88, 122, 6, 13], [48, 215, 13, 22], [112, 232, 9, 18], [78, 272, 7, 14], [122, 186, 6, 12]] });
   const white = new THREE.MeshStandardMaterial({ color: 0xe0ded4, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
   const yel = new THREE.MeshStandardMaterial({ color: 0xd8b23a, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
@@ -1752,6 +1827,7 @@ function buildWeltMap() {
   addRamp(60, 152, 0, 5, P_TABLE(5, 5, 6, 1.6), MAT.dirt, 3); addRamp(100, 152, 0, 4, P_KICK(4, 1.2), MAT.rampWood);
 
   weltDriftArena();
+  driftTrackBuild(TRK_FELD, 'Hügel-Ring', 'feld', MAT.dirt);
 
   /* ===== WALD mit See (Nordwesten) ===== */
   road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
@@ -1775,6 +1851,7 @@ function buildWeltMap() {
   house(LX + 34, LZ + 18, 7, 6, 3, TKM.wood);   // Hütte
   addAddr(LX + 34, LZ + 25, 'wald', LX + 34, LZ + 21.6);
   watchtower(-95, -230, 1);
+  driftTrackBuild(TRK_WALD, 'Wald-Ring', 'wald', MAT.dirt);
   for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const y = hillH(x, z), t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, y + 1.0, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, y - 0.3, z, 2, 2.3, 2); }
   carSpot(LX + 34, LZ + 30, 0); car(-150, -60, false);
   // Bäume (instanziert) mit Stamm-Kollision
@@ -1787,6 +1864,7 @@ function buildWeltMap() {
     if (Math.abs(x + 150) < 7 || Math.abs(z + 150) < 7 || Math.abs(x) < 12 || Math.abs(z) < 12) continue;   // Wege frei
     if (Math.hypot(x - LX, z - LZ) < LR + 6 || Math.hypot(x - LX - 34, z - LZ - 22) < 12) continue;
     if (Math.hypot(x + 95, z + 230) < 10 || Math.hypot(x + 240, z + 242) < 10) continue;
+    if (trackDist(x, z) < 11) continue;   // Drift-Strecke frei
     const s = srnd(0.8, 1.35), y = hillH(x, z);
     if (y > 24 || Math.hypot(x + 228, z + 228) < 16) continue;   // Gipfel bleibt kahl
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
