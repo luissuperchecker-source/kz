@@ -1574,7 +1574,7 @@ function driftTrackBuild(T, name, key, sideMat) {
   addBox(st.x, 5.6, st.z, 0.5, 0.9, W + 3, MAT.metal, 1, { decor: true, round: 0 });
   for (const s of [-1, 1]) tkSign(st.x + s * 0.27, 6.05, st.z, W + 2, 1.6, s * Math.PI / 2, tkSignMat('🏁 ' + name.toUpperCase(), '#111111', '#ffd23f', false));
   const yaw = Math.atan2(-fz, fx);
-  for (const s of [-1, 1]) carSpot(st.x - fx * 10 + nrm[0][0] * s * 2.5, st.z - fz * 10 + nrm[0][1] * s * 2.5, yaw);
+  for (const s of [-1, 1]) carSpot(st.x - fx * 10 + nrm[0][0] * s * 3.7, st.z - fz * 10 + nrm[0][1] * s * 3.7, yaw);   // am Rand, Mitte bleibt frei
   const xs = pts.map(p => p.x), zs = pts.map(p => p.z);
   (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push({ pts: pts.map(p => [p.x, p.z]), W, name, key, start: [st.x, st.z],
     box: [Math.min(...xs) - 12, Math.min(...zs) - 12, Math.max(...xs) + 12, Math.max(...zs) + 12] });

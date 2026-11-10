@@ -670,7 +670,25 @@ lapHud.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-5
 document.getElementById('hud').appendChild(lapHud);
 const lapFmt = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 function lapReset() { LAP.on = false; LAP.idx = -1; lapHud.style.display = 'none'; }
-const lapKey = T => 'kz_bestlap' + (T.key ? '_' + T.key : '');
+// Taste „Zur Startlinie“: Auto auf der Rennstrecke ~22 m vor die Startlinie stellen (in Fahrtrichtung, im Stand), Runde neu
+function trackToStart() {
+  const TS = window.DRIFT_TRACKS || [];
+  const x = ride.v >= 0 ? ride.pos.x : me.pos.x, z = ride.v >= 0 ? ride.pos.z : me.pos.z;
+  const T = TS.find(T => T.box[0] <= x && x <= T.box[2] && T.box[1] <= z && z <= T.box[3]);
+  if (!T) return;   // nicht auf einer Strecke: Taste macht nichts
+  if (ride.v < 0 || ride.kind !== 'car') { showMsg('🏁 Erst in ein Auto steigen – dann bringt dich ' + kbK('trackStart') + ' an den Start'); return; }
+  const P = T.pts, N = P.length;
+  let i = N - 1, d = 0;
+  while (d < 22 && i > N / 2) { d += Math.hypot(P[i][0] - P[(i + 1) % N][0], P[i][1] - P[(i + 1) % N][1]); i--; }
+  const [px, pz] = P[i], [qx, qz] = P[(i + 2) % N];
+  ride.pos.set(px, groundH(px, pz) + 0.05, pz); ride.yaw = Math.atan2(-(qz - pz), qx - px);
+  ride.vel.set(0, 0, 0); ride.cvx = ride.cvz = 0; ride.speed = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; ride.wR = 0; ride.gasS = 0;
+  ride.lean = 0; ride.dive = 0; lastSkid = null; DRIFT.pts = 0; DRIFT.time = 0;
+  me.yaw = ride.yaw - Math.PI / 2;
+  lapReset(); LAP.T = T; LAP.n = 0; LAP.seen = 0;
+  showMsg(`🏁 ${T.name}: zurück an den Start – fahr los!`);
+}
+const lapKey = T =>'kz_bestlap' + (T.key ? '_' + T.key : '');
 function trackLap(dt) {
   const TS = window.DRIFT_TRACKS; if (!TS) return;
   const x = ride.pos.x, z = ride.pos.z, inB = T => T.box[0] <= x && x <= T.box[2] && T.box[1] <= z && z <= T.box[3];
@@ -686,7 +704,7 @@ function trackLap(dt) {
   for (let k = from; k < to; k++) { const i = (k + N) % N, d = (P[i][0] - x) ** 2 + (P[i][1] - z) ** 2; if (d < bd) { bd = d; best = i; } }
   lapHud.style.display = 'block';
   if (LAP.on) LAP.t += dt;
-  lapHud.innerHTML = `🏁 ${T.name} · ${LAP.on ? 'Runde ' + (LAP.n + 1) + ' · ' + lapFmt(LAP.t) : 'Fahr über die Startlinie'}${LAP.best ? ' · Bestzeit ' + lapFmt(LAP.best) : ''}`;
+  lapHud.innerHTML = `🏁 ${T.name} · ${LAP.on ? 'Runde ' + (LAP.n + 1) + ' · ' + lapFmt(LAP.t) : 'Fahr über die Startlinie'}${LAP.best ? ' · Bestzeit ' + lapFmt(LAP.best) : ''}${typeof kbK === 'function' ? ` <span style="opacity:.7;font-weight:500;font-size:14px">· ${kbK('trackStart')} = zum Start</span>` : ''}`;
   if (bd > (T.W / 2 + 7) ** 2) { LAP.idx = -1; return; }   // neben der Strecke: neu suchen, zählt nicht
   if (LAP.idx < 0) { LAP.idx = best; return; }
   const d = (best - LAP.idx + N) % N;
