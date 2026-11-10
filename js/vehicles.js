@@ -383,7 +383,7 @@ function startRide(i) {
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
   ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
   ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
-  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
+  ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; ride.wR = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
@@ -556,14 +556,23 @@ function carOnRoad(x, z) {
    - Handbremse blockiert die Hinterräder → Heck kommt sofort
    - Vorderräder richten sich von selbst nach der Fahrtrichtung aus (Nachlauf) → Gegenlenken im Drift fühlt sich natürlich an */
 const CARP = { m: 1250, a: 1.42, b: 1.45, h: 0.5, Iz: 2300, muF: 1.0, muR: 1.1, BF: 8, BR: 10, C: 1.45, P: 200000, Fmax: 7600, drag: 1.15, roll: 160, brake: 1.05,
-  maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2 };
+  maxSteer: 0.62, steerFade: 10, spinCap: 0.8, spinLat: 0.15, assist: 1.2, mw: 55, rev: 66 };
+/* Hinterreifen mit echter Raddrehzahl: Schlupf längs (Rad dreht schneller als das Auto fährt) und quer (Heck rutscht)
+   teilen sich EINEN Haftungskreis. Dreht das Rad durch, bleibt kaum Seitenhalt → Heck kommt; mehr Gas = mehr Driftwinkel,
+   Gas weg = Rad greift wieder → Auto fängt sich. So lässt sich der Drift wie bei einem echten Hecktriebler mit dem Gas dosieren. */
+function rearTire(wR, u, vyR, Fz, mu) {
+  const d = Math.max(Math.abs(u), 3), sx = (wR - u) / d, sy = vyR / d, s = Math.hypot(sx, sy * 1.15);
+  if (s < 1e-6) return [0, 0];
+  const F = mu * Fz * Math.sin(CARP.C * Math.atan(CARP.BR * s));
+  return [F * sx / s, -F * sy * 1.15 / s];
+}
 const pacejka = (alpha, Fz, mu, B) => -mu * Fz * Math.sin(CARP.C * Math.atan(B * alpha));
 function carDrive(dt, thr, steerIn, hand, analog) {
   const K = CARP, L = K.a + K.b, g = 9.81, gas = Math.max(0, thr), brakeIn = Math.max(0, -thr);
   const fx = () => Math.cos(ride.yaw), fz = () => -Math.sin(ride.yaw);
   // Fahrzeug-Koordinaten: u = vorwärts, vy = nach links, r = Gierrate (links positiv)
   let u = ride.cvx * fx() + ride.cvz * fz(), vy = -(ride.cvx * Math.sin(ride.yaw) + ride.cvz * Math.cos(ride.yaw)), r = ride.yawRate || 0;
-  let ax = ride.ax || 0, wheelspin = 0;
+  let ax = ride.ax || 0, wheelspin = 0, wR = ride.wR === undefined ? u : ride.wR;
   const N = Math.max(2, Math.ceil(dt / 0.006)), h = dt / N;
   if (analog) steerIn = Math.sign(steerIn) * Math.pow(Math.abs(steerIn), 0.7);   // Lenkrad: kleine Ausschläge wirken schon spürbar
   ride.steerS += (steerIn - ride.steerS) * Math.min(1, (analog ? 20 : 7) * dt);
@@ -577,22 +586,25 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     // Radlasten mit Gewichtsverlagerung
     const W = K.m * g, FzF = Math.max(800, W * K.b / L - K.m * ax * K.h / L), FzR = Math.max(800, W * K.a / L + K.m * ax * K.h / L);
     // Längskräfte: Antrieb hinten, Bremse 65/35, Handbremse blockiert hinten, rückwärts fahren
-    let FxR = 0, FxF = 0;
+    let FxF = 0, drive = 0, brakeR = 0;
     const capR = K.muR * FzR;
-    if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W; FxF = -Fb * 0.65; FxR = -Fb * 0.35; }
-    else if (brakeIn) FxR = u > -12 ? -brakeIn * 4200 : 0;
-    else if (gas) {
-      const want = gas * Math.min(K.Fmax, K.P / Math.max(Math.abs(u), 4));
-      if (want > capR * K.spinCap) { wheelspin = Math.min(1, (want - capR * K.spinCap) / (capR * 0.5) + 0.3); FxR = capR * K.spinCap; } else FxR = want;
-    }
+    if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W; FxF = -Fb * 0.65; brakeR = Fb * 0.35; }
+    else if (brakeIn) drive = u > -12 ? -brakeIn * 4200 : 0;   // rückwärts
+    else if (gas) drive = wR > K.rev ? 0 : gas * Math.min(K.Fmax, K.P / Math.max(Math.abs(wR), 4));
     FxF = Math.max(-K.muF * FzF, FxF);
-    if (hand && Math.abs(u) > 1) { FxR = -Math.sign(u) * capR * 0.85; wheelspin = 1; }
-    // Seitenkräfte: Schräglauf → Haftungskurve, hinten durch den Reibungskreis begrenzt
-    const alphaF = Math.atan2(vy + K.a * r, au) - delta * sgn, alphaR = Math.atan2(vy - K.b * r, au);
-    const FyF = pacejka(alphaF, FzF, K.muF, K.BF) * Math.min(1, Math.hypot(u, vy) / 3) * Math.sqrt(Math.max(0, 1 - (FxF / (K.muF * FzF)) ** 2));
-    const latR = Math.sqrt(Math.max(0, 1 - (FxR / capR) ** 2));
-    const lowK = Math.min(1, Math.hypot(u, vy) / 3);   // fast im Stand: keine Reifen-Seitenkräfte (sonst dreht sich das Auto auf der Stelle)
-    const FyR = pacejka(alphaR, FzR, K.muR, K.BR) * Math.max(0.12, latR) * (1 - K.spinLat * wheelspin) * lowK;
+    if (hand && Math.abs(u) > 1) brakeR = Math.max(brakeR, 2.2 * capR);   // Handbremse blockiert die Hinterräder
+    // Hinterrad: Antrieb gegen Reifenkraft (implizit gerechnet, damit es nicht zittert), dann Bremse Richtung Stillstand
+    const vyR = vy - K.b * r, lowK = Math.min(1, Math.hypot(u, vy) / 3);   // fast im Stand keine Seitenkräfte (sonst dreht es sich auf der Stelle)
+    const t0 = rearTire(wR, u, vyR, FzR, K.muR)[0], dF = (rearTire(wR + 0.05, u, vyR, FzR, K.muR)[0] - t0) / 0.05;
+    wR += h * (drive - t0) / (K.mw + h * Math.max(0, dF));
+    if (brakeR) { const dw = brakeR / K.mw * h; wR = Math.abs(wR) <= dw ? 0 : wR - Math.sign(wR) * dw; }
+    if (!gas && !brakeIn && !hand) wR += (u - wR) * Math.min(1, 1.5 * h);   // ausgekuppelt rollen
+    const [FxR, FyRraw] = rearTire(wR, u, vyR, FzR, K.muR);
+    const FyR = FyRraw * lowK;
+    wheelspin = Math.max(wheelspin, Math.min(1, Math.abs(wR - u) / Math.max(4, Math.abs(u) * 0.5)));
+    // Vorderreifen: Schräglauf → Haftungskurve, beim Bremsen weniger Seitenhalt
+    const alphaF = Math.atan2(vy + K.a * r, au) - delta * sgn;
+    const FyF = pacejka(alphaF, FzF, K.muF, K.BF) * lowK * Math.sqrt(Math.max(0, 1 - (FxF / (K.muF * FzF)) ** 2));
     // Bewegungsgleichungen
     const cd = Math.cos(delta), sd = Math.sin(delta);
     const Fdrag = K.drag * u * Math.abs(u) + K.roll * Math.sign(u) * Math.min(1, Math.abs(u));
@@ -611,7 +623,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
   }
   const sx = Math.sin(ride.yaw), sz = Math.cos(ride.yaw);
   ride.cvx = fx() * u - sx * vy; ride.cvz = fz() * u - sz * vy;
-  ride.yawRate = r; ride.ax = ax; ride.wspin = wheelspin;
+  ride.yawRate = r; ride.ax = ax; ride.wspin = wheelspin; ride.wR = wR;
   const speed = Math.hypot(u, vy);
   ride.onRoad = carOnRoad(ride.pos.x, ride.pos.z);
   ride.vel.x = ride.cvx; ride.vel.z = ride.cvz;
