@@ -412,7 +412,8 @@ function autoSetupDevices() {
     const used = Object.values(PCFG.axes).some(c => c.dev === p.id);
     if (!used) {
       const rest = p.axes[0] || 0;
-      PCFG.axes.moveX = { dev: p.id, k: 0, a: 0, inv: false, r: Math.abs(rest) > 0.5 ? rest : 0, set: true };
+      // Arduino-Lenkrad (Hersteller 2341) meldet links/rechts vertauscht
+      PCFG.axes.moveX = { dev: p.id, k: 0, a: 0, inv: /2341/.test(p.id), r: Math.abs(rest) > 0.5 ? rest : 0, set: true };
       showPadToast(`🕹 ${padShortName(p)} als Lenkrad eingerichtet (Achse 1 = lenken, Gas mit /, Bremse S). Ändern: Optionen → Controller anpassen`);
     }
     savePad(); renderPadCfg();
