@@ -279,7 +279,7 @@ function offsetParts(parts, d) { return parts.map(pt => Object.assign({}, pt, { 
 function partsToGroup(parts, shadow = false, userData = null) {
   const byMat = new Map(), m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler();
   for (const pt of parts) {
-    const g = pt.geo;
+    const g = pt.geo.clone();   // Kopie: dieselbe Form (Radlauf, Speiche, Leuchte) wird oft mehrfach benutzt
     e.set(pt.r[0], pt.r[1], pt.r[2]); q.setFromEuler(e);
     m4.compose(_V(pt.p), q, pt.s ? _V(pt.s) : new THREE.Vector3(1, 1, 1));
     g.applyMatrix4(m4);

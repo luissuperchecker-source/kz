@@ -170,17 +170,26 @@ function makeMoped(paint) {
 const CAR_WHEEL_R = 0.36;
 function makeCar(paint, rim = RIM) {
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
+  // Skyline-Form: kantige Karosserie, lackiertes Dach, getönte Scheiben (Formen in map.js)
   const body = [
-    { geo: CAR_BODY_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] }, { geo: CAR_CABIN_GEO, mat: CAR_GLASS, p: [0, 0, 0], r: [0, 0, 0] },
-    B(0.3, 0.04, 1.7, CARBON, 2.08, 0.2, 0), B(0.4, 0.18, 1.6, CARBON, -2.2, 0.3, 0),
-    B(0.06, 0.03, 0.7, TAILLIGHT, -2.28, 0.82, 0),
+    { geo: SKY_BODY_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] }, { geo: SKY_CABIN_GEO, mat: CAR_GLASS, p: [0, 0, 0], r: [0, 0, 0] },
+    { geo: SKY_ROOF_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] },
+    // Front: großer Lufteinlass, schmaler Grill, Carbon-Lippe
+    B(0.08, 0.2, 1.1, CAR_BLACK, 2.25, 0.38, 0), B(0.06, 0.07, 0.46, CAR_BLACK, 2.24, 0.63, 0), B(0.3, 0.035, 1.74, CARBON, 2.1, 0.17, 0),
+    // Heck: schwarze Blende mit den runden Doppel-Rückleuchten, Diffusor, dickes Endrohr
+    B(0.04, 0.25, 1.6, CAR_BLACK, -2.27, 0.83, 0), B(0.45, 0.13, 1.5, CARBON, -2.12, 0.27, 0),
+    { geo: new THREE.CylinderGeometry(0.075, 0.075, 0.2, 14), mat: CHROME, p: [-2.28, 0.33, 0.42], r: [0, 0, Math.PI / 2] },
   ];
+  const lamp = new THREE.CylinderGeometry(0.1, 0.1, 0.05, 20), ring = new THREE.CylinderGeometry(0.118, 0.118, 0.035, 20);
   for (const s of [-1, 1]) body.push(
-    B(0.85, 0.26, 0.06, CAR_BLACK, -0.75, 0.6, s * 0.985, 0, 0, 0.18), B(2.3, 0.07, 0.05, CARBON, 0.05, 0.23, s * 0.95),
-    B(0.42, 0.035, 0.2, HEADLIGHT, 1.9, 0.62, s * 0.62, 0, s * 0.4, -0.26), B(0.08, 0.13, 0.5, CAR_BLACK, 2.27, 0.36, s * 0.55),
-    B(0.04, 0.04, 0.62, TAILLIGHT, -2.27, 0.8, s * 0.48), B(0.16, 0.08, 0.1, paint, 0.5, 0.93, s * 0.97), B(0.04, 0.04, 0.16, CAR_BLACK, 0.5, 0.9, s * 0.87),
-    { geo: new THREE.CylinderGeometry(0.06, 0.06, 0.18, 12), mat: CHROME, p: [-2.3, 0.5, s * 0.12], r: [0, 0, Math.PI / 2] },
-    { geo: ARCH_GEO, mat: CAR_BLACK, p: [1.42, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] }, { geo: ARCH_GEO, mat: CAR_BLACK, p: [-1.45, CAR_WHEEL_R, s * 0.97], r: [0, 0, 0] });
+    // eckige Scheinwerfer, Motorhauben-Schlitze, Spiegel, Seitenschweller, Kotflügel-Verbreiterungen
+    B(0.32, 0.085, 0.44, HEADLIGHT, 2.12, 0.68, s * 0.56, 0, s * 0.18, -0.3), B(0.33, 0.13, 0.46, CAR_BLACK, 2.08, 0.665, s * 0.56, 0, s * 0.18, -0.3),
+    B(0.4, 0.02, 0.16, CAR_BLACK, 1.35, 0.915, s * 0.3, 0, 0, -0.14),
+    B(0.18, 0.1, 0.13, paint, 0.62, 1.04, s * 0.88), B(0.04, 0.04, 0.12, CAR_BLACK, 0.62, 1.0, s * 0.8),
+    B(2.3, 0.09, 0.06, CARBON, -0.02, 0.22, s * 0.93),
+    { geo: lamp, mat: TAILLIGHT, p: [-2.3, 0.84, s * 0.42], r: [0, 0, Math.PI / 2] }, { geo: lamp, mat: TAILLIGHT, p: [-2.3, 0.84, s * 0.67], r: [0, 0, Math.PI / 2] },
+    { geo: ring, mat: CHROME, p: [-2.29, 0.84, s * 0.42], r: [0, 0, Math.PI / 2] }, { geo: ring, mat: CHROME, p: [-2.29, 0.84, s * 0.67], r: [0, 0, Math.PI / 2] },
+    { geo: ARCH_GEO, mat: CAR_BLACK, p: [1.42, CAR_WHEEL_R, s * 0.96], r: [0, 0, 0] }, { geo: ARCH_GEO, mat: CAR_BLACK, p: [-1.45, CAR_WHEEL_R, s * 0.96], r: [0, 0, 0] });
   root.add(partsToGroup(body, true));
   const wing = makeWing(paint); wing.userData.isWing = true; root.add(wing);   // bleibt auch beim Ferrari-Modell sichtbar
   // Räder: Lenk-Gelenk (vorne) → drehendes Rad mit Reifen, Felge, Speichen
@@ -269,8 +278,8 @@ for (let i = 0; i < 8; i++) {
 }
 // Großer GT-Heckflügel (Auto-Koordinaten: vorne = +x), für beide Detailstufen
 function makeWing(paint) {
-  const parts = [B(0.62, 0.05, 2.0, CARBON, -2.12, 1.48, 0, 0, 0, 0.14), B(0.22, 0.04, 2.0, paint, -2.38, 1.52, 0, 0, 0, 0.5)];
-  for (const s of [-1, 1]) parts.push(B(0.12, 0.5, 0.05, CARBON, -2.05, 1.2, s * 0.5, 0, 0, -0.25), B(0.75, 0.34, 0.03, CARBON, -2.17, 1.46, s * 1.01));
+  const parts = [B(0.48, 0.045, 1.8, CARBON, -2.1, 1.36, 0, 0, 0, 0.14), B(0.16, 0.035, 1.8, paint, -2.31, 1.39, 0, 0, 0, 0.5)];
+  for (const s of [-1, 1]) parts.push(B(0.1, 0.4, 0.05, CARBON, -2.03, 1.14, s * 0.45, 0, 0, -0.25), B(0.6, 0.28, 0.03, CARBON, -2.13, 1.34, s * 0.915));
   return partsToGroup(parts, true);
 }
 
@@ -283,6 +292,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
 });
 // Echtes 3D-Modell (Ferrari aus den three.js-Beispielen, wie in Drift-Welt) – ersetzt die einfachen Autos, sobald es geladen ist
 (function loadFerrari() {
+  if (true) return;   // ersetzt durch die eigene Skyline-Form (makeCar)
   if (!vehicles.some(v => v.kind === 'car') || !THREE.GLTFLoader || !THREE.DRACOLoader) return;
   const BASE = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/models/gltf/';
   const draco = new THREE.DRACOLoader(); draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/gltf/');
