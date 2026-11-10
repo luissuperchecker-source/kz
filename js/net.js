@@ -243,6 +243,22 @@ function hostRespawn(id) {
 
 /* ---------- Bots (laufen beim Host) ---------- */
 let botN = 0;
+// Schwierigkeit: Reaktionszeit, Treffsicherheit, Sichtweite, Feuerpause, Kopfschuss-Chance, Schaden, Tempo, Ausweichen
+const BOT_DIFF = {
+  easy:   { name: 'Leicht', react: [0.9, 0.6], aim: 0.45, cap: 0.32, see: 35, rate: 1.5, head: 0.04, dmg: 0.7, speed: 5.0, think: 0.45, strafe: 0.5 },
+  normal: { name: 'Normal', react: [0.45, 0.4], aim: 1.0, cap: 0.55, see: 55, rate: 1.0, head: 0.12, dmg: 1.0, speed: 6.0, think: 0.25, strafe: 1.0 },
+  hard:   { name: 'Schwer', react: [0.25, 0.2], aim: 1.35, cap: 0.7, see: 70, rate: 0.9, head: 0.2, dmg: 1.0, speed: 6.3, think: 0.18, strafe: 1.3 },
+  pro:    { name: 'Profi', react: [0.12, 0.12], aim: 1.75, cap: 0.85, see: 90, rate: 0.8, head: 0.3, dmg: 1.1, speed: 6.6, think: 0.12, strafe: 1.6 },
+};
+let botDiff = 'normal';
+try { if (BOT_DIFF[localStorage.getItem('kz_botdiff')]) botDiff = localStorage.getItem('kz_botdiff'); } catch (e) {}
+function setBotDiff(v) {
+  if (!BOT_DIFF[v]) return;
+  botDiff = v; try { localStorage.setItem('kz_botdiff', v); } catch (e) {}
+  for (const id of ['diffIn', 'diffIn2']) if ($(id)) $(id).value = v;
+}
+for (const id of ['diffIn', 'diffIn2']) if ($(id)) $(id).onchange = e => { setBotDiff(e.target.value); if (running && H.bots.length) showMsg('Bots: ' + BOT_DIFF[botDiff].name); };
+setBotDiff(botDiff);
 // Bot-Waffen: [Waffe, Schaden, Pause zwischen Schüssen, beste Entfernung]
 const BOT_GUNS = [[0, 14, 0.32, 18], [4, 10, 0.18, 10], [1, 34, 0.95, 6], [7, 13, 0.22, 20], [6, 30, 0.6, 30]];
 function addBot() {
@@ -278,14 +294,15 @@ function pickWaypoint(b) {
   }
 }
 function updateBots(dt, now) {
+  const D = BOT_DIFF[botDiff];
   for (const b of H.bots) {
     const p = H.players[b.id];
     if (!p || !p.alive) continue;
     const isEnemy = enemiesOf(p);
     b.think -= dt;
     if (b.think <= 0) {
-      b.think = 0.25 + Math.random() * 0.2;
-      let best = null, bd = 55;
+      b.think = D.think + Math.random() * 0.2;
+      let best = null, bd = D.see;
       for (const id in H.players) {
         if (!isEnemy(id)) continue;
         const q = H.players[id]; if (!q.alive) continue;
@@ -293,7 +310,7 @@ function updateBots(dt, now) {
         const sneaky = (q.f & 2) || (q.f & 1) ? 0.6 : 1;   // Schleichende/geduckte werden später entdeckt
         if (d < bd * sneaky && lineOfSight(b.pos.x, b.pos.y + EYE, b.pos.z, q.x, q.y + 1.3, q.z)) { bd = d; best = id; }
       }
-      if (best && best !== b.target) b.nextShot = Math.max(b.nextShot, now + 0.45 + Math.random() * 0.4);   // Reaktionszeit
+      if (best && best !== b.target) b.nextShot = Math.max(b.nextShot, now + D.react[0] + Math.random() * D.react[1]);   // Reaktionszeit
       b.target = best;
       // Feststecken erkennen
       if (b.pos.distanceTo(b.lastPos) < 0.3 && !best) { b.stuckT += 0.3; if (b.stuckT > 1.5) { b.wp = null; b.stuckT = 0; b.vel.y = 8.2; } } else b.stuckT = 0;
@@ -306,17 +323,17 @@ function updateBots(dt, now) {
       const dx = t.x - b.pos.x, dz = t.z - b.pos.z, d = Math.hypot(dx, dz) || 1;
       b.yaw = Math.atan2(-dx, -dz);
       b.pitch = Math.atan2((t.y + 1.3) - (b.pos.y + EYE), d);
-      b.strafeT -= dt; if (b.strafeT <= 0) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.strafeT = 0.6 + Math.random() * 1.2; b.crouchT = Math.random() < 0.25 ? 1.2 : 0; }
+      b.strafeT -= dt; if (b.strafeT <= 0) { b.strafe = (Math.random() < 0.5 ? -1 : 1) * (Math.random() < D.strafe ? 1 : 0); b.strafeT = (0.6 + Math.random() * 1.2) / Math.max(1, D.strafe); b.crouchT = Math.random() < 0.25 ? 1.2 : 0; }
       const fwd = d > grange * 1.3 ? 1 : d < grange * 0.5 ? -0.7 : 0;
       wx = dx / d * fwd + (-dz / d) * b.strafe; wz = dz / d * fwd + (dx / d) * b.strafe;
       if (now > b.nextShot) {
-        b.nextShot = now + grate * (0.9 + Math.random() * 0.5);
+        b.nextShot = now + grate * D.rate * (0.9 + Math.random() * 0.5);
         const moving = Math.hypot(t.x - (t._px || t.x), t.z - (t._pz || t.z)) > 0.2;
-        let chance = Math.max(0.1, Math.min(0.55, 0.6 - Math.max(0, d - grange) * 0.02 - d * 0.004)) * (moving ? 0.8 : 1) * ((t.f & 1) ? 0.75 : 1);
+        let chance = Math.max(0.06, Math.min(D.cap, (0.6 - Math.max(0, d - grange) * 0.02 - d * 0.004) * D.aim)) * (moving ? 0.8 : 1) * ((t.f & 1) ? 0.75 : 1);
         const hit = Math.random() < chance;
         const end = [t.x + (hit ? 0 : (Math.random() - 0.5) * 2), t.y + 1.2 + (hit ? 0 : Math.random() * 1.2 - 0.3), t.z + (hit ? 0 : (Math.random() - 0.5) * 2)];
         broadcast({ t: 'shot', id: b.id, w: gw, o: [b.pos.x, b.pos.y + 1.3, b.pos.z], e: [end] });
-        if (hit) applyDamage(b.target, Math.round(gdmg * (Math.random() < 0.12 ? 2 : 1)), b.id, gw, false);
+        if (hit) applyDamage(b.target, Math.round(gdmg * D.dmg * (Math.random() < D.head ? 2 : 1)), b.id, gw, false);
       }
     } else {
       b.crouchT = 0;
@@ -327,7 +344,7 @@ function updateBots(dt, now) {
       b.yaw += dy * Math.min(1, dt * 6); b.pitch *= 0.9;
     }
     b.crouchT = Math.max(0, b.crouchT - dt);
-    const l = Math.hypot(wx, wz) || 1, sp = b.crouchT > 0 ? 3 : 6;
+    const l = Math.hypot(wx, wz) || 1, sp = b.crouchT > 0 ? D.speed / 2 : D.speed;
     const acc = 1 - Math.exp(-10 * dt);
     b.vel.x += (wx / l * sp - b.vel.x) * acc; b.vel.z += (wz / l * sp - b.vel.z) * acc;
     b.vel.y = Math.max(-30, b.vel.y - GRAV * dt);

@@ -281,6 +281,8 @@
     <input id="nameIn" type="text" maxlength="16" placeholder="z. B. Luis">
     <label for="mapIn">Karte</label>
     <select id="mapIn"><option value="tokio">🗼 Tokio – große Stadt mit Hochstraße</option><option value="hafen">⚓ Hafenviertel – klassisch, mit Simson-Crosspark</option><option value="welt">🌍 Welt – riesig: Stadt, Dorf, Hof, Wald, Autos &amp; Jobs</option></select>
+    <label for="diffIn">Bot-Schwierigkeit</label>
+    <select id="diffIn"><option value="easy">🟢 Leicht – reagieren langsam, treffen selten</option><option value="normal">🟡 Normal</option><option value="hard">🟠 Schwer – schnell und treffsicher</option><option value="pro">🔴 Profi – fast keine Fehler</option></select>
     <button id="btnQuick" class="bigPlay">▶ SCHNELLSPIEL GEGEN BOTS</button>
     <div class="card">
       <h3>MIT FREUNDEN SPIELEN</h3>
@@ -379,6 +381,7 @@
     <div id="botCtl" class="hidden" style="margin-top:12px">
       <label style="margin-top:0">Bots (nur Host): <span id="botCount">0</span></label>
       <button id="botAdd" class="sec small">+ Bot</button><button id="botDel" class="sec small">− Bot</button>
+      <select id="diffIn2" style="margin-top:8px"><option value="easy">🟢 Leicht</option><option value="normal">🟡 Normal</option><option value="hard">🟠 Schwer</option><option value="pro">🔴 Profi</option></select>
     </div>
     <div class="menuRow">
       <button id="btnShop2" class="sec">🛒 Laden</button>
@@ -485,15 +488,15 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261110-143732"></script>
-<script src="js/map.js?v=20261110-143732"></script>
-<script src="js/models.js?v=20261110-143732"></script>
-<script src="js/game.js?v=20261110-143732"></script>
-<script src="js/vehicles.js?v=20261110-143732"></script>
-<script src="js/net.js?v=20261110-143732"></script>
-<script src="js/ui.js?v=20261110-143732"></script>
-<script src="js/jobs.js?v=20261110-143732"></script>
-<script src="js/gamepad.js?v=20261110-143732"></script>
-<script src="js/keybinds.js?v=20261110-143732"></script>
+<script src="js/core.js?v=20261110-144453"></script>
+<script src="js/map.js?v=20261110-144453"></script>
+<script src="js/models.js?v=20261110-144453"></script>
+<script src="js/game.js?v=20261110-144453"></script>
+<script src="js/vehicles.js?v=20261110-144453"></script>
+<script src="js/net.js?v=20261110-144453"></script>
+<script src="js/ui.js?v=20261110-144453"></script>
+<script src="js/jobs.js?v=20261110-144453"></script>
+<script src="js/gamepad.js?v=20261110-144453"></script>
+<script src="js/keybinds.js?v=20261110-144453"></script>
 </body>
 </html>
