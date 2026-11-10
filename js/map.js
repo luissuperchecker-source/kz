@@ -1627,6 +1627,243 @@ function sidewalkRing(x0, x1, z0, z1, wd = 3) {
   addBox(cx, 0, z0 + 0.1, W, 0.13, 0.2, E.curb, 1, o); addBox(cx, 0, z1 - 0.1, W, 0.13, 0.2, E.curb, 1, o);
   addBox(x0 + 0.1, 0, cz, 0.2, 0.13, D, E.curb, 1, o); addBox(x1 - 0.1, 0, cz, 0.2, 0.13, D, E.curb, 1, o);
 }
+/* ---------- Bauernhof: Fachwerkhaus, Kühe, Hühner, Weide, Obstgarten … ---------- */
+// Fachwerk-Fassade: 512 px = 6 m breit × 6 m hoch (2 Etagen à 3 m), weißer Putz, dunkle Balken, Fenster mit Läden
+const FACHWERK = (() => {
+  const s = 512, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d');
+  g.fillStyle = '#eee7d6'; g.fillRect(0, 0, s, s); speckle(g, s, 5000, '0,0,0', 0.05, 2);
+  const beam = '#4a3122', B = 12, fl = s / 2, col = s / 4;
+  for (let f = 0; f < 2; f++) {
+    const y0 = f * fl;
+    for (let k = 0; k < 4; k++) {
+      const x0 = k * col, win = k === 1 || k === 3;
+      if (win) {   // Fenster mit Sprossen, Fensterladen links/rechts
+        const w = col * 0.5, h = fl * 0.42, x = x0 + (col - w) / 2, y = y0 + fl * 0.24;
+        g.fillStyle = '#f4f1ea'; g.fillRect(x - 6, y - 6, w + 12, h + 12);
+        g.fillStyle = '#2a343c'; g.fillRect(x, y, w, h);
+        const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, 'rgba(255,255,255,.3)'); gr.addColorStop(0.6, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x, y, w, h);
+        g.fillStyle = '#f4f1ea'; g.fillRect(x + w / 2 - 2, y, 4, h); g.fillRect(x, y + h / 2 - 2, w, 4);
+        g.fillStyle = '#2f5a3a'; g.fillRect(x - 6 - w * 0.38, y - 4, w * 0.36, h + 8); g.fillRect(x + w + 8, y - 4, w * 0.36, h + 8);
+      } else {   // Andreaskreuz zwischen den Fenstern
+        g.strokeStyle = beam; g.lineWidth = B; g.beginPath(); g.moveTo(x0 + B, y0 + B); g.lineTo(x0 + col - B, y0 + fl - B); g.moveTo(x0 + col - B, y0 + B); g.lineTo(x0 + B, y0 + fl - B); g.stroke();
+      }
+      g.fillStyle = beam; g.fillRect(x0, y0, B, fl);   // Ständer
+    }
+    g.fillStyle = beam; g.fillRect(0, y0, s, B); g.fillRect(0, y0 + fl - B, s, B); g.fillRect(0, y0 + fl * 0.72, s, B * 0.7);   // Rähm, Schwelle, Riegel
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.9 }); m.userData.tile = 6; return m;
+})();
+const FARM = {
+  cow: new THREE.MeshStandardMaterial({ roughness: 0.85, map: (() => {
+    const s = 128, c = document.createElement('canvas'); c.width = c.height = s; const g = c.getContext('2d');
+    g.fillStyle = '#f2efe8'; g.fillRect(0, 0, s, s); g.fillStyle = '#1c1a18';
+    for (let i = 0; i < 7; i++) { g.beginPath(); g.ellipse(Math.random() * s, Math.random() * s, 10 + Math.random() * 18, 8 + Math.random() * 14, Math.random() * 3, 0, 7); g.fill(); }
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })() }),
+  cowDark: new THREE.MeshStandardMaterial({ color: 0x6b4630, roughness: 0.85 }),
+  pink: new THREE.MeshStandardMaterial({ color: 0xe8a0a0, roughness: 0.7 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x1a1918, roughness: 0.8 }),
+  hen: new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.9 }),
+  comb: new THREE.MeshStandardMaterial({ color: 0xc8202a, roughness: 0.6 }),
+  beak: new THREE.MeshStandardMaterial({ color: 0xe8a42a, roughness: 0.6 }),
+  barnRed: new THREE.MeshStandardMaterial({ color: 0x8e2a1e, roughness: 0.85 }),
+  veg: new THREE.MeshStandardMaterial({ color: 0x4f8a34, roughness: 0.9 }),
+  meadow: pbr('grass', 3, { map: tintedTex('grass', 0x5a7a36), mat: { color: new THREE.Color(1, 1, 1) } }),
+};
+// Teil-Box in einer Gruppe (für gedrehte Tiere/Geräte)
+function gBox(grp, x, y, z, w, h, d, mat) { const m = new THREE.Mesh(boxGeo(w, h, d, 1, 0), mat); m.position.set(x, y + h / 2, z); m.castShadow = true; grp.add(m); return m; }
+function cow(x, z, rot, dark) {
+  const g = new THREE.Group(), body = dark ? FARM.cowDark : FARM.cow;
+  gBox(g, 0, 0.75, 0, 2.1, 0.95, 0.9, body);                         // Rumpf
+  gBox(g, 1.2, 1.2, 0, 0.55, 0.5, 0.45, body);                       // Kopf
+  gBox(g, 1.5, 1.22, 0, 0.18, 0.28, 0.4, FARM.pink);                 // Maul
+  for (const s of [-1, 1]) { gBox(g, 1.15, 1.62, s * 0.3, 0.08, 0.06, 0.22, FARM.hen); gBox(g, 1.1, 1.5, s * 0.3, 0.12, 0.08, 0.16, body); }   // Hörner, Ohren
+  for (const [lx, lz] of [[0.75, 0.3], [0.75, -0.3], [-0.8, 0.3], [-0.8, -0.3]]) { gBox(g, lx, 0, lz, 0.18, 0.78, 0.18, body); gBox(g, lx, 0, lz, 0.2, 0.12, 0.2, FARM.black); }
+  gBox(g, -0.5, 0.58, 0, 0.35, 0.2, 0.35, FARM.pink);                // Euter
+  gBox(g, -1.08, 0.7, 0, 0.06, 0.85, 0.06, body);                    // Schwanz
+  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+  collider(x, 0, z, 1.6, 1.6, 1.6);
+}
+function hen(x, z, rot) {
+  const g = new THREE.Group();
+  gBox(g, 0, 0.12, 0, 0.36, 0.26, 0.24, FARM.hen); gBox(g, 0.2, 0.3, 0, 0.14, 0.16, 0.14, FARM.hen);
+  gBox(g, 0.21, 0.46, 0, 0.1, 0.07, 0.03, FARM.comb); gBox(g, 0.3, 0.34, 0, 0.07, 0.04, 0.05, FARM.beak); gBox(g, -0.2, 0.26, 0, 0.1, 0.16, 0.18, FARM.hen);
+  for (const s of [-1, 1]) gBox(g, 0, 0, s * 0.06, 0.03, 0.12, 0.03, FARM.beak);
+  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+}
+// Holzzaun mit Pfosten und zwei Latten zwischen zwei Punkten (achsparallel), gesperrt bis 1,2 m
+function railFence(x0, z0, x1, z1) {
+  const alongX = Math.abs(x1 - x0) > Math.abs(z1 - z0), L = alongX ? Math.abs(x1 - x0) : Math.abs(z1 - z0), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, o = { decor: true, round: 0 };
+  for (let t = 0; t <= L + 0.01; t += 3) addBox(alongX ? Math.min(x0, x1) + t : cx, 0, alongX ? cz : Math.min(z0, z1) + t, 0.14, 1.15, 0.14, TKM.wood, 1, o);
+  for (const y of [0.45, 0.9]) addBox(cx, y, cz, alongX ? L : 0.07, 0.12, alongX ? 0.07 : L, TKM.wood, 1, o);
+  collider(cx, 0, cz, alongX ? L : 0.2, 1.2, alongX ? 0.2 : L);
+}
+// Fachwerk-Bauernhaus (geschlossen): 2 Etagen, steiles Ziegeldach, Schornstein, Haustür nach Norden
+function fachwerkHouse(x, z, w, d) {
+  const h = 6;
+  addBox(x, 0, z, w, 0.5, d, MAT.concrete, 2, { round: 0 });   // Sockel
+  addBox(x, 0.5, z, w, h - 0.5, d, FACHWERK, 6, { round: 0 });
+  const roof = pbr('roof', 2.5, { mat: { color: new THREE.Color(0.78, 0.36, 0.26) } });
+  const rise = d * 0.55, run = d / 2 + 0.6, slope = Math.hypot(run, rise), ang = Math.atan2(rise, run);
+  for (const s of [1, -1]) { const r = new THREE.Mesh(boxGeo(w + 1.0, 0.2, slope, 2.5), roof); r.position.set(x, h + rise / 2, z + s * run / 2); r.rotation.x = s * ang; r.castShadow = true; r.receiveShadow = true; scene.add(r); }
+  const gable = new THREE.Shape(); gable.moveTo(-d / 2, 0); gable.lineTo(d / 2, 0); gable.lineTo(0, rise); gable.closePath();
+  for (const s of [1, -1]) {
+    const gg = new THREE.ShapeGeometry(gable), uv = gg.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, gg.attributes.position.getX(i) / 6, gg.attributes.position.getY(i) / 6 + 0.5);
+    const gm = new THREE.Mesh(withUv2(gg), FACHWERK); gm.position.set(x + s * w / 2, h, z); gm.rotation.y = s * Math.PI / 2; scene.add(gm);
+  }
+  addBox(x + w / 4, h + rise * 0.4, z + d / 6, 0.8, rise * 0.8, 0.8, MAT.brick, 1, { decor: true, round: 0 });
+  for (const s of [1, -1]) {   // Haustüren + Vordach
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.3), MAT.door); door.position.set(x, 0.5 + 1.15, z + s * (d / 2 + 0.012)); door.rotation.y = s > 0 ? 0 : Math.PI; scene.add(door);
+    addBox(x, 3.0, z + s * (d / 2 + 0.6), 2.4, 0.12, 1.2, roof, 2.5, { decor: true, round: 0 });
+    addBox(x, 0, z + s * (d / 2 + 0.6), 2.2, 0.25, 1.2, MAT.concrete, 2, { round: 0 });   // Stufe
+  }
+  for (const s of [1, -1]) for (const o of [-w / 2 + 2.2, w / 2 - 2.2]) for (let k = 0; k < 4; k++) addBox(x + o + (k - 1.5) * 0.4, 1.5, z + s * (d / 2 + 0.2), 0.3, 0.25, 0.25, k % 2 ? FURN.flowerR : FURN.flowerY, 0, { decor: true, round: 0 });   // Blumenkästen
+}
+function farmExtras() {
+  const o = { decor: true, round: 0 };
+  // Kuhweide mit Zaun (Tor nach Osten), Unterstand, Tränke, 7 Kühe
+  const PX0 = 163, PX1 = 200, PZ0 = 248, PZ1 = 287;
+  railFence(PX0, PZ0, PX1, PZ0); railFence(PX0, PZ1, PX1, PZ1); railFence(PX0, PZ0, PX0, PZ1);
+  railFence(PX1, PZ0, PX1, 262); railFence(PX1, 268, PX1, PZ1);
+  for (const [x, z] of [[PX0 + 3, PZ1 - 2], [PX0 + 9, PZ1 - 2], [PX0 + 3, PZ1 - 7], [PX0 + 9, PZ1 - 7]]) addBox(x, 0, z, 0.25, 2.6, 0.25, TKM.wood, 1, { round: 0 });
+  addBox(PX0 + 6, 2.6, PZ1 - 4.5, 7.6, 0.18, 6.4, MAT.roof, 2.5, { decor: true, round: 0 });
+  addBox(PX1 - 4, 0, PZ0 + 4, 3.2, 0.7, 0.9, MAT.concrete, 2, { round: 0 });
+  const tw = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 0.6), TKM.water); tw.rotation.x = -Math.PI / 2; tw.position.set(PX1 - 4, 0.62, PZ0 + 4); scene.add(tw);
+  for (const [x, z, r, dk] of [[172, 256, 0.4, 0], [180, 262, 2.1, 1], [191, 270, -0.6, 0], [176, 274, 1.2, 0], [186, 280, 3.0, 1], [194, 254, -2.0, 0], [168, 268, 0.9, 0]]) cow(x, z, r, dk);
+  // Hühnerstall mit Auslauf und Hühnern
+  addBox(182, 0.5, 228, 3.2, 2.0, 2.2, TKM.wood, 2, { round: 0 }); addBox(182, 2.5, 228, 3.8, 0.12, 2.8, FARM.barnRed, 1, { decor: true, round: 0 });
+  for (const [x, z] of [[180.7, 227.2], [183.3, 227.2], [180.7, 228.8], [183.3, 228.8]]) addBox(x, 0, z, 0.15, 0.5, 0.15, TKM.wood, 1, o);
+  addBox(182, 0, 230.2, 0.6, 0.06, 1.4, TKM.wood, 1, { decor: true, round: 0, rotY: 0 });
+  for (const [a, b, c2, d2] of [[176, 231, 188, 231], [176, 238, 188, 238], [176, 231, 176, 238], [188, 231, 188, 238]]) {
+    const ax = Math.abs(c2 - a) > 0.1; addBox((a + c2) / 2, 0, (b + d2) / 2, ax ? c2 - a : 0.05, 0.9, ax ? 0.05 : d2 - b, MAT.metal, 1, o);
+  }
+  for (let k = 0; k < 7; k++) hen(srnd(177, 187), srnd(232, 237), srand() * 6);
+  // Gemüsegarten neben dem Haus
+  decalT(186, 206, 14, 10, MAT.dirt, 2, 0, 0.012);
+  for (let r = 0; r < 5; r++) for (let k = 0; k < 12; k++) addBox(180 + k * 1.05, 0, 202.5 + r * 1.8, 0.45, 0.32 + srand() * 0.2, 0.45, FARM.veg, 1, { decor: true, round: 0.08, shadow: false });
+  // Obstgarten (4 × 4 Apfelbäume)
+  for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) leafTree(266 + a * 7.5, 256 + b * 8.5, 0.62 + srand() * 0.1);
+  // Maschinenhalle (offen) mit Anhänger
+  const HX = 276, HZ = 228;
+  for (const dx of [-10, 0, 10]) for (const dz of [-5, 5]) addBox(HX + dx, 0, HZ + dz, 0.3, 4.2, 0.3, TKM.wood, 1, { round: 0 });
+  addBox(HX, 4.2, HZ, 21.5, 0.2, 11.5, MAT.hallMetal, 2.6, { decor: true, round: 0 });
+  addBox(HX, 0, HZ + 5.4, 20.6, 4.2, 0.2, TKM.wood, 2, { round: 0 });   // Rückwand
+  addBox(HX - 4, 0.7, HZ, 5, 0.25, 2.3, MAT.ctrGreen, 2.6, { round: 0 }); addBox(HX - 4, 0.95, HZ, 5, 0.7, 2.3, MAT.ctrGreen, 2.6, { decor: true, round: 0 });
+  for (const s of [-1, 1]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 16), TIRE); wh.rotation.x = Math.PI / 2; wh.position.set(HX - 4, 0.45, HZ + s * 1.25); scene.add(wh); }
+  addBox(HX + 5, 0, HZ - 1, 2.6, 1.0, 1.4, MAT.ctrRed, 2.6, { round: 0.05 });   // Pflug/Gerät
+  // Brunnen auf dem Hof
+  const well = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(1.1, 1.15, 0.9, 16, 1, true)), TKM.stone); well.position.set(214, 0.45, 213); scene.add(well); collider(214, 0, 213, 2.2, 0.9, 2.2);
+  for (const s of [-1, 1]) addBox(214 + s * 1.0, 0.9, 213, 0.14, 1.6, 0.14, TKM.wood, 1, o);
+  addBox(214, 2.5, 213, 2.6, 0.12, 1.8, FARM.barnRed, 1, o); addBox(214, 1.9, 213, 2.1, 0.12, 0.12, TKM.wood, 1, o);
+  // Strohballen-Stapel neben der Scheune
+  const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
+  for (let row = 0; row < 3; row++) for (let k = 0; k < 3 - row; k++) {
+    const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 16)), hay); m.rotation.x = Math.PI / 2; m.position.set(257 + (k - (2 - row) / 2) * 1.55, 0.75 + row * 1.32, 226); m.castShadow = true; scene.add(m);
+  }
+  collider(257, 0, 226, 4.8, 3.9, 1.4);
+  // Holzstapel am Haus
+  for (let k = 0; k < 3; k++) addBox(213.6, k * 0.42, 190, 0.9, 0.42, 4, TKM.wood, 1, { round: 0.06 });
+  // Vogelscheuche im Weizenfeld
+  { const sx = 34, sz = 66, y = hillH(sx, sz);
+    addBox(sx, y, sz, 0.12, 2.1, 0.12, TKM.wood, 1, { round: 0 }); addBox(sx, y + 1.5, sz, 1.6, 0.1, 0.1, TKM.wood, 1, o);
+    addBox(sx, y + 1.0, sz, 0.55, 0.75, 0.3, MAT.ctrBlue, 1, o); addBox(sx, y + 1.85, sz, 0.32, 0.32, 0.3, FARM.hen, 1, o); addBox(sx, y + 2.15, sz, 0.7, 0.06, 0.7, hay, 1, o); addBox(sx, y + 2.2, sz, 0.35, 0.22, 0.35, hay, 1, o); }
+}
+/* ---------- Wald: Laubbäume, Birken, Büsche, Steine, umgefallene Stämme; See mit Schilf, Steg und Boot; Hütte mit Feuerstelle ---------- */
+function forestExtras(LX, LZ, LR) {
+  // freie Stelle im Wald? (Wege, See, Hütte, Turm, Gipfel, Drift-Strecke, Waffen)
+  const free = (x, z, pad = 0) => !(Math.abs(x + 150) < 6 + pad || Math.abs(z + 150) < 6 + pad || x > -16 || z > -16 || x < -290 || z < -290
+    || Math.hypot(x - LX, z - LZ) < LR + 3 + pad || Math.hypot(x - LX - 34, z - LZ - 22) < 14 + pad || Math.hypot(x + 95, z + 230) < 9 + pad
+    || Math.hypot(x + 240, z + 242) < 8 + pad || Math.hypot(x + 228, z + 228) < 15 || trackDist(x, z) < 9 + pad || hillH(x, z) > 24
+    || WELT_PICKS.some(p => Math.hypot(p.x - x, p.z - z) < 3 + pad) || Math.hypot(x + 150, z + 60) < 5);
+  const td = new THREE.Object3D(), place = (inst, i, x, y, z, sx, sy, sz, ry, rx = 0, rz = 0) => {
+    td.position.set(x, y, z); td.scale.set(sx, sy, sz); td.rotation.set(rx, ry, rz); td.updateMatrix(); inst.setMatrixAt(i, td.matrix);
+  };
+  // Laubbäume (Buchen) und Birken
+  const barkB = new THREE.MeshStandardMaterial({ roughness: 0.9, map: (() => {
+    const c = document.createElement('canvas'); c.width = 64; c.height = 256; const g = c.getContext('2d');
+    g.fillStyle = '#e8e5dc'; g.fillRect(0, 0, 64, 256); g.fillStyle = '#26221e';
+    for (let i = 0; i < 26; i++) g.fillRect(Math.random() * 54, Math.random() * 256, 4 + Math.random() * 14, 2 + Math.random() * 4);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })() });
+  // Kronen: mehrere massive Blätter-Kugeln (Blätter-Textur als Relief, keine Löcher)
+  const leafy = c => new THREE.MeshStandardMaterial({ map: TEX.needles, bumpMap: TEX.needles, bumpScale: 0.06, roughness: 1, color: c, flatShading: true });
+  const crownMat = leafy(new THREE.Color(0.36, 0.55, 0.24)), crownMat2 = leafy(new THREE.Color(0.5, 0.68, 0.28));
+  const trunkG = new THREE.CylinderGeometry(0.18, 0.3, 5, 8); trunkG.translate(0, 2.5, 0);
+  const blob = (r, x, y, z, sy = 1) => { const g = new THREE.IcosahedronGeometry(r, 1); g.scale(1, sy, 1); g.translate(x, y, z); return g; };
+  const crownG = THREE.BufferGeometryUtils.mergeBufferGeometries([blob(2.0, 0, 5.6, 0, 0.85), blob(1.5, 1.1, 6.6, 0.4, 0.85), blob(1.4, -0.9, 6.3, -0.7, 0.85)]);
+  const crownG2 = THREE.BufferGeometryUtils.mergeBufferGeometries([blob(1.2, 0, 5.6, 0, 1.3), blob(0.95, 0.5, 7.0, 0.3, 1.3), blob(0.9, -0.4, 6.6, -0.4, 1.2)]);
+  const kinds = [{ n: 160, trunk: treeTrunkMat, crown: crownG, cm: crownMat }, { n: 100, trunk: barkB, crown: crownG2, cm: crownMat2 }];
+  for (const K of kinds) {
+    const T = new THREE.InstancedMesh(trunkG, K.trunk, K.n), C = new THREE.InstancedMesh(K.crown, K.cm, K.n);
+    let n = 0, tries = 0;
+    while (n < K.n && tries++ < 5000) {
+      const x = srnd(-288, -18), z = srnd(-288, -18); if (!free(x, z, 3)) continue;
+      const s = srnd(0.8, 1.25), y = hillH(x, z) - 0.15, ry = srand() * 6;
+      place(T, n, x, y, z, s, s * srnd(0.9, 1.2), s, ry); place(C, n, x, y, z, s * srnd(0.9, 1.15), s * srnd(0.9, 1.2), s * srnd(0.9, 1.15), ry);
+      collider(x, y - 0.3, z, 0.6 * s, 4.5, 0.6 * s); n++;
+    }
+    T.count = C.count = n; T.castShadow = C.castShadow = true; C.receiveShadow = true; scene.add(T); scene.add(C);
+  }
+  // Büsche (Unterholz, man kann hindurchlaufen)
+  { const N = 420, B = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ map: TEX.needles, color: new THREE.Color(0.42, 0.6, 0.3), roughness: 1, bumpMap: TEX.needles, bumpScale: 0.05 }), N);
+    let n = 0, tries = 0;
+    while (n < N && tries++ < 6000) { const x = srnd(-289, -17), z = srnd(-289, -17); if (!free(x, z)) continue;
+      const s = srnd(0.6, 1.4); place(B, n++, x, hillH(x, z) + s * 0.25, z, s * srnd(1, 1.6), s * srnd(0.55, 0.8), s * srnd(1, 1.6), srand() * 6); }
+    B.count = n; B.receiveShadow = true; scene.add(B); }
+  // Steine (größere sind fest)
+  { const N = 170, rockM = new THREE.MeshStandardMaterial({ color: 0x7d7b72, roughness: 0.95, flatShading: true }), R = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(1, 0), rockM, N);
+    let n = 0, tries = 0;
+    while (n < N && tries++ < 4000) { const x = srnd(-289, -17), z = srnd(-289, -17); if (!free(x, z)) continue;
+      const s = srand() < 0.8 ? srnd(0.25, 0.7) : srnd(0.8, 1.6), y = hillH(x, z);
+      place(R, n++, x, y + s * 0.2, z, s * srnd(1, 1.4), s * srnd(0.5, 0.8), s * srnd(1, 1.4), srand() * 6, srand() * 0.5);
+      if (s > 0.75) collider(x, y - 0.3, z, s * 1.6, s * 0.9, s * 1.6); }
+    R.count = n; R.castShadow = true; R.receiveShadow = true; scene.add(R); }
+  // umgefallene Baumstämme (fest), nur auf flachem Boden
+  { const N = 34, L = 6, G = new THREE.CylinderGeometry(0.34, 0.4, L, 10), LG = new THREE.InstancedMesh(G, treeTrunkMat, N);
+    let n = 0, tries = 0;
+    while (n < N && tries++ < 3000) { const x = srnd(-286, -20), z = srnd(-286, -20), ax = srand() < 0.5;
+      if (!free(x, z, 3) || !free(x + (ax ? 3.5 : 0), z + (ax ? 0 : 3.5), 1) || !free(x - (ax ? 3.5 : 0), z - (ax ? 0 : 3.5), 1)) continue;
+      const y = hillH(x, z); if (Math.abs(hillH(x + (ax ? 3 : 0), z + (ax ? 0 : 3)) - y) > 0.3 || Math.abs(hillH(x - (ax ? 3 : 0), z - (ax ? 0 : 3)) - y) > 0.3) continue;
+      place(LG, n++, x, y + 0.34, z, 1, 1, 1, 0, ax ? 0 : Math.PI / 2, ax ? Math.PI / 2 : 0);
+      collider(x, y, z, ax ? L : 0.8, 0.72, ax ? 0.8 : L); }
+    LG.count = n; LG.castShadow = true; scene.add(LG); }
+  // See: Sandufer, Schilf, Steg mit Ruderboot
+  const sand = pbr('asphalt', 3, { map: tintedTex('asphalt', 0xc4a874), mat: { color: new THREE.Color(1.05, 0.98, 0.86) } });
+  { const rg = new THREE.RingGeometry(LR - 1, LR + 3.5, 64, 1), p = rg.attributes.position, uv = rg.attributes.uv;
+    for (let i = 0; i < p.count; i++) uv.setXY(i, p.getX(i) / 3, p.getY(i) / 3);
+    const ring = new THREE.Mesh(withUv2(rg), sand); ring.rotation.x = -Math.PI / 2; ring.position.set(LX, 0.012, LZ); ring.receiveShadow = true; scene.add(ring); }
+  { const N = 380, reedG = new THREE.ConeGeometry(0.05, 1.7, 4, 1); reedG.translate(0, 0.85, 0);
+    const reed = new THREE.InstancedMesh(reedG, new THREE.MeshStandardMaterial({ color: 0x6f7f3a, roughness: 0.9 }), N);
+    let n = 0;
+    while (n < N) { const a = srand() * Math.PI * 2; if (Math.abs(((a + Math.PI) % (Math.PI * 2)) - Math.PI) < 0.22) continue;   // am Steg frei
+      const cl = srnd(0, 6.28); for (let k = 0; k < 8 && n < N; k++) { const aa = a + srnd(-0.04, 0.04), r = LR + srnd(-2.2, 0.6);
+        place(reed, n++, LX + Math.cos(aa) * r, 0, LZ + Math.sin(aa) * r, 1, srnd(0.7, 1.25), 1, cl, srnd(-0.12, 0.12), srnd(-0.12, 0.12)); } }
+    scene.add(reed); }
+  const jx0 = LX + LR + 3, jx1 = LX + LR - 3.5, jz = LZ;   // Steg ragt nach Westen in den See
+  addBox((jx0 + jx1) / 2, 0, jz, jx0 - jx1, 0.35, 1.8, TKM.wood, 2, { round: 0 });
+  for (let x = jx1 + 0.3; x <= jx0; x += 2) for (const s of [-1, 1]) addBox(x, -0.3, jz + s * 0.85, 0.16, 0.85, 0.16, TKM.wood, 1, { decor: true, round: 0 });
+  { const bx = jx1 + 1.6, bz = jz - 2.0, BW = { decor: true, round: 0 };   // Ruderboot
+    addBox(bx, 0.02, bz, 3.4, 0.5, 1.2, TKM.wood, 1, BW); addBox(bx, 0.3, bz, 3.0, 0.24, 0.9, FARM.black, 1, BW); addBox(bx, 0.42, bz, 0.25, 0.08, 1.15, TKM.wood, 1, BW);
+    for (const s of [-1, 1]) addBox(bx + 0.2, 0.55, bz + s * 0.75, 2.2, 0.05, 0.08, TKM.wood, 1, BW); }
+  // Hütte: Holzstapel, Feuerstelle mit Sitz-Stämmen, Picknicktisch
+  const hx = LX + 34, hz = LZ + 18;
+  for (let k = 0; k < 3; k++) addBox(hx - 4.3, k * 0.42, hz, 0.9, 0.42, 4.2, TKM.wood, 1, { round: 0.06 });
+  { const fx = hx + 9, fz = hz - 7, stoneM = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95, flatShading: true });
+    for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2, st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), stoneM); st.position.set(fx + Math.cos(a) * 0.9, 0.12, fz + Math.sin(a) * 0.9); st.scale.y = 0.7; scene.add(st); }
+    decalT(fx, fz, 1.3, 1.3, FARM.black, 0, 0, 0.02);
+    for (let k = 0; k < 3; k++) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6), treeTrunkMat); lg.rotation.z = Math.PI / 2; lg.rotation.y = k; lg.position.set(fx, 0.1, fz); scene.add(lg); }
+    for (const [dx, dz, ax] of [[0, 3, true], [3, 0, false]]) {
+      const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 2.4, 10), treeTrunkMat); lg.rotation.z = ax ? Math.PI / 2 : 0; lg.rotation.x = ax ? 0 : Math.PI / 2;
+      lg.position.set(fx + dx, 0.3, fz + dz); lg.castShadow = true; scene.add(lg); collider(fx + dx, 0, fz + dz, ax ? 2.4 : 0.6, 0.55, ax ? 0.6 : 2.4); } }
+  { const px = hx + 8.5, pz = hz + 4.5, W = { round: 0 };
+    addBox(px, 0.72, pz, 2.2, 0.08, 0.9, TKM.wood, 1, W);
+    for (const s of [-1, 1]) { addBox(px, 0.42, pz + s * 0.85, 2.2, 0.06, 0.3, TKM.wood, 1, { decor: true, round: 0 }); for (const t of [-0.9, 0.9]) addBox(px + t, 0, pz + s * 0.3, 0.1, 0.72, 0.1, TKM.wood, 1, { decor: true, round: 0 }); } }
+  // Wegweiser an der Waldkreuzung
+  { const sx = -144.5, sz = -144.5, B = { decor: true, round: 0 };
+    addBox(sx, 0, sz, 0.14, 2.6, 0.14, TKM.wood, 1, { round: 0 });
+    const sgn = (t, y, rot) => { const m = tkSignMat(t, '#6b4a2c', '#f4ecd8', false); m.side = THREE.DoubleSide; tkSign(sx, y, sz, 1.8, 0.4, rot, m); };
+    sgn('WALDSEE ↑', 2.35, Math.PI / 2); sgn('GIPFEL ↑', 1.85, 0); sgn('HÜTTE', 1.4, Math.PI / 2 + 0.4); }
+}
 /* ===== DRIFT-ARENA auf dem Feld im Südosten (x 155 … 292, z 52 … 145) =====
    Rundkurs mit S-Kurven, Haarnadeln, rot-weißen Randsteinen an den Kurven, Reifenstapeln außen
    und einer großen Drift-Fläche mit Donut-Kreis. Die Mittellinie (window.DRIFT_TRACK) nutzt die Rundenzeit. */
@@ -2014,15 +2251,32 @@ function buildWeltMap() {
     for (let z = z0 + 3; z < z1; z += 3) if (hillH((x0 + x1) / 2, z) < 0.05 && hillH(x0 + 10, z) < 0.05 && hillH(x1 - 10, z) < 0.05) decalT((x0 + x1) / 2, z, x1 - x0 - 2, 0.25, F_PLOW, 4, 0, 0.009);   // Furchen (nur wo es flach ist)
   }
   // Hofgebäude
-  decalT(220, 220, 130, 130, MAT.dirt, 4.5, 0, 0.007);
-  house(205, 190, 14, 10, 5, MAT.plaster);   // Bauernhaus
+  decalT(223.5, 223.5, 137, 137, FARM.meadow, 3, 0, 0.007);    // Wiese
+  decalT(232, 212, 84, 56, MAT.dirt, 4.5, 0, 0.008);          // Hofplatz
+  decalT(172, 190, 44, 6, MAT.dirt, 4.5, 0, 0.009);           // Zufahrt vom Feldweg
+  fachwerkHouse(205, 190, 14, 10);   // Bauernhaus (Fachwerk)
   addAddr(205, 180, 'hof', 205, 184.4);
   // Scheune (begehbar, großes Tor nach Norden), innen Stellfläche für die Strohballen
   wallRun('x', 228, 252, 202.2, 0, 9, 0.4, MAT.ctrRed, [[234, 246, 0, 6]], { round: 0 });
   wallRun('x', 228, 252, 217.8, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
   wallRun('z', 202.4, 217.6, 228.2, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
   wallRun('z', 202.4, 217.6, 251.8, 0, 9, 0.4, MAT.ctrRed, [], { round: 0 });
-  addBox(240, 9, 210, 25, 0.4, 17, MAT.roof, 2.5, { round: 0 });
+  // Scheunendach: Satteldach (innen bleibt die Decke bei 9 m), weiße Ecken/Kanten, Tor-Rahmen, Heuluke
+  collider(240, 9, 210, 25, 0.4, 17);
+  { const rise = 5.5, run = 8.4 + 0.6, slope = Math.hypot(run, rise), ang = Math.atan2(rise, run);
+    for (const s of [1, -1]) { const r = new THREE.Mesh(boxGeo(25.6, 0.22, slope, 2.5), MAT.roof); r.position.set(240, 9 + rise / 2, 210 + s * run / 2); r.rotation.x = s * ang; r.castShadow = true; r.receiveShadow = true; scene.add(r); }
+    const gs = new THREE.Shape(); gs.moveTo(-8.2, 0); gs.lineTo(8.2, 0); gs.lineTo(0, rise); gs.closePath();
+    for (const s of [1, -1]) { const gm = new THREE.Mesh(withUv2(new THREE.ShapeGeometry(gs)), FARM.barnRed); gm.position.set(240 + s * 12, 9, 210); gm.rotation.y = s * Math.PI / 2; scene.add(gm); }
+    const W = { decor: true, round: 0, shadow: false };
+    for (const [x, z] of [[227.9, 201.9], [252.1, 201.9], [227.9, 218.1], [252.1, 218.1]]) addBox(x, 0, z, 0.35, 9, 0.35, TKM.white, 1, W);
+    addBox(240, 0, 201.9, 0.3, 6.2, 0.3, TKM.white, 1, W);
+    for (const x of [233.85, 246.15]) addBox(x, 0, 201.9, 0.3, 6.2, 0.3, TKM.white, 1, W);
+    addBox(240, 6.0, 201.9, 12.6, 0.3, 0.3, TKM.white, 1, W);
+    addBox(240, 6.9, 201.95, 3, 1.8, 0.1, FARM.black, 1, W); addBox(240, 6.75, 201.9, 3.4, 0.2, 0.2, TKM.white, 1, W);
+    for (const [a, b] of [[234, 240], [240, 246]]) {   // Torflügel stehen offen (nach außen gedreht)
+      addBox(a === 234 ? 233.2 : 246.8, 0, 199, 0.15, 5.8, 5.6, FARM.barnRed, 1, { round: 0 });
+    }
+  }
   decalT(240, 210, 23, 15, MAT.dirt, 4.5, 0, 0.013);
   for (const [x, z] of [[231, 215], [232.4, 215], [231, 213.6]]) crate(x, 0, z, 1.1);
   tkSign(240, 7, 201.95, 10, 1.5, Math.PI, tkSignMat('HOF HUBER', '#ffffff', '#7a1e12', false));
@@ -2038,7 +2292,11 @@ function buildWeltMap() {
   for (const [x, r] of [[213.8, 0.85], [216.6, 0.5]]) for (const s of [-1, 1]) { const wh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.5, 20), TIRE); wh.rotation.x = Math.PI / 2; wh.position.set(x, r, 230 + s * 1.1); wh.castShadow = true; scene.add(wh); }
   // Zäune und Strohballen
   for (let x = 160; x < 290; x += 4) addBox(x, 0.5, 156, 4, 0.12, 0.12, TKM.wood, 1, { decor: true, round: 0 });
-  for (let z = 160; z < 290; z += 4) addBox(156, 0.5, z, 0.12, 0.12, 4, TKM.wood, 1, { decor: true, round: 0 });
+  for (let z = 160; z < 290; z += 4) if (z < 184 || z > 196) addBox(156, 0.5, z, 0.12, 0.12, 4, TKM.wood, 1, { decor: true, round: 0 });   // Lücke für die Zufahrt
+  for (const z of [186.6, 193.4]) addBox(156, 0, z, 0.3, 1.6, 0.3, TKM.wood, 1, { round: 0 });   // Torpfosten
+  { const hs = tkSignMat('HOF HUBER', '#ffffff', '#7a1e12', false); tkSign(155.9, 2.05, 190, 3.4, 0.7, -Math.PI / 2, hs); tkSign(156.1, 2.05, 190, 3.4, 0.7, Math.PI / 2, hs); }
+  addBox(156, 1.6, 190, 0.2, 0.2, 7.2, TKM.wood, 1, { decor: true, round: 0 });
+  farmExtras();
   const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
   for (const [x, z] of [[230, 230], [232, 232], [250, 240], [195, 215], [197, 217]]) { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 16)), hay); m.rotation.z = Math.PI / 2; m.position.set(x, 0.75, z); m.castShadow = true; scene.add(m); collider(x, 0, z, 1.3, 1.5, 1.5); }
   carSpot(222, 196, Math.PI); car(200, 200, true);
@@ -2052,7 +2310,10 @@ function buildWeltMap() {
   road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
   const LX = -205, LZ = -95, LR = 26;   // Waldsee
   // Hügel und ein Berg (ca. 32 m) in der Waldecke; Wege, See, Hütte und Aussichtsturm bleiben flach
-  hillMeshRect(-292, -12, -292, -12, MAT.grass, 2);
+  // Waldboden (dunkles Moos/Nadeln) – flach als Bodenbelag, auf den Hügeln als Gelände
+  const F_FOREST = pbr('grass', 3, { map: tintedTex('grass', 0x3c4a2a), mat: { color: new THREE.Color(0.62, 0.66, 0.56) } });
+  decalT(-152, -152, 280, 280, F_FOREST, 3, 0, 0.004);
+  hillMeshRect(-292, -12, -292, -12, F_FOREST, 3);
   {
     // Felsen auf dem Gipfel
     const rock = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95, flatShading: true });
@@ -2074,16 +2335,17 @@ function buildWeltMap() {
   for (const [x, z] of [[-240, -240], [-236, -246], [-246, -238]]) { const y = hillH(x, z), t = new THREE.Mesh(new THREE.ConeGeometry(1.6, 2.2, 4), MAT.ctrOrange); t.position.set(x, y + 1.0, z); t.rotation.y = Math.PI / 4; scene.add(t); collider(x, y - 0.3, z, 2, 2.3, 2); }
   carSpot(LX + 34, LZ + 30, 0); car(-150, -60, false);
   // Bäume (instanziert) mit Stamm-Kollision
-  const TN = 420, td = new THREE.Object3D();
+  const TN = 700, td = new THREE.Object3D();
   const leafM = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.85, 0.7) });
   const trunksI = new THREE.InstancedMesh(trunkGeo, treeTrunkMat, TN), layersI = layerGeos.map(g => new THREE.InstancedMesh(g, leafM, TN));
   let placed = 0, tries = 0;
-  while (placed < TN && tries++ < 6000) {
+  while (placed < TN && tries++ < 14000) {
     const x = srnd(-292, -14), z = srnd(-292, -14);
     if (Math.abs(x + 150) < 7 || Math.abs(z + 150) < 7 || Math.abs(x) < 12 || Math.abs(z) < 12) continue;   // Wege frei
     if (Math.hypot(x - LX, z - LZ) < LR + 6 || Math.hypot(x - LX - 34, z - LZ - 22) < 12) continue;
     if (Math.hypot(x + 95, z + 230) < 10 || Math.hypot(x + 240, z + 242) < 10) continue;
     if (trackDist(x, z) < 11) continue;   // Drift-Strecke frei
+    if (WELT_PICKS.some(p => Math.hypot(p.x - x, p.z - z) < 3)) continue;
     const s = srnd(0.8, 1.35), y = hillH(x, z);
     if (y > 24 || Math.hypot(x + 228, z + 228) < 16) continue;   // Gipfel bleibt kahl
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
@@ -2093,6 +2355,7 @@ function buildWeltMap() {
   }
   trunksI.count = placed; for (const l of layersI) { l.count = placed; l.castShadow = true; scene.add(l); }
   trunksI.castShadow = true; scene.add(trunksI);
+  forestExtras(LX, LZ, LR);
   // Bäume entlang der Landstraßen
   for (let t = 52; t <= 280; t += 22) { leafTree(t, 13, 0.9); leafTree(-13, t, 0.9); }
 
