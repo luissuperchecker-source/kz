@@ -480,7 +480,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     if (brake) { if (vF > 0.5) vF -= 28 * brake * h; else vF = Math.max(-12, vF - 8 * brake * h); }
     if (hand) vF -= Math.sign(vF) * Math.min(Math.abs(vF), 5 * h);
     const onRoad = carOnRoad(ride.pos.x, ride.pos.z);
-    vF -= vF * (onRoad ? 0.12 : 0.9) * h + Math.sign(vF) * 0.0012 * vF * vF * h;
+    vF -= vF * 0.12 * h +Math.sign(vF) * 0.0012 * vF * vF * h;
     slip = speed > 3 ? Math.abs(Math.atan2(vR, Math.abs(vF))) : 0;
     let grip = 6;
     if (slip > 0.15) grip = gas > 0.2 ? 0.9 : 1.8;
