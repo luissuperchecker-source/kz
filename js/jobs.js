@@ -116,7 +116,7 @@ window.tryShoot = now => {
 /* ---------- Markierungen ---------- */
 const JOB_RING_MAT = new THREE.MeshBasicMaterial({ color: 0xffcc33, transparent: true, opacity: 0.8 });
 const JOB_BEAM_MAT = new THREE.MeshBasicMaterial({ color: 0x37c8ff, transparent: true, opacity: 0.28, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-function jobRing(x, z, r, mat) { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.1, 8, 40), mat); m.rotation.x = Math.PI / 2; m.position.set(x, 0.15, z); scene.add(m); return m; }
+function jobRing(x, z, r, mat) { const m = new THREE.Mesh(new THREE.TorusGeometry(r, 0.1, 8, 40), mat); m.rotation.x = Math.PI / 2; m.position.set(x, 0.15 + hillH(x, z), z); scene.add(m); return m; }
 if (WELT) for (const c of JOBS.list) {
   const info = JOB_INFO[c.id];
   const ring = jobRing(c.x, c.z, 1.6, JOB_RING_MAT);
@@ -179,7 +179,7 @@ function acceptJob(c, chained) {
     const F = window.FARM_FIELDS || [];
     for (let k = 0; k < 6; k++) {
       const f = F[Math.floor(Math.random() * F.length)], x = f[0] + Math.random() * (f[2] - f[0]), z = f[1] + Math.random() * (f[3] - f[1]);
-      j.bales.push({ x, z, m: hayMesh(x, 0.75, z), got: false });
+      j.bales.push({ x, z, m: hayMesh(x, 0.75 + hillH(x, z), z), got: false });   // auf dem Hügel liegen
     }
     jobSay(`${info.icon} ${info.boss}: „6 Strohballen liegen auf den Feldern – bring sie in die Scheune!“`);
   }
@@ -238,7 +238,7 @@ function currentTarget() {
 function updateJobTarget() {
   const t = currentTarget(); window.JOB_TGT = t;
   beam.visible = beamRing.visible = !!t;
-  if (t) { const r = t.door ? 0.55 : 1.2; beam.scale.set(r, 1, r); beam.position.set(t.x, 35, t.z); beamRing.position.set(t.x, 0.15, t.z); beamRing.scale.setScalar(t.door ? 0.9 : 2.2); }
+  if (t) { const r = t.door ? 0.55 : 1.2; beam.scale.set(r, 1, r); beam.position.set(t.x, 35, t.z); beamRing.position.set(t.x, 0.15 + hillH(t.x, t.z), t.z); beamRing.scale.setScalar(t.door ? 0.9 : 2.2); }
 }
 
 /* ---------- Interaktion (E): abholen, klingeln, aufladen, abladen ---------- */

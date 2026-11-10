@@ -98,8 +98,8 @@ const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194
   const seaX = MAP_ID === 'hafen' ? 55.5 : MAP_ID === 'welt' ? 9999 : 101;
   g.fillStyle = 'rgba(30,70,95,0.95)'; g.fillRect((seaX - RADAR.x0) * RADAR.ppm, 0, c.width, c.height);
   if (MAP_ID === 'hafen') { g.fillStyle = 'rgba(92,72,48,0.95)'; g.fillRect(0, (62 - RADAR.z0) * RADAR.ppm, (54 - RADAR.x0) * RADAR.ppm, 69 * RADAR.ppm); }   // Crosspark (Erde)
-  if (typeof HILL !== 'undefined' && HILL) {   // Hügel/Berg: je höher, desto dunkler
-    for (let x = HILL.x0; x < HILL.x1; x += 4) for (let z = HILL.z0; z < HILL.z1; z += 4) {
+  if (typeof HILLS !== 'undefined') for (const H of HILLS) {   // Hügel/Berg: je höher, desto dunkler
+    for (let x = H.x0; x < H.x1; x += 4) for (let z = H.z0; z < H.z1; z += 4) {
       const h = hillH(x + 2, z + 2); if (h < 1.5) continue;
       g.fillStyle = `rgba(40,70,35,${Math.min(0.65, h / 40).toFixed(2)})`; g.fillRect((x - RADAR.x0) * RADAR.ppm, (z - RADAR.z0) * RADAR.ppm, 4 * RADAR.ppm, 4 * RADAR.ppm);
     }

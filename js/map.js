@@ -82,11 +82,15 @@ function rampH(r, x, z) {
 // (z. B. auf der Hochstraße) zählen für jemanden unten auf der Straße nicht.
 /* ---------- Hügel & Berg (nur Karte „Welt“, im Wald im Nordwesten) ----------
    Höhe = Summe weicher Buckel, an Wegen, See, Hütte, Turm und am Gebietsrand sanft auf 0 abgeflacht. */
-let HILL = null;
+// Mehrere Hügel-Gebiete (Rechtecke, überlappen sich nicht); HILL = true, sobald es welche gibt
+const HILLS = []; let HILL = null;
 const _sst = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 function hillH(x, z) {
-  const H = HILL; if (!H || x < H.x0 || x > H.x1 || z < H.z0 || z > H.z1) return 0;
-  let m = _sst(0, 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
+  for (const H of HILLS) if (x >= H.x0 && x <= H.x1 && z >= H.z0 && z <= H.z1) return hillRegionH(H, x, z);
+  return 0;
+}
+function hillRegionH(H, x, z) {
+  let m = _sst(0, H.edge || 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
   for (const [cx, cz, r] of H.flatC) { const d = Math.hypot(x - cx, z - cz); if (d < r + 14) m *= _sst(r, r + 14, d); }
   for (const [ax, v] of H.flatL) m *= _sst(5, 18, Math.abs((ax === 'x' ? x : z) - v));
   if (m <= 0) return 0;
@@ -1505,8 +1509,39 @@ function weltDriftArena() {
   window.DRIFT_TRACK = { pts: pts.map(p => [p.x, p.z]), W, box: [155, 52, 292, 145], start: [st.x, st.z] };
 }
 
+// Hügel-Gebiet anlegen (max. Höhe wird für die Schuss-Prüfung gemessen)
+function addHillRegion(H) {
+  H.max = 0; HILLS.push(H); HILL = true;
+  for (let x = H.x0; x <= H.x1; x += 2) for (let z = H.z0; z <= H.z1; z += 2) H.max = Math.max(H.max, hillRegionH(H, x, z));
+}
+// Boden-Netz über einem Rechteck: folgt den Hügeln; wo es flach ist, liegt es unter dem normalen Boden (dort sieht man Straßen/Felder)
+function hillMeshRect(x0, x1, z0, z1, mat, tile, S = 2) {
+  const nx = Math.max(1, Math.round((x1 - x0) / S)), nz = Math.max(1, Math.round((z1 - z0) / S)), pos = [], uv = [], idx = [];
+  let any = false;
+  for (let i = 0; i <= nz; i++) for (let j = 0; j <= nx; j++) {
+    const x = x0 + (x1 - x0) * j / nx, z = z0 + (z1 - z0) * i / nz, h = hillH(x, z);
+    if (h > 0.02) any = true;
+    pos.push(x, h > 0.02 ? h + 0.03 : -0.08, z); uv.push(x / tile, -z / tile);
+  }
+  if (!any) return;
+  for (let i = 0; i < nz; i++) for (let j = 0; j < nx; j++) { const a = i * (nx + 1) + j, b = a + nx + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
+}
 function buildWeltMap() {
   const S = 300;
+  /* --- Hügel: Wald (Berg), Felder beim Bauernhof --- */
+  const LX0 = -205, LZ0 = -95, LR0 = 26;   // Waldsee (gleiche Werte wie unten)
+  addHillRegion({ x0: -292, x1: -12, z0: -292, z1: -12,
+    flatC: [[LX0, LZ0, LR0 + 6], [LX0 + 34, LZ0 + 20, 16], [-95, -230, 10]], flatL: [['x', -150], ['z', -150]],
+    bumps: [[-228, -228, 32, 30], [-200, -258, 13, 17], [-258, -196, 12, 17],                      // Berg mit Schultern
+      [-60, -205, 12, 20], [-112, -268, 9, 15], [-38, -262, 8, 14],                                  // Hügel nördlich
+      [-262, -40, 11, 18], [-264, -128, 8, 14],                                                     // Hügel westlich vom See
+      [-92, -92, 10, 20], [-45, -48, 6, 14], [-122, -40, 7, 15]] });                                 // Hügel nahe der Kreuzung
+  addHillRegion({ x0: 14, x1: 147, z0: 48, z1: 294, edge: 16, flatC: [], flatL: [['z', 150]],      // sanfte Hügel auf den Feldern
+    bumps: [[58, 95, 11, 20], [112, 82, 7, 15], [88, 122, 6, 13], [48, 215, 13, 22], [112, 232, 9, 18], [78, 272, 7, 14], [122, 186, 6, 12]] });
   const white = new THREE.MeshStandardMaterial({ color: 0xe0ded4, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
   const yel = new THREE.MeshStandardMaterial({ color: 0xd8b23a, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2 });
   MAT.road = pbr('asphalt', 3, { mat: { polygonOffset: true, polygonOffsetFactor: -1 } });
@@ -1678,9 +1713,11 @@ function buildWeltMap() {
   for (const [x0, x1] of [[16, 145], [155, 292]]) for (const [z0, z1] of [[52, 145], [155, 292]]) {
     if (x0 === 155 && z0 === 155) continue;   // Hofgelände
     if (x0 === 155 && z0 === 52) continue;    // Drift-Arena
-    decalT((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, fieldMats[fi++ % fieldMats.length], 4, 0, 0.007);
+    const fm = fieldMats[fi++ % fieldMats.length];
+    decalT((x0 + x1) / 2, (z0 + z1) / 2, x1 - x0, z1 - z0, fm, 4, 0, 0.007);
     FIELDS.push([x0 + 6, z0 + 6, x1 - 6, z1 - 6]);
-    for (let z = z0 + 3; z < z1; z += 3) decalT((x0 + x1) / 2, z, x1 - x0 - 2, 0.25, F_PLOW, 4, 0, 0.009);   // Furchen
+    hillMeshRect(x0, x1, z0, z1, fm, 4);   // Hügel im Feld (gleiche Feld-Oberfläche)
+    for (let z = z0 + 3; z < z1; z += 3) if (hillH((x0 + x1) / 2, z) < 0.05 && hillH(x0 + 10, z) < 0.05 && hillH(x1 - 10, z) < 0.05) decalT((x0 + x1) / 2, z, x1 - x0 - 2, 0.25, F_PLOW, 4, 0, 0.009);   // Furchen (nur wo es flach ist)
   }
   // Hofgebäude
   decalT(220, 220, 130, 130, MAT.dirt, 4.5, 0, 0.007);
@@ -1720,24 +1757,8 @@ function buildWeltMap() {
   road(-150, -290, -150, -8, 6, 'none', MAT.dirt); road(-290, -150, -8, -150, 6, 'none', MAT.dirt);
   const LX = -205, LZ = -95, LR = 26;   // Waldsee
   // Hügel und ein Berg (ca. 32 m) in der Waldecke; Wege, See, Hütte und Aussichtsturm bleiben flach
-  HILL = { x0: -292, x1: -12, z0: -292, z1: -12, max: 0,
-    flatC: [[LX, LZ, LR + 6], [LX + 34, LZ + 20, 16], [-95, -230, 10]], flatL: [['x', -150], ['z', -150]],
-    bumps: [[-228, -228, 32, 30], [-200, -258, 13, 17], [-258, -196, 12, 17],                      // Berg mit Schultern
-      [-60, -205, 12, 20], [-112, -268, 9, 15], [-38, -262, 8, 14],                                  // Hügel nördlich
-      [-262, -40, 11, 18], [-264, -128, 8, 14],                                                     // Hügel westlich vom See
-      [-92, -92, 10, 20], [-45, -48, 6, 14], [-122, -40, 7, 15]] };                                  // Hügel nahe der Kreuzung
+  hillMeshRect(-292, -12, -292, -12, MAT.grass, 2);
   {
-    const S = 2, n = Math.round((HILL.x1 - HILL.x0) / S), pos = [], uv = [], idx = [];
-    for (let i = 0; i <= n; i++) for (let j = 0; j <= n; j++) {
-      const x = HILL.x0 + j * S, z = HILL.z0 + i * S, h = hillH(x, z);
-      HILL.max = Math.max(HILL.max, h);
-      pos.push(x, h > 0.02 ? h + 0.03 : -0.08, z); uv.push(x / 2, -z / 2);
-    }
-    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const a = i * (n + 1) + j, b = a + n + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setIndex(idx); g.computeVertexNormals();
-    const hillMesh = new THREE.Mesh(withUv2(g), MAT.grass); hillMesh.receiveShadow = true; scene.add(hillMesh);
     // Felsen auf dem Gipfel
     const rock = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95, flatShading: true });
     for (let k = 0; k < 9; k++) {
@@ -2012,8 +2033,8 @@ function rayMap(o, d, maxDist = 300) {
     }
   }
   // Hügel: Strahl in 1-m-Schritten durch das Hügelgebiet verfolgen, dann genau nachsuchen
-  if (HILL) {
-    const H = HILL; let t0 = 0, t1 = best;
+  for (const H of HILLS) {
+    let t0 = 0, t1 = best;
     const mn = [H.x0, -1, H.z0], mx = [H.x1, H.max + 0.5, H.z1], oo = [o.x, o.y, o.z], dd = [d.x, d.y, d.z];
     for (let a = 0; a < 3 && t0 <= t1; a++) {
       if (Math.abs(dd[a]) < 1e-9) { if (oo[a] < mn[a] || oo[a] > mx[a]) t0 = Infinity; continue; }
@@ -2021,7 +2042,7 @@ function rayMap(o, d, maxDist = 300) {
       t0 = Math.max(t0, ta); t1 = Math.min(t1, tb);
     }
     if (t0 <= t1) {
-      const below = t => o.y + d.y * t <= hillH(o.x + d.x * t, o.z + d.z * t) - 0.001;
+      const below = t => o.y + d.y * t <= hillRegionH(H, o.x + d.x * t, o.z + d.z * t) - 0.001;
       for (let t = Math.max(t0, 0.001); t <= t1 + 1; t += 1) {
         if (!below(t)) continue;
         let lo = Math.max(0, t - 1), hi = t;
