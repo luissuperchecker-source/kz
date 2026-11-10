@@ -79,7 +79,7 @@ function updateHUD(dt) {
   drawRadar(dt);
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1;
-  hudSet('rideHint', 'html', ride.v >= 0 ? (ride.kind === 'car' ? (TOUCH ? `<b>MOPED</b> aussteigen` : `<b>E</b> aussteigen · <b>W</b> Gas · <b>S</b> Bremse/rückwärts · <b>A/D</b> lenken`) : TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>E</b> absteigen · <b>W</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken · <b>Leertaste</b> Wheelie`)
+  hudSet('rideHint', 'html', ride.v >= 0 ? (ride.kind === 'car' ? (TOUCH ? `<b>MOPED</b> aussteigen` : `<b>E</b> aussteigen · <b>/</b> Gas · <b>S</b> Bremse/rückwärts · <b>A/D</b> lenken`) : TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>E</b> absteigen · <b>/</b> Gas · <b>S</b> Bremse · <b>A/D</b> lenken · <b>Leertaste</b> Wheelie`)
     : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – ${vehicles[near].kind === 'car' ? 'ins Auto einsteigen' : 'auf das Moped steigen'}` : '');
   hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
   hudSet('speedo', 'display', ride.v >= 0 ? 'block' : 'none');
