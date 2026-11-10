@@ -428,7 +428,7 @@ function updateRide(dt) {
   if (touchIn.mx) steer = -touchIn.mx;
   // Gas / Bremse / Rückwärts
   const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car';
-  if (isCar) carDrive(dt, thr, steer, !!keys.Space, !!(touchIn.mx || touchIn.my));   // Auto: Drift-Physik (wie in Drift-Welt)
+  if (isCar) carDrive(dt, thr, steer, !!keys.Handbrake,!!(touchIn.mx || touchIn.my));   // Auto: Drift-Physik (wie in Drift-Welt)
   else {
     if (thr > 0) ride.speed += (ride.speed < 0 ? K.brake : K.acc * (1 - ride.speed / K.top)) * thr * dt;
     else if (thr < 0) ride.speed += (ride.speed > 0.3 ? -K.brake : -K.acc * 0.45) * -thr * dt;

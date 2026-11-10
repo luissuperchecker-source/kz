@@ -118,7 +118,7 @@ if (TOUCH) {
   const fingers = new Map();   // Finger-ID → { x, y, btn, look }
   const press = (name, down) => {
     if (name === 'fire') { me.trigger = down; if (down) me.firedPress = false; }
-    else if (name === 'jump') keys.Space = down;
+    else if (name === 'jump') keys.Space = keys.Handbrake = down;
     else if (name === 'crouch') { if (down) startCrouch(); keys.KeyC = down; }
     else if (!down) { if (name === 'board') $('board').classList.add('hidden'); }
     else if (name === 'scope') me.scoped = !me.scoped;
@@ -189,52 +189,100 @@ document.addEventListener('mousemove', e => {
   me.swayX = Math.max(-0.08, Math.min(0.08, me.swayX + e.movementX * 0.0006));
   me.swayY = Math.max(-0.06, Math.min(0.06, me.swayY + e.movementY * 0.0006));
 });
-document.addEventListener('mousedown', e => {
+/* ---------- Tastatur & Maus: frei belegbar (Optionen → „Tastatur & Maus anpassen“) ----------
+   Jede Aktion hat bis zu 2 Tasten. Eine „Taste“ kann eine Tastaturtaste, eine Maustaste (Mouse0 … Mouse4) oder das Mausrad (WheelUp/WheelDown) sein.
+   Gehaltene Aktionen landen in keys[…] unter festen Namen (keys.KeyW = vorwärts usw.), damit Spiel, Fahrzeuge und Controller gleich bleiben. */
+const KB_ACTIONS = [
+  ['forward', 'Vorwärts / Gas', ['KeyW', ''], 'KeyW'], ['back', 'Rückwärts / Bremse', ['KeyS', ''], 'KeyS'],
+  ['left', 'Links / Lenken links', ['KeyA', ''], 'KeyA'], ['right', 'Rechts / Lenken rechts', ['KeyD', ''], 'KeyD'],
+  ['jump', 'Springen / Wheelie', ['Space', ''], 'Space'], ['handbrake', 'Handbremse (Auto)', ['Space', ''], 'Handbrake'],
+  ['gas', 'Gas (Auto, zusätzlich)', ['NumpadDivide', 'Slash'], 'Gas'], ['crouch', 'Ducken / Rutschen', ['KeyC', 'ControlLeft'], 'KeyC'],
+  ['sneak', 'Schleichen', ['ShiftLeft', ''], 'ShiftLeft'], ['fire', 'Schießen', ['Mouse0', ''], null], ['aim', 'Zielen', ['Mouse2', ''], null],
+  ['reload', 'Nachladen', ['KeyR', ''], null], ['knife', 'Messer', ['KeyV', ''], null], ['nade', 'Granate', ['KeyG', ''], null],
+  ['inspect', 'Waffe ansehen', ['KeyF', ''], null], ['ride', 'Ein-/Aussteigen', ['KeyE', ''], null],
+  ['next', 'Nächste Waffe', ['WheelDown', ''], null], ['prev', 'Vorige Waffe', ['WheelUp', ''], null],
+  ['w1', 'Waffe 1', ['Digit1', ''], null], ['w2', 'Waffe 2', ['Digit2', ''], null], ['w3', 'Waffe 3', ['Digit3', ''], null], ['w4', 'Waffe 4', ['Digit4', ''], null],
+  ['w5', 'Ladenwaffe', ['Digit5', ''], null], ['board', 'Punktestand', ['Tab', ''], null], ['inv', 'Inventar', ['KeyI', ''], null], ['jobCancel', 'Job abbrechen', ['KeyJ', ''], null],
+];
+const KB_DEFAULT = () => Object.fromEntries(KB_ACTIONS.map(a => [a[0], a[2].slice()]));
+let KB = KB_DEFAULT(), KB_LABEL = {};
+try {
+  const s = JSON.parse(localStorage.getItem('kz_keys') || 'null');
+  if (s && s.map) { for (const a in s.map) if (KB[a]) KB[a] = s.map[a]; KB_LABEL = s.labels || {}; }
+} catch (e) {}
+const saveKB = () => { try { localStorage.setItem('kz_keys', JSON.stringify({ map: KB, labels: KB_LABEL })); } catch (e) {} };
+const KB_HOLD = Object.fromEntries(KB_ACTIONS.filter(a => a[3]).map(a => [a[0], a[3]]));
+const kbActionsFor = code => code ? KB_ACTIONS.filter(a => KB[a[0]].includes(code)).map(a => a[0]) : [];
+const kbBound = code => KB_ACTIONS.some(a => KB[a[0]].includes(code));
+function kbName(code) {
+  if (!code) return '—';
+  if (KB_LABEL[code]) return KB_LABEL[code];
+  const fixed = { Space: 'Leertaste', ShiftLeft: 'Shift links', ShiftRight: 'Shift rechts', ControlLeft: 'Strg links', ControlRight: 'Strg rechts', AltLeft: 'Alt', Tab: 'Tab',
+    Mouse0: '🖱 Links', Mouse1: '🖱 Mitte', Mouse2: '🖱 Rechts', Mouse3: '🖱 Taste 4', Mouse4: '🖱 Taste 5', WheelUp: '🖱 Rad ↑', WheelDown: '🖱 Rad ↓',
+    NumpadDivide: 'Num /', Slash: '/ (bzw. -)', CapsLock: 'Feststell', Enter: 'Enter', Backquote: '^', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+  if (fixed[code]) return fixed[code];
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+  return code;
+}
+const kbK = a => kbName(KB[a][0] || KB[a][1]);   // Name der (ersten) Taste einer Aktion, für Hinweise
+// Aktion auslösen (auch vom Mausrad)
+function kbDown(a, repeat) {
+  if (a === 'board') { $('board').classList.remove('hidden'); renderBoard(); return; }
+  if (a === 'inv') { if (!repeat) toggleInventory(); return; }
   if (!locked) return;
-  if (e.button === 0) { me.trigger = true; me.firedPress = false; }
-  if (e.button === 2) me.scoped = true;
+  if (KB_HOLD[a]) keys[KB_HOLD[a]] = true;
+  if (repeat) return;
+  if (a === 'forward') { const t = performance.now(); if (t - lastWTap < 300) me.sprintTap = true; lastWTap = t; }   // doppelt tippen = sprinten
+  else if (a === 'crouch') startCrouch();
+  else if (a === 'fire') { me.trigger = true; me.firedPress = false; }
+  else if (a === 'aim') me.scoped = true;
+  else if (a === 'reload') startReload();
+  else if (a === 'knife') knifeAttack();
+  else if (a === 'nade') throwNade();
+  else if (a === 'inspect') { if (me.alive && me.reloading <= 0) me.inspectT = 2.2; }
+  else if (a === 'ride') toggleRide();
+  else if (a === 'next' || a === 'prev') {
+    const N = WEAPONS.length, dir = a === 'next' ? 1 : N - 1; let n = me.weapon;
+    for (let i = 0; i < N; i++) { n = (n + dir) % N; if (me.owned[n]) break; }
+    switchWeapon(n);
+  } else if (/^w[1-4]$/.test(a)) { const n = +a[1] - 1; if (n < BASE_WEAPONS) switchWeapon(n); }
+  else if (a === 'w5') { const sp = me.owned.findIndex((o, i) => o && i >= BASE_WEAPONS); if (sp >= 0) switchWeapon(sp); }
+  else if (a === 'jobCancel') document.dispatchEvent(new CustomEvent('kzaction', { detail: a }));
+}
+function kbUp(a) {
+  if (KB_HOLD[a]) keys[KB_HOLD[a]] = false;
+  if (a === 'forward') me.sprintTap = false;
+  else if (a === 'board') $('board').classList.add('hidden');
+  else if (a === 'fire') me.trigger = false;
+  else if (a === 'aim') me.scoped = false;
+}
+const KBL = { listen: null };   // { a, slot } während eine neue Taste erwartet wird
+const kbCode = e => (e.key === '/' && e.code !== 'NumpadDivide') ? 'Slash' : e.code;   // Umschalt+7 auf deutscher Tastatur = „/“
+document.addEventListener('keydown', e => {
+  if (KBL.listen) return;
+  if (!running) return;
+  const code = kbCode(e), acts = kbActionsFor(code);
+  if (!acts.length) return;
+  e.preventDefault();   // z. B. Tab, Strg, „/“ (sonst öffnet Firefox die Schnellsuche)
+  for (const a of acts) kbDown(a, e.repeat);
 });
-document.addEventListener('mouseup', e => { if (e.button === 0) me.trigger = false; if (e.button === 2) me.scoped = false; });
+document.addEventListener('keyup', e => { for (const a of kbActionsFor(kbCode(e))) kbUp(a); if (e.code === 'Digit7' || e.code === 'NumpadDivide') for (const a of kbActionsFor('Slash')) kbUp(a); });
+document.addEventListener('mousedown', e => {
+  if (KBL.listen || !locked) return;
+  const acts = kbActionsFor('Mouse' + e.button);
+  if (acts.length && e.button > 2) e.preventDefault();
+  for (const a of acts) kbDown(a, false);
+});
+document.addEventListener('mouseup', e => {
+  if (e.button > 2) e.preventDefault();   // Maustaste 4/5 sollen nicht „Seite zurück“ auslösen
+  for (const a of kbActionsFor('Mouse' + e.button)) kbUp(a);
+});
 document.addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('wheel', e => {
-  if (!locked) return;
-  const N = WEAPONS.length, dir = e.deltaY > 0 ? 1 : N - 1;
-  let n = me.weapon;
-  for (let i = 0; i < N; i++) { n = (n + dir) % N; if (me.owned[n]) break; }
-  switchWeapon(n);
-});
-document.addEventListener('keydown', e => {
-  if (!running) return;
-  if (e.code === 'Tab') { e.preventDefault(); $('board').classList.remove('hidden'); renderBoard(); }
-  if (e.code === 'KeyI') { e.preventDefault(); toggleInventory(); }
-  // „/“ = Gas geben (Ziffernblock-/, Taste „/“ bzw. Umschalt+7). preventDefault: sonst öffnet Firefox die Schnellsuche
-  if (e.key === '/' || e.code === 'NumpadDivide' || e.code === 'Slash') { e.preventDefault(); keys.Gas = e.code; return; }
-  if (!locked) return;
-  if (e.code === 'ControlLeft' || e.code === 'KeyC') e.preventDefault();
-  // Doppelt W tippen = Sprinten (solange W gehalten wird)
-  if (e.code === 'KeyW' && !e.repeat) {
-    const t = performance.now();
-    if (t - lastWTap < 300) me.sprintTap = true;
-    lastWTap = t;
-  }
-  if ((e.code === 'KeyC' || e.code === 'ControlLeft') && !e.repeat) startCrouch();
-  keys[e.code] = true;
-  if (e.code.startsWith('Digit')) {
-    const n = parseInt(e.code.slice(5)) - 1;
-    if (n >= 0 && n < BASE_WEAPONS) switchWeapon(n);
-    if (n === 4) { const sp = me.owned.findIndex((o, i) => o && i >= BASE_WEAPONS); if (sp >= 0) switchWeapon(sp); }  // Taste 5 = Ladenwaffe
-  }
-  if (e.code === 'KeyR') startReload();
-  if (e.code === 'KeyV') knifeAttack();
-  if (e.code === 'KeyG') throwNade();
-  if (e.code === 'KeyF' && !e.repeat && me.alive && me.reloading <= 0) me.inspectT = 2.2;
-  if (e.code === 'KeyE' && !e.repeat) toggleRide();
-});
-document.addEventListener('keyup', e => {
-  keys[e.code] = false;
-  if (keys.Gas && e.code === keys.Gas) keys.Gas = false;
-  if (e.code === 'KeyW') me.sprintTap = false;
-  if (e.code === 'Tab') $('board').classList.add('hidden');
+  if (KBL.listen || !locked || !e.deltaY) return;
+  for (const a of kbActionsFor(e.deltaY > 0 ? 'WheelDown' : 'WheelUp')) { kbDown(a, false); kbUp(a); }
 });
 
 function switchWeapon(n) {

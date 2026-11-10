@@ -109,7 +109,7 @@ function carryItem() {
 // Mit vollen Händen kann man nicht schießen
 const _jobTryShoot = tryShoot;
 window.tryShoot = now => {
-  if (carryItem() && ride.v < 0) { if (!JOBS.handsMsg || now - JOBS.handsMsg > 2) { JOBS.handsMsg = now; showMsg('Hände voll – erst abliefern (J = Job abbrechen)'); } return; }
+  if (carryItem() && ride.v < 0) { if (!JOBS.handsMsg || now - JOBS.handsMsg > 2) { JOBS.handsMsg = now; showMsg(`Hände voll – erst abliefern (${kbK('jobCancel')} = Job abbrechen)`); } return; }
   return _jobTryShoot(now);
 };
 
@@ -459,7 +459,7 @@ function updateJobs(dt) {
         if (j.stage === 'ride') info = `🚖 Taxameter <b>${coinsR((30 + j.meterM * 0.42 + j.meterT * 0.35) * payMul('taxi'))}</b> · ${stars(j.stars)}`;
       } else if (j.id === 'farm') { task = tt.label === 'Strohballen' ? `Strohballen einsammeln (${j.stacked}/6 in der Scheune)` : `Zur Scheune bringen (${j.hand ? 1 : j.load.length} dabei)`; }
       $('jobText').innerHTML = `<div class="jTop">${j.info.icon} <b>${j.info.title}</b> · ${RANKS[jobLevel(j.id)]}${JOBS.chain ? ' · Serie ×' + (JOBS.chain + 1) : ''}</div>
-        <div>${task}</div><div class="jInfo">${Math.round(d)} m · ${time}${info ? ' · ' + info : ''} · <span style="opacity:.65">J = abbrechen</span></div>`;
+        <div>${task}</div><div class="jInfo">${Math.round(d)} m · ${time}${info ? ' · ' + info : ''} · <span style="opacity:.65">${kbK('jobCancel')} = abbrechen</span></div>`;
     }
   }
   jobHud.classList.toggle('late', j.t < 20 && !(j.id === 'taxi' && j.stage === 'ride'));
@@ -474,8 +474,8 @@ window.toggleRide = () => {
     if (JOBS.offer && !JOBS.cur) { const o = JOBS.offer; JOBS.offer = null; return acceptJob(o.c, true); }
     if (jobInteract()) return;
     if (JOBS.near && !JOBS.cur && (ride.v < 0 || Math.abs(ride.speed) < 3)) return acceptJob(JOBS.near);
-    if (JOBS.near && JOBS.cur && ride.v < 0) { showMsg('Du hast schon einen Auftrag · J = abbrechen'); return; }
+    if (JOBS.near && JOBS.cur && ride.v < 0) { showMsg(`Du hast schon einen Auftrag · ${kbK('jobCancel')} = abbrechen`); return; }
   }
   return _jobToggleRide();
 };
-document.addEventListener('keydown', e => { if (e.code === 'KeyJ' && running && locked && (JOBS.cur || JOBS.offer)) { JOBS.offer = null; cancelJob('Auftrag abgebrochen'); } });
+document.addEventListener('kzaction', e => { if (e.detail === 'jobCancel' && running && locked && (JOBS.cur || JOBS.offer)) { JOBS.offer = null; cancelJob('Auftrag abgebrochen'); } });

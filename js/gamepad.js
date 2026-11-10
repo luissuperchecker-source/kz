@@ -288,7 +288,7 @@ renderPadCfg();
 
 /* ---------- Menüs mit dem Controller bedienen ---------- */
 function padLayer() {
-  for (const id of ['padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
+  for (const id of ['kbCfg', 'padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
     const el = document.getElementById(id);
     if (el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none') return el;
   }
@@ -350,7 +350,7 @@ function padMenu(gp, pressed, dt) {
     else if (PAD.focus.type !== 'range') PAD.focus.click();
   }
   if (pressed(1)) {   // B = zurück
-    const close = { padCfg: 'padClose', shop: 'shopClose', settings: 'setClose', inv: 'invClose' }[layer.id];
+    const close = { kbCfg: 'kbClose', padCfg: 'padClose', shop: 'shopClose', settings: 'setClose', inv: 'invClose' }[layer.id];
     if (close) $(close).click();
     else if (layer.id === 'pause') padResume();
   }
@@ -386,7 +386,7 @@ function padGame(gp, pressed, released, dt) {
   }
   if (on('fire')) { me.trigger = true; me.firedPress = false; } else if (off('fire')) me.trigger = false;
   if (on('aim')) { me.scoped = true; if (me.alive && PCFG.assist) padAimSnap(); } else if (off('aim')) me.scoped = false;
-  if (on('jump')) keys.Space = true; else if (off('jump')) keys.Space = false;
+  if (on('jump')) keys.Space = keys.Handbrake = true; else if (off('jump')) keys.Space = keys.Handbrake = false;   // Sprung-Taste = auch Handbremse im Auto
   if (on('crouch')) { startCrouch(); keys.KeyC = true; PAD.sprint = false; } else if (off('crouch')) keys.KeyC = false;
   if (on('reload')) startReload();
   if (on('ride')) toggleRide();
@@ -449,7 +449,7 @@ function pollGamepad(dt) {
     }
     PAD.prev = cur; return;
   }
-  const overlay = ['padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
+  const overlay = ['kbCfg', 'padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
   if (running && locked && !overlay) {
     if (PAD.focus) padSetFocus(null);
     padGame(gp, pressed, released, dt);

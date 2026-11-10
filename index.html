@@ -189,6 +189,12 @@
   #driftHud.on { opacity: 1; }
   #driftHud b { display: block; font-size: 44px; color: #fff; }
   #driftHud span { font-size: 20px; color: #ffd23f; font-weight: 800; letter-spacing: 2px; }
+  #kbCfg { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); }
+  #kbCfg h2 { margin: 0 0 6px; color: #ffcc33; font-family: Rajdhani, sans-serif; letter-spacing: 2px; font-size: 26px; }
+  .kbGrid { display: grid; grid-template-columns: 1fr; gap: 5px; margin: 8px 0 4px; }
+  .kbGrid .padRow button { width: 112px; }
+  .kbGrid .padRow button.dup { border-color: #ff9a3c; color: #ffb36b; }
+  .kbGrid .padRow.hot { border-color: #ffcc33; background: rgba(255,204,51,.14); }
   #padCfg { position: fixed; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.65); }
   #padCfg h2 { margin: 0 0 6px; color: #ffcc33; font-family: Rajdhani, sans-serif; letter-spacing: 2px; font-size: 26px; }
   .padPanel { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -299,7 +305,7 @@
     <div class="help pcOnly">
       <b>WASD</b> laufen · <b>2× W</b> sprinten · <b>Shift</b> schleichen (lautlos) · <b>C</b>/<b>Strg</b> ducken (im Sprint: rutschen) · <b>Leertaste</b> springen<br>
       <b>Maus</b> zielen & schießen · <b>Rechtsklick</b> Visier · <b>R</b> nachladen · <b>F</b> Waffe ansehen<br>
-      <b>E</b> Moped fahren (<b>Leertaste</b> Wheelie) · <b>V</b> Messer · <b>G</b> Granate · <b>1–5</b>/Mausrad Waffe · <b>I</b> Inventar · <b>Tab</b> Punkte · <b>Esc</b> Menü
+      <b>E</b> Moped fahren (<b>Leertaste</b> Wheelie) · <b>V</b> Messer · <b>G</b> Granate · <b>1–5</b>/Mausrad Waffe · <b>I</b> Inventar · <b>Tab</b> Punkte · <b>Esc</b> Menü<br><span style="opacity:.75">Alle Tasten änderbar: Optionen → ⌨️ Tastatur &amp; Maus</span>
     </div>
     <div class="help touchOnly">
       <b>Linker Daumen</b> laufen (ganz nach vorne = sprinten) · <b>Rechts wischen</b> umschauen · <b>FEUER</b> schießen · <b>ZOOM</b> zielen<br>
@@ -402,6 +408,7 @@
     <input id="volIn" type="range" min="0" max="1" step="0.05">
     <label for="gfxIn">Grafik</label>
     <select id="gfxIn"><option value="high">Hoch (schärfste Grafik)</option><option value="medium">Mittel (empfohlen)</option><option value="low">Niedrig (keine Schatten, am flüssigsten)</option></select>
+    <button id="btnKbCfg" class="sec pcOnly">⌨️ Tastatur &amp; Maus anpassen</button>
     <button id="btnPadCfg" class="sec">🎮 Controller anpassen</button>
     <button id="setClose">Fertig</button>
   </div>
@@ -430,6 +437,19 @@
     <div class="row">
       <button id="padReset" class="sec">Standard</button>
       <button id="padClose">Fertig</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tastatur & Maus anpassen -->
+<div id="kbCfg" class="hidden">
+  <div class="panel padPanel">
+    <h2>⌨️ TASTATUR &amp; MAUS</h2>
+    <div class="padStatus">Feld anklicken, dann die neue Taste, Maustaste oder das Mausrad drücken. <b>Entf</b> = Feld leeren, <b>Esc</b> = abbrechen. Jede Aktion kann 2 Tasten haben.</div>
+    <div id="kbList" class="kbGrid"></div>
+    <div class="row">
+      <button id="kbReset" class="sec">Standard</button>
+      <button id="kbClose">Fertig</button>
     </div>
   </div>
 </div>
@@ -465,14 +485,15 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261110-142916"></script>
-<script src="js/map.js?v=20261110-142916"></script>
-<script src="js/models.js?v=20261110-142916"></script>
-<script src="js/game.js?v=20261110-142916"></script>
-<script src="js/vehicles.js?v=20261110-142916"></script>
-<script src="js/net.js?v=20261110-142916"></script>
-<script src="js/ui.js?v=20261110-142916"></script>
-<script src="js/jobs.js?v=20261110-142916"></script>
-<script src="js/gamepad.js?v=20261110-142916"></script>
+<script src="js/core.js?v=20261110-143732"></script>
+<script src="js/map.js?v=20261110-143732"></script>
+<script src="js/models.js?v=20261110-143732"></script>
+<script src="js/game.js?v=20261110-143732"></script>
+<script src="js/vehicles.js?v=20261110-143732"></script>
+<script src="js/net.js?v=20261110-143732"></script>
+<script src="js/ui.js?v=20261110-143732"></script>
+<script src="js/jobs.js?v=20261110-143732"></script>
+<script src="js/gamepad.js?v=20261110-143732"></script>
+<script src="js/keybinds.js?v=20261110-143732"></script>
 </body>
 </html>
