@@ -340,7 +340,7 @@ function updateJobs(dt) {
     mk.ring.scale.setScalar(1 + Math.sin(tnow * 3) * 0.06); mk.sign.lookAt(camera.position.x, mk.sign.position.y, camera.position.z);
     if (me.alive && Math.hypot(mk.c.x - me.pos.x, mk.c.z - me.pos.z) < (ride.v >= 0 ? 5 : 3.2)) JOBS.near = mk.c;
   }
-  const key = TOUCH ? 'MOPED' : (typeof PCFG !== 'undefined' && document.body.classList.contains('hasPad') ? PAD_SHORT[PCFG.map.ride] : 'E');
+  const key = TOUCH ? 'MOPED' : (typeof PCFG !== 'undefined' && document.body.classList.contains('hasPad') ? btnLabel(PCFG.map.ride) : 'E');
   const j = JOBS.cur;
   // Hinweise unten
   let hint = '';

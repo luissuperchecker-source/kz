@@ -11,12 +11,57 @@ const PAD_ACTIONS = [
   ['sprint', 'Sprinten', 10], ['inspect', 'Waffe ansehen', 11], ['next', 'Nächste Waffe', 15], ['prev', 'Vorige Waffe', 14],
   ['shopW', 'Ladenwaffe', 12], ['inv', 'Inventar', 13], ['board', 'Punktestand', 8], ['pause', 'Pause', 9],
 ];
-// Stick-Achsen: [Schlüssel, Name, Aufforderung, erwartetes Vorzeichen bei Standard-Controllern, Standard-Achse]
+// Achsen: [Schlüssel, Name, Aufforderung, erwartetes Vorzeichen, Standard-Achse (-1 = nicht belegt)]
+// Lenkrad: „Laufen links/rechts“ = Lenkrad drehen; Gas- und Bremspedal sind eigene (freiwillige) Achsen.
 const PAD_AXES = [
-  ['moveY', 'Laufen vor/zurück', 'nach VORNE (oben)', -1, 1], ['moveX', 'Laufen links/rechts', 'nach RECHTS', 1, 0],
+  ['moveY', 'Laufen vor/zurück', 'nach VORNE (oben)', -1, 1], ['moveX', 'Laufen / Lenken links/rechts', 'nach RECHTS (Lenkrad nach rechts drehen)', 1, 0],
   ['lookY', 'Umsehen hoch/runter', 'nach OBEN', -1, 3], ['lookX', 'Umsehen links/rechts', 'nach RECHTS', 1, 2],
+  ['gas', 'Gaspedal (optional)', '– Gaspedal ganz durchtreten', 1, -1], ['brake', 'Bremspedal (optional)', '– Bremspedal ganz durchtreten', 1, -1],
 ];
 const AXIS_NAMES = ['L-Stick ↔', 'L-Stick ↕', 'R-Stick ↔', 'R-Stick ↕'];
+/* ---------- Alle Geräte zu einem „virtuellen Controller“ zusammenfassen ----------
+   Gerät 1 (normaler Controller) behält die üblichen Nummern, weitere Geräte (z. B. Arduino-Lenkrad) bekommen eigene:
+   Tasten ab 32 / 64 …, Achsen ab 16 / 32 … So können Lenkrad und Controller gleichzeitig benutzt werden. */
+const SLOT_B = 32, SLOT_A = 16;
+const isStdPad = p => p.mapping === 'standard' || p.buttons.length >= 12;
+function realPads() {
+  const ps = navigator.getGamepads ? [...navigator.getGamepads()] : [];
+  return ps.filter(p => p && p.connected && ((p.axes && p.axes.length) || (p.buttons && p.buttons.length)))
+    .sort((a, b) => (isStdPad(b) - isStdPad(a)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : a.index - b.index));
+}
+const padShortName = p => {
+  if (!p) return 'Gerät';
+  const w = p.id.replace(/\(.*?\)/g, '').replace(/\b(LLC|Inc|Corp|Co|Ltd|GmbH)\b\.?/gi, '').replace(/\s+/g, ' ').trim().split(' ');
+  const u = w.filter((x, i) => i === 0 || x.toLowerCase() !== w[i - 1].toLowerCase());   // doppeltes Wort weglassen (Arduino Arduino Leonardo)
+  return u.join(' ').slice(0, 24) || 'Gerät';
+};
+// Belegungen merken sich das Gerät (Name), damit sie stimmen, egal in welcher Reihenfolge Geräte angesteckt werden.
+// Taste: Zahl = Taste eines normalen Controllers, { dev, k } = Taste k eines bestimmten Geräts. Achse: { a } oder { dev, k }.
+function slotOf(dev) { const ps = realPads(); for (let s = 0; s < ps.length; s++) if (ps[s].id === dev) return s; return -1; }
+function btnIndex(m) {
+  if (m === undefined || m === null) return -1;
+  if (typeof m === 'number') return m;
+  const s = slotOf(m.dev); return s < 0 ? -1 : s * SLOT_B + m.k;
+}
+function axIndex(c) {
+  if (!c) return -1;
+  if (c.dev === undefined) return c.a;
+  const s = slotOf(c.dev); return s < 0 ? -1 : s * SLOT_A + c.k;
+}
+function btnLabel(m) {
+  if (m && typeof m === 'object' && slotOf(m.dev) < 0) return `${padShortName({ id: m.dev })} T${m.k + 1} (nicht da)`;
+  return btnName(btnIndex(m));
+}
+function btnName(i) {
+  if (i === undefined || i < 0) return '—';
+  const s = Math.floor(i / SLOT_B), k = i % SLOT_B, p = realPads()[s];
+  return (s === 0 && (!p || isStdPad(p)) && PAD_SHORT[k]) ? PAD_SHORT[k] : `${padShortName(p)} T${k + 1}`;
+}
+function axisName(a) {
+  if (a === undefined || a < 0) return '— (nicht belegt)';
+  const s = Math.floor(a / SLOT_A), k = a % SLOT_A, p = realPads()[s];
+  return (s === 0 && (!p || isStdPad(p)) && AXIS_NAMES[k]) ? AXIS_NAMES[k] : `${padShortName(p)} Achse ${k + 1}`;
+}
 const PAD_DEFAULT = () => ({ map: Object.fromEntries(PAD_ACTIONS.map(a => [a[0], a[2]])), axes: Object.fromEntries(PAD_AXES.map(a => [a[0], { a: a[4], inv: false }])),
   sens: 1, dead: 0.15, invY: false, assist: true, rumble: true });
 let PCFG = PAD_DEFAULT();
@@ -28,16 +73,26 @@ try {
     delete PCFG.swap;
   }
 } catch (e) {}
-const padAxis = (gp, k) => { const c = PCFG.axes[k]; return (gp.axes[c.a] || 0) * (c.inv ? -1 : 1); };
+// Achswert: Pedale (Ruhestellung bei ±1) werden auf 0 … 1 umgerechnet, normale Achsen bleiben -1 … 1
+const padAxis = (gp, k) => {
+  const c = PCFG.axes[k], ai = axIndex(c); if (!c || ai < 0) return 0;
+  // Standard-Belegung nur für normale Controller – ein unbekanntes Gerät (Lenkrad) erst nach dem Einrichten benutzen
+  if (!c.set && gp.pads && gp.pads[0] && !isStdPad(gp.pads[0]) && ai < SLOT_A) return 0;
+  const raw = gp.axes[ai]; if (raw === undefined) return 0;
+  const rest = c.r || 0, v = Math.abs(rest) > 0.5 ? (raw - rest) / 2 : raw;
+  return v * (c.inv ? -1 : 1);
+};
 const savePad = () => { try { localStorage.setItem('kz_pad', JSON.stringify(PCFG)); } catch (e) {} };
 
 // listen = { type: 'btn' | 'axis', key }; queue = weitere Schritte beim Einrichten der Reihe nach
 const PAD = { prev: [], lastUse: -1e9, menuT: 0, menuDir: '', sprint: false, moved: false, focus: null, listen: null, listenT: 0, queue: [], base: [], waitRelease: false };
 const padDz = v => Math.abs(v) < PCFG.dead ? 0 : (v - Math.sign(v) * PCFG.dead) / (1 - PCFG.dead);
 function getPad() {
-  const ps = navigator.getGamepads ? navigator.getGamepads() : [];
-  for (const p of ps) if (p && p.connected && p.buttons && p.buttons.length >= 12) return p;
-  return null;
+  const pads = realPads(); if (!pads.length) return null;
+  const axes = [], buttons = [], off = { pressed: false, value: 0 };
+  pads.forEach((p, s) => { p.axes.forEach((v, k) => { axes[s * SLOT_A + k] = v; }); p.buttons.forEach((b, k) => { buttons[s * SLOT_B + k] = b; }); });
+  for (let i = 0; i < buttons.length; i++) if (!buttons[i]) buttons[i] = off;
+  return { id: pads.map(padShortName).join(' + '), pads, axes, buttons, vibrationActuator: pads[0].vibrationActuator };
 }
 const padRecent = () => performance.now() - PAD.lastUse < 3000;
 
@@ -46,7 +101,7 @@ const padToast = document.createElement('div');
 padToast.id = 'padToast'; document.body.appendChild(padToast);
 function showPadToast(t) { padToast.textContent = t; padToast.classList.add('on'); clearTimeout(padToast._t); padToast._t = setTimeout(() => padToast.classList.remove('on'), 2600); }
 window.addEventListener('gamepadconnected', e => {
-  showPadToast('🎮 Controller verbunden – ' + e.gamepad.id.replace(/\(.*\)/, '').trim().slice(0, 40));
+  showPadToast((isStdPad(e.gamepad) ? '🎮 Controller' : '🕹 Gerät') + ' erkannt: ' + padShortName(e.gamepad) + ' (' + e.gamepad.axes.length + ' Achsen, ' + e.gamepad.buttons.length + ' Tasten)');
   document.body.classList.add('hasPad'); renderPadCfg();
 });
 window.addEventListener('gamepaddisconnected', () => {
@@ -92,21 +147,27 @@ function padAimSnap() {
 }
 
 /* ---------- Fenster „Controller anpassen“ ---------- */
-const axisLabel = k => { const c = PCFG.axes[k]; return (AXIS_NAMES[c.a] || 'Achse ' + c.a) + (c.inv ? ' ⇄' : ''); };
+const axisLabel = k => {
+  const c = PCFG.axes[k], p0 = realPads()[0], ai = axIndex(c);
+  if (c.dev !== undefined && ai < 0) return `${padShortName({ id: c.dev })} Achse ${c.k + 1} (nicht da)`;
+  if (!c.set && p0 && !isStdPad(p0) && ai < SLOT_A) return '— (nicht belegt)';
+  return axisName(ai) + (ai >= 0 && c.inv ? ' ⇄' : '') + (ai >= 0 && Math.abs(c.r || 0) > 0.5 ? ' (Pedal)' : '');
+};
 function renderPadCfg() {
   const gp = getPad(), st = $('padStatus'), L = PAD.listen;
   const step = PAD.queue.length || (L && PAD.wizard) ? ` (noch ${PAD.queue.length} danach)` : '';
   st.textContent = L ? (L.type === 'axis'
       ? `Bewege jetzt den Stick für „${PAD_AXES.find(a => a[0] === L.key)[1]}“ ${PAD_AXES.find(a => a[0] === L.key)[2]} …${step}`
       : `Drücke jetzt die Taste für „${PAD_ACTIONS.find(a => a[0] === L.key)[1]}“ …${step}`) + '  (Esc = abbrechen)'
-    : gp ? '✅ Verbunden: ' + gp.id.replace(/\(.*\)/, '').trim().slice(0, 50) : 'Kein Controller erkannt – drücke einen Knopf am Controller.';
+    : gp ? '✅ Erkannt: ' + gp.pads.map((q, i) => (i + 1) + '. ' + padShortName(q) + ' (' + q.axes.length + ' Achsen, ' + q.buttons.length + ' Tasten)').join(' · ') : 'Kein Gerät erkannt – drücke einen Knopf oder dreh am Lenkrad.';
   st.classList.toggle('ok', !!gp && !L);
   const isL = (t, k) => L && L.type === t && L.key === k;
   $('padAxList').innerHTML = PAD_AXES.map(([k, label]) =>
     `<div class="padRow" data-row-axis="${k}"><span>${label}</span><button class="${isL('axis', k) ? 'listen' : 'sec'}" data-axis="${k}">${isL('axis', k) ? '…' : axisLabel(k)}</button></div>`).join('');
   $('padList').innerHTML = PAD_ACTIONS.map(([k, label]) =>
-    `<div class="padRow" data-row-btn="${PCFG.map[k]}"><span>${label}</span><button class="${isL('btn', k) ? 'listen' : 'sec'}" data-pad="${k}">${isL('btn', k) ? '…' : PAD_SHORT[PCFG.map[k]] || 'Taste ' + PCFG.map[k]}</button></div>`).join('');
-  $('padWizard').textContent = PAD.wizard ? '■ Einrichten abbrechen' : '▶ Alles der Reihe nach einrichten (Sticks + Tasten)';
+    `<div class="padRow" data-row-btn="${btnIndex(PCFG.map[k])}"><span>${label}</span><button class="${isL('btn', k) ? 'listen' : 'sec'}" data-pad="${k}">${isL('btn', k) ? '…' : btnLabel(PCFG.map[k])}</button></div>`).join('');
+  $('padWizard').textContent = PAD.wizard ? '■ Einrichten abbrechen' : '▶ Alles der Reihe nach einrichten (Sticks/Lenkrad/Pedale + Tasten)';
+  $('padSkip').classList.toggle('hidden', !L);
   $('padSensIn').value = PCFG.sens; $('padSensVal').textContent = PCFG.sens.toFixed(2);
   $('padDeadIn').value = PCFG.dead; $('padDeadVal').textContent = Math.round(PCFG.dead * 100) + ' %';
   $('padInvY').textContent = 'Blick-Y umkehren: ' + (PCFG.invY ? 'AN' : 'AUS');
@@ -119,7 +180,7 @@ function renderPadCfg() {
   }
 }
 function renderPadHelp() {
-  const s = k => `<b>${PAD_SHORT[PCFG.map[k]]}</b>`;
+  const s = k => `<b>${btnLabel(PCFG.map[k])}</b>`;
   const L = axisLabel('moveY').split(' ')[0], R = axisLabel('lookX').split(' ')[0];
   document.querySelectorAll('.padKeys').forEach(el => el.innerHTML = `<b>🎮 Controller</b><br>
     <b>${L}</b> laufen/fahren · ${s('sprint')} sprinten · <b>${R}</b> umsehen · ${s('fire')} schießen · ${s('aim')} zielen<br>
@@ -130,7 +191,7 @@ function renderPadHelp() {
 function startListen(key, type = 'btn', keepRest = false) {
   const gp = getPad();
   PAD.listen = { type, key }; PAD.listenT = 8;
-  if (!keepRest || !PAD.base.length) PAD.base = gp ? gp.axes.slice() : [];   // Ruhestellung merken (manche Trigger ruhen bei -1)
+  if (!keepRest || !PAD.base.length) PAD.base = gp ? Array.from(gp.axes) : [];   // Ruhestellung merken (Trigger/Pedale ruhen oft bei -1)
   PAD.waitRelease = true;                  // erst loslassen, dann zählt die nächste Bewegung
   renderPadCfg();
 }
@@ -141,25 +202,32 @@ function nextListen() {
 }
 function assignPad(btn) {
   const k = PAD.listen.key;
-  const old = PCFG.map[k];
-  for (const a in PCFG.map) if (a !== k && PCFG.map[a] === btn) PCFG.map[a] = old;   // doppelt belegt → Tasten tauschen
-  PCFG.map[k] = btn; savePad();
+  const old = PCFG.map[k], s = Math.floor(btn / SLOT_B), p = realPads()[s];
+  const entry = s === 0 && p && isStdPad(p) ? btn : { dev: p ? p.id : '', k: btn % SLOT_B };   // Lenkrad & Co.: Gerät merken
+  // doppelt belegt → Tasten tauschen (aber nur echte Konflikte: Standard-Nummern gelten für normale Controller, nicht fürs Lenkrad)
+  for (const a in PCFG.map) if (a !== k && btnIndex(PCFG.map[a]) === btn && (typeof PCFG.map[a] === 'object' || typeof entry === 'number')) PCFG.map[a] = old;
+  PCFG.map[k] = entry; savePad();
   sndBeep(880, 0.08, 0.1, 'triangle');
-  showPadToast(`${PAD_ACTIONS.find(a => a[0] === k)[1]} → ${PAD_NAMES[btn] || 'Taste ' + btn}`);
+  showPadToast(`${PAD_ACTIONS.find(a => a[0] === k)[1]} → ${btn < SLOT_B && PAD_NAMES[btn] && realPads()[0] && isStdPad(realPads()[0]) ? PAD_NAMES[btn] : btnName(btn)}`);
   nextListen();
 }
 function assignAxis(ax, val) {
   const k = PAD.listen.key, def = PAD_AXES.find(a => a[0] === k);
   const inv = Math.sign(val) !== def[3];
-  const old = PCFG.axes[k].a;
-  for (const o in PCFG.axes) if (o !== k && PCFG.axes[o].a === ax) PCFG.axes[o].a = old;   // Achse schon vergeben → tauschen
-  PCFG.axes[k] = { a: ax, inv }; savePad();
+  const old = PCFG.axes[k];
+  const rest = PAD.base[ax] || 0;   // Ruhestellung (Pedal bei -1/+1, Stick/Lenkrad bei 0)
+  const s = Math.floor(ax / SLOT_A), p = realPads()[s], std = s === 0 && p && isStdPad(p);
+  // Achse schon vergeben → tauschen (Standard-Belegungen eines normalen Controllers bleiben beim Lenkrad-Einrichten unangetastet)
+  for (const o in PCFG.axes) { const c = PCFG.axes[o]; if (o !== k && axIndex(c) === ax && (std || c.dev !== undefined)) PCFG.axes[o] = Object.assign({}, old); }
+  const r = Math.abs(rest) > 0.5 ? rest : 0;
+  PCFG.axes[k] = s === 0 && p && isStdPad(p) ? { a: ax, inv, r, set: true } : { dev: p ? p.id : '', k: ax % SLOT_A, a: ax, inv, r, set: true }; savePad();
   sndBeep(880, 0.08, 0.1, 'triangle');
   showPadToast(`${def[1]} → ${axisLabel(k)}`);
   nextListen();
 }
 $('padList').addEventListener('click', e => { const b = e.target.closest('[data-pad]'); if (b) { PAD.queue = []; PAD.wizard = false; startListen(b.dataset.pad, 'btn'); } });
 $('padAxList').addEventListener('click', e => { const b = e.target.closest('[data-axis]'); if (b) { PAD.queue = []; PAD.wizard = false; startListen(b.dataset.axis, 'axis'); } });
+$('padSkip').onclick = () => { if (PAD.listen) { showPadToast('Übersprungen'); nextListen(); } };
 $('padWizard').onclick = () => {
   if (PAD.wizard) return stopListen();
   PAD.queue = [...PAD_AXES.map(a => ['axis', a[0]]), ...PAD_ACTIONS.map(a => ['btn', a[0]])];
@@ -182,21 +250,24 @@ function drawPadViz(gp) {
   stick(62, 'Laufen', 'moveX', 'moveY');
   stick(178, 'Umsehen', 'lookX', 'lookY');
   // alle Achsen als Balken
-  const axes = gp ? gp.axes : [], n = Math.max(4, axes.length);
-  g.textAlign = 'left'; g.font = '11px sans-serif';
-  for (let i = 0; i < Math.min(n, 8); i++) {
-    const y = 14 + i * 16, x0 = 262, w = 150, v = axes[i] || 0;
-    const used = Object.values(PCFG.axes).some(c => c.a === i);
-    g.fillStyle = used ? '#cfe0cf' : '#6f826f'; g.fillText(AXIS_NAMES[i] || 'Achse ' + i, x0, y + 4);
-    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x0 + 70, y - 5, w, 10);
-    g.fillStyle = Math.abs(v) > 0.5 ? '#ffcc33' : '#5fa36a'; g.fillRect(x0 + 70 + w / 2, y - 5, v * w / 2, 10);
+  const axes = gp ? gp.axes : [], idx = [];
+  for (let i = 0; i < axes.length; i++) if (axes[i] !== undefined) idx.push(i);
+  if (!idx.length) idx.push(0, 1, 2, 3);
+  g.textAlign = 'left'; g.font = '10px sans-serif';
+  for (let r = 0; r < Math.min(idx.length, 8); r++) {
+    const i = idx[r], y = 14 + r * 16, x0 = 262, w = 120, v = axes[i] || 0;
+    const used = Object.values(PCFG.axes).some(c => axIndex(c) === i);
+    g.fillStyle = used ? '#cfe0cf' : '#6f826f'; g.fillText(axisName(i).slice(0, 18), x0, y + 4);
+    g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x0 + 100, y - 5, w, 10);
+    g.fillStyle = Math.abs(v) > 0.5 ? '#ffcc33' : '#5fa36a'; g.fillRect(x0 + 100 + w / 2, y - 5, v * w / 2, 10);
   }
   // Tasten als Punkte
-  const bs = gp ? gp.buttons : [];
-  for (let i = 0; i < Math.min(bs.length || 17, 17); i++) {
-    const on = bs[i] && (bs[i].pressed || bs[i].value > 0.35), x = 262 + (i % 9) * 28, y = 150 - (i < 9 ? 16 : 2) - 0;
+  const bs = gp ? gp.buttons : [], bidx = [];
+  for (let i = 0; i < bs.length; i++) if (gp.buttons[i] && (i < SLOT_B || i % SLOT_B < gp.pads[Math.floor(i / SLOT_B)].buttons.length)) bidx.push(i);
+  for (let r = 0; r < Math.min(bidx.length || 17, 17); r++) {
+    const i = bidx.length ? bidx[r] : r, on = bs[i] && (bs[i].pressed || bs[i].value > 0.35), x = 262 + (r % 9) * 28, y = 150 - (r < 9 ? 16 : 2) - 0;
     g.fillStyle = on ? '#ffcc33' : 'rgba(255,255,255,.1)'; g.beginPath(); g.arc(x + 8, y - 6, 8, 0, 7); g.fill();
-    g.fillStyle = on ? '#1d1600' : '#8aa08a'; g.font = 'bold 8px sans-serif'; g.textAlign = 'center'; g.fillText(PAD_SHORT[i] || i, x + 8, y - 3);
+    g.fillStyle = on ? '#1d1600' : '#8aa08a'; g.font = 'bold 8px sans-serif'; g.textAlign = 'center'; g.fillText(i < SLOT_B && gp && isStdPad(gp.pads[0]) ? PAD_SHORT[i] || i : 'T' + (i % SLOT_B + 1), x + 8, y - 3);
   }
   // gedrückte Tasten in der Liste aufleuchten lassen
   document.querySelectorAll('#padList .padRow').forEach(r => { const b = bs[+r.dataset.rowBtn]; r.classList.toggle('hot', !!(b && (b.pressed || b.value > 0.35))); });
@@ -288,11 +359,14 @@ function padMenu(gp, pressed, dt) {
 
 /* ---------- Steuerung im Spiel (frei belegbar) ---------- */
 function padGame(gp, pressed, released, dt) {
-  const M = PCFG.map, on = a => pressed(M[a]), off = a => released(M[a]);
+  const M = PCFG.map, on = a => pressed(btnIndex(M[a])), off = a => released(btnIndex(M[a]));
   const lx = padDz(padAxis(gp, 'moveX')), ly = padDz(padAxis(gp, 'moveY')), rx = padDz(padAxis(gp, 'lookX'));
   let ry = padDz(padAxis(gp, 'lookY'));
   if (PCFG.invY) ry = -ry;
-  if (lx || ly) { touchIn.mx = lx; touchIn.my = ly; PAD.moved = true; }
+  // Pedale (Lenkrad): Gas nach vorne, Bremse nach hinten – überschreiben den Stick, wenn getreten
+  const gasP = Math.max(0, padAxis(gp, 'gas')), brkP = Math.max(0, padAxis(gp, 'brake'));
+  let my = ly; if (gasP > 0.04 || brkP > 0.04) my = brkP - gasP;
+  if (lx || my) { touchIn.mx = lx; touchIn.my = my; PAD.moved = true; }
   else if (PAD.moved) { touchIn.mx = touchIn.my = 0; PAD.moved = false; }
   if (on('sprint')) PAD.sprint = !PAD.sprint;
   if (ly > -0.3) PAD.sprint = false;
@@ -340,6 +414,7 @@ function pollGamepad(dt) {
     if (!document.body.classList.contains('hasPad')) { document.body.classList.add('hasPad'); renderPadCfg(); }
   }
   if (PAD.listen) {
+    for (let k = 0; k < gp.axes.length; k++) if (gp.axes[k] !== undefined && PAD.base[k] === undefined) PAD.base[k] = gp.axes[k];   // neu angestecktes Gerät: Ruhestellung übernehmen
     const moved = gp.axes.map((v, k) => v - (PAD.base[k] || 0));
     if (PAD.waitRelease) {   // erst alles loslassen (Stick in Ruhe, keine Taste), dann zählt die nächste Eingabe
       if (!cur.some(Boolean) && moved.every(d => Math.abs(d) < 0.3)) PAD.waitRelease = false;
@@ -360,7 +435,7 @@ function pollGamepad(dt) {
   } else {
     if (PAD.moved) { touchIn.mx = touchIn.my = 0; PAD.moved = false; }
     // Inventar im Spiel: gleiche Taste schließt es wieder
-    if (running && !$('inv').classList.contains('hidden') && pressed(PCFG.map.inv)) { toggleInventory(false); PAD.prev = cur; return; }
+    if (running && !$('inv').classList.contains('hidden') && pressed(btnIndex(PCFG.map.inv))) { toggleInventory(false); PAD.prev = cur; return; }
     padMenu(gp, pressed, dt);
   }
   PAD.prev = cur;
