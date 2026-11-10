@@ -282,6 +282,16 @@ function building(cx, cz, w, d, floors, mat, doors = {}, opt = {}) {
     }
   }
   for (const k in sides) { const S = sides[k]; wallRun(S.axis, S.a0, S.a1, S.at, floors * FH, 1.0, T, mat, [], BW); }  // Dachbrüstung
+  if (MAP_ID === 'welt') {   // außen: Gesimsbänder zwischen den Etagen und Abdeckung der Brüstung (nur Kulisse)
+    const trim = MAT.concrete, o = { decor: true, round: 0, shadow: false };
+    for (let L = 1; L <= floors + 1; L++) {
+      const y = L <= floors ? L * FH - 0.14 : floors * FH + 1.0, hh = L <= floors ? 0.2 : 0.18, p = L <= floors ? 0.08 : 0.14;
+      addBox(cx, y, z0 - p / 2, w + 2 * p, hh, p, trim, 1, o); addBox(cx, y, z1 + p / 2, w + 2 * p, hh, p, trim, 1, o);
+      addBox(x0 - p / 2, y, cz, p, hh, d, trim, 1, o); addBox(x1 + p / 2, y, cz, p, hh, d, trim, 1, o);
+    }
+    addBox(cx + w / 5, floors * FH, cz + d / 6, 1.8, 1.1, 1.3, MAT.metal, 1, { decor: true, round: 0.03 });   // Klimagerät auf dem Dach
+    if (w > 12) addBox(cx - w / 6, floors * FH, cz - d / 5, 0.6, 1.5, 0.6, MAT.hallMetal, 1, { decor: true, round: 0 });   // Lüftung
+  }
   // Treppen: abwechselnd in zwei Spuren an der Westwand, je 5 Stufen à 0,64 m
   const ix0 = x0 + T, ix1 = x1 - T, iz0 = z0 + T, iz1 = z1 - T;
   // Gegenläufige Treppen: gerade Stockwerke laufen nach +z (Spur A), ungerade nach -z (Spur B)
@@ -1335,6 +1345,9 @@ const FURN = {
   glass: new THREE.MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.32, envMapIntensity: 1.5, depthWrite: false }),
 };
 const NR = { round: 0 };
+// Fensterläden: grün, blau, braun oder keine
+const SHUTTERS = [new THREE.MeshStandardMaterial({ color: 0x3f6b45, roughness: 0.7 }), new THREE.MeshStandardMaterial({ color: 0x3d5f80, roughness: 0.7 }),
+  new THREE.MeshStandardMaterial({ color: 0x6b4a32, roughness: 0.75 }), null];
 function weltHouse(cx, cz, face, wallMat, roofMat = TKM.roofTile) {
   const W = 10, D = 8, H = 3.0, T = 0.25, x0 = cx - W / 2, x1 = cx + W / 2;
   const fz = cz + face * D / 2, bzW = cz - face * D / 2;
@@ -1364,6 +1377,19 @@ function weltHouse(cx, cz, face, wallMat, roofMat = TKM.roofTile) {
   // offene Haustür (Türblatt nach innen gedreht) + Glas in den Fenstern
   addBox(cx + 1.05, 0, fz - face * 0.75, 0.06, 2.15, 1.25, TKM.wood, 0, { decor: true, round: 0 });
   for (const a of [cx - 3.3, cx - 0.9, cx + 3.6]) { const g = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.15), FURN.glass); g.position.set(a, 1.475, fz - face * 0.05); g.userData.noMerge = true; scene.add(g); }
+  // Außen: Fensterbänke, Fensterläden, Vordach über der Haustür, Schornstein (nur Kulisse)
+  const DEC = { decor: true, round: 0, shadow: false }, shut = SHUTTERS[Math.floor(srand() * SHUTTERS.length)];
+  for (const a of [cx - 3.3, cx - 0.9, cx + 3.6]) {
+    addBox(a, 0.8, fz + face * 0.1, 1.65, 0.08, 0.22, TKM.white, 1, DEC);
+    addBox(a, 2.05, fz + face * 0.04, 1.6, 0.14, 0.1, TKM.white, 1, DEC);
+    if (shut) for (const s of [-1, 1]) addBox(a + s * 0.97, 0.88, fz + face * 0.05, 0.5, 1.2, 0.05, shut, 1, DEC);
+  }
+  for (const a of [cx - 3.2, cx + 0.4]) addBox(a, 0.8, bzW - face * 0.1, 1.65, 0.08, 0.22, TKM.white, 1, DEC);
+  addBox(cx + 1.65, 2.3, fz + face * 0.55, 2.0, 0.1, 1.1, roofMat, 2.5, { decor: true, round: 0 });
+  for (const s of [-1, 1]) addBox(cx + 1.65 + s * 0.9, 2.12, fz + face * 1.0, 0.06, 0.18, 0.06, MAT.metal, 1, DEC);
+  const chH = D * 0.38 + 1.0;
+  addBox(cx - 2.6, H + 0.2, cz - face * 1.3, 0.62, chH, 0.62, MAT.brick, 1, { decor: true, round: 0 });
+  addBox(cx - 2.6, H + 0.2 + chH, cz - face * 1.3, 0.78, 0.1, 0.78, MAT.dark, 1, DEC);
   // Wohnzimmer (vorne): Sofa, Couchtisch, Fernseher, Küchenzeile, Kühlschrank, Esstisch
   const lz = cz + face * D / 4, sz = cz - face * D / 4;
   addBox(cx - 3.3, 0, lz + face * 0.2, 2.2, 0.45, 0.9, srand() < 0.5 ? FURN.sofa : FURN.sofa2, 0, { round: 0.12 });
@@ -1433,6 +1459,12 @@ function towerLobby(x, z, w, d, h, mat, faceS) {
   addBox(x, LH + 0.4, z, w, h - LH - 0.4, d, mat, 16, { round: 0 });
   addBox(x, h, z, w, 0.9, d, MAT.concrete, 2, { decor: true, round: 0, shadow: false });
   if (h > 40) addBox(x, h + 0.9, z, 0.3, 9, 0.3, MAT.metal, 1, { decor: true });
+  // Dachtechnik: Aufzugsraum, Klimageräte, Wassertank
+  addBox(x - w * 0.22, h + 0.9, z + d * 0.18, w * 0.3, 2.6, d * 0.28, MAT.concrete, 2, { decor: true, round: 0 });
+  addBox(x + w * 0.22, h + 0.9, z - d * 0.2, 2.2, 1.2, 1.6, MAT.metal, 1, { decor: true, round: 0.03 });
+  addBox(x + w * 0.25, h + 0.9, z + d * 0.22, 1.6, 1.2, 1.6, MAT.metal, 1, { decor: true, round: 0.03 });
+  if (srand() < 0.5) { const tk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 2.2, 14), MAT.hallMetal); tk.position.set(x - w * 0.25, h + 2.9, z - d * 0.22); scene.add(tk); }
+  addBox(x, LH - 0.05, z + out * (d / 2 + 0.9), w * 0.5, 0.15, 1.8, MAT.metal, 1, { decor: true, round: 0 });   // Vordach über dem Eingang
   decalT(x, z, w - 0.6, d - 0.6, TKM.stone, 2, 0, 0.014);
   // Empfangstheke, Aufzugstüren an der Rückwand, Pflanzen, Sitzbank
   const bz = faceS ? z0 + T + 0.06 : z1 - T - 0.06;
@@ -1441,6 +1473,159 @@ function towerLobby(x, z, w, d, h, mat, faceS) {
   tkPlanter(x0 + 1.4, z + out * (d / 2 - 2), 1.2, 1.2); tkPlanter(x1 - 1.4, z + out * (d / 2 - 2), 1.2, 1.2);
   bench(x - w / 4, z - out * 1, true);
   addAddr(x - w / 5, faceS ? z1 + 3 : z0 - 3, 'stadt', x - w / 5, faceS ? z1 + 0.7 : z0 - 0.7);
+}
+/* ---------- Altbau-Fassaden für die Stadt: Putz/Ziegel, Fenster mit Rahmen, Sprossen, Fensterbank, Gesims ----------
+   512 px = 12,8 m: 4 Fensterachsen (je 3,2 m) × 4 Etagen (je 3,2 m) → Häuser in Vielfachen von 3,2 m passen genau */
+function euFacade(base, frame, style) {
+  const s = 512, c = document.createElement('canvas'), e = document.createElement('canvas'); c.width = c.height = e.width = e.height = s;
+  const g = c.getContext('2d'), ge = e.getContext('2d');
+  g.fillStyle = base; g.fillRect(0, 0, s, s); ge.fillStyle = '#000'; ge.fillRect(0, 0, s, s);
+  if (style === 'brick') {   // Ziegelmauer
+    for (let y = 0; y < s; y += 8) for (let x = (y / 8) % 2 ? -8 : 0; x < s; x += 16) {
+      const l = 0.82 + Math.random() * 0.3; g.fillStyle = `rgba(${150 * l | 0},${70 * l | 0},${52 * l | 0},1)`; g.fillRect(x + 1, y + 1, 14, 6);
+    }
+  }
+  speckle(g, s, 7000, '0,0,0', 0.06, 2); speckle(g, s, 2500, '255,255,255', 0.05, 2);
+  const fh = s / 4, cw = s / 4;
+  for (let f = 0; f < 4; f++) {
+    const y0 = f * fh;
+    if (style === 'shop') {   // Erdgeschoss: große Schaufenster, Tür, dunkles Band oben
+      g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, y0 + 4, s, fh * 0.14);
+      for (let k = 0; k < 4; k++) {
+        const x = k * cw + 9, w = cw - 18, y = y0 + fh * 0.22, h = fh * 0.74;
+        g.fillStyle = frame; g.fillRect(x - 4, y - 4, w + 8, h + 4);
+        const lit = Math.random() < 0.5;
+        g.fillStyle = lit ? '#cdbf98' : '#24303a'; g.fillRect(x, y, w, h);
+        const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, 'rgba(255,255,255,.28)'); gr.addColorStop(0.5, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x, y, w, h);
+        if (lit) { ge.fillStyle = '#7a6a48'; ge.fillRect(x, y, w, h); }
+        if (k === 1) { g.fillStyle = frame; g.fillRect(x + w * 0.62, y, 4, h); g.fillStyle = '#3a2a1c'; g.fillRect(x + w * 0.66, y + 4, w * 0.3, h - 4); }   // Tür
+      }
+      continue;
+    }
+    // Gesims zwischen den Etagen
+    g.fillStyle = 'rgba(255,255,255,.22)'; g.fillRect(0, y0 + fh - 9, s, 5); g.fillStyle = 'rgba(0,0,0,.16)'; g.fillRect(0, y0 + fh - 4, s, 4);
+    for (let k = 0; k < 4; k++) {
+      const w = cw * 0.4, h = fh * 0.5, x = k * cw + (cw - w) / 2, y = y0 + fh * 0.18;
+      if (style === 'deco') { g.fillStyle = frame; g.fillRect(x - 10, y - 16, w + 20, 7); g.beginPath(); g.moveTo(x - 6, y - 16); g.lineTo(x + w / 2, y - 28); g.lineTo(x + w + 6, y - 16); g.fill(); }
+      g.fillStyle = frame; g.fillRect(x - 6, y - 6, w + 12, h + 12);   // Rahmen
+      const on = Math.random() < 0.16;
+      g.fillStyle = on ? '#f1d89c' : '#26323d'; g.fillRect(x, y, w, h);
+      if (on) { ge.fillStyle = '#ffd890'; ge.fillRect(x, y, w, h); }
+      else { const gr = g.createLinearGradient(x, y, x + w, y + h); gr.addColorStop(0, 'rgba(255,255,255,.3)'); gr.addColorStop(0.55, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x, y, w, h); }
+      if (!on && Math.random() < 0.35) { g.fillStyle = 'rgba(235,230,215,.8)'; g.fillRect(x, y, w, h * 0.3); }   // Gardine/Rollo
+      g.fillStyle = frame; g.fillRect(x + w / 2 - 2, y, 4, h); g.fillRect(x, y + h * 0.33, w, 3);   // Sprossen
+      g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x - 9, y + h + 9, w + 18, 5); g.fillStyle = frame; g.fillRect(x - 10, y + h + 5, w + 20, 6);   // Fensterbank
+    }
+  }
+  const t = new THREE.CanvasTexture(c), te = new THREE.CanvasTexture(e);
+  for (const q of [t, te]) { q.wrapS = q.wrapT = THREE.RepeatWrapping; q.anisotropy = MAX_ANISO; q.encoding = THREE.sRGBEncoding; }
+  return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: te, emissiveIntensity: 0.45, roughness: 0.85 });
+}
+let EU = null;
+function euMats() {
+  if (EU) return EU;
+  const plain = hex => new THREE.MeshStandardMaterial({ color: new THREE.Color(hex), roughness: 0.9 });
+  // wenige Varianten: jede Variante ist ein eigenes Material und damit ein eigener Zeichenaufruf pro Kartenstück
+  const trim = plain('#f1eee4');
+  const F = (base, style) => ({ mat: euFacade(base, '#f1eee4', style), gable: plain(style === 'brick' ? '#94503c' : base), trim });
+  EU = {
+    facades: [F('#e8dcbc', 'deco'), F('#e3c97e', 'plain'), F('#d79a7e', 'deco'), F('#b8c8d3', 'plain'), F('#9c4a36', 'brick')],
+    shops: [euFacade('#4b4d52', '#202226', 'shop'), euFacade('#e7e2d6', '#3a3c40', 'shop')],
+    roofs: [TKM.roofTile, MAT.roof, pbr('roof', 2.5, { mat: { color: new THREE.Color(0.75, 0.38, 0.28) } })],
+    awn: [MAT.ctrRed, MAT.ctrGreen, MAT.ctrBlue, MAT.ctrOrange],
+    pave: new THREE.MeshStandardMaterial({ map: canvasTex((g, s) => {
+      g.fillStyle = '#6a6862'; g.fillRect(0, 0, s, s);
+      for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) { const l = 0.9 + Math.random() * 0.14; g.fillStyle = `rgb(${132 * l | 0},${129 * l | 0},${122 * l | 0})`; g.fillRect(x * s / 4 + 2, y * s / 4 + 2, s / 4 - 4, s / 4 - 4); }
+      speckle(g, s, 3000, '0,0,0', 0.08, 2);
+    }, 256), roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -1 }),
+    curb: new THREE.MeshStandardMaterial({ color: 0xb4b2ab, roughness: 0.85 }),
+    zebra: new THREE.MeshStandardMaterial({ map: (() => {
+      const c = document.createElement('canvas'); c.width = 512; c.height = 32; const g = c.getContext('2d');
+      for (let k = 0; k < 9; k++) { g.fillStyle = 'rgba(238,238,232,.95)'; g.fillRect(k * 512 / 9 + 8, 0, 512 / 9 - 16, 32); }
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO; return t;
+    })(), alphaTest: 0.5, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }),
+  };
+  EU.plaza = new THREE.MeshStandardMaterial({ map: canvasTex((g, s) => {
+    g.fillStyle = '#5a5853'; g.fillRect(0, 0, s, s);
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) { const l = 0.92 + Math.random() * 0.12; g.fillStyle = `rgb(${112 * l | 0},${109 * l | 0},${103 * l | 0})`; g.fillRect(x * s / 2 + 2, y * s / 2 + 2, s / 2 - 4, s / 2 - 4); }
+    speckle(g, s, 4000, '0,0,0', 0.07, 2);
+  }, 256), roughness: 0.9 });
+  for (const m of [EU.pave, EU.plaza]) m.map.encoding = THREE.sRGBEncoding;
+  return EU;
+}
+const EU_SHOPS = ['METZGEREI', 'BLUMEN', 'EISCAFÉ', 'OPTIKER', 'SCHUHE', 'HANDYSHOP', 'REISEBÜRO', 'BIOLADEN', 'DROGERIE', 'IMBISS', 'BOUTIQUE', 'SPIELWAREN', 'BÄCKER', 'WEINHANDEL'];
+let euShopN = 0; const EU_SIGN = {};
+/* Altbau-Stadthaus (nicht begehbar) an der Straße: Läden im Erdgeschoss, Fassade, Gesims, Balkone, Sattel- oder Flachdach.
+   alongX = Front verläuft entlang x (Straße an z-Seite), face = Richtung der Straße (+1/-1). w = Breite an der Straße, d = Tiefe */
+function euHouse(cx, cz, w, d, floors, alongX, face) {
+  const E = euMats(), F = E.facades[Math.floor(srand() * E.facades.length)], shop = srand() < 0.6;
+  const bx = alongX ? w : d, bz = alongX ? d : w, top = floors * FLOOR_H, NRD = { round: 0 };
+  addBox(cx, 0, cz, bx, FLOOR_H, bz, shop ? E.shops[Math.floor(srand() * E.shops.length)] : F.mat, 12.8, NRD);
+  addBox(cx, FLOOR_H, cz, bx, top - FLOOR_H, bz, F.mat, 12.8, NRD);
+  addBox(cx, FLOOR_H - 0.12, cz, bx + 0.16, 0.24, bz + 0.16, F.trim, 2, { decor: true, round: 0, shadow: false });   // Band über dem Erdgeschoss
+  addBox(cx, top, cz, bx + 0.45, 0.4, bz + 0.45, F.trim, 2, { decor: true, round: 0 });                            // Kranzgesims / Dachkante
+  // Front-Hilfen: Punkt auf der Fassade zur Straße, Richtung entlang der Fassade
+  const fx = alongX ? 0 : face, fz = alongX ? face : 0, ax = alongX ? 1 : 0, az = alongX ? 0 : 1, half = d / 2;
+  const at = (u, out, y, W, H, D, mat, o = {}) => addBox(cx + fx * (half + out) + ax * u, y, cz + fz * (half + out) + az * u,
+    alongX ? W : D, H, alongX ? D : W, mat, 1, Object.assign({ decor: true, round: 0, shadow: false }, o));
+  if (shop) {   // Markise + Ladenschild
+    const awn = E.awn[Math.floor(srand() * E.awn.length)];
+    at(0, 0.7, 2.55, w - 0.6, 0.12, 1.4, awn, { shadow: true });
+    const n = euShopN++ % EU_SHOPS.length, name = EU_SHOPS[n], col = TK_COLORS[n % TK_COLORS.length];
+    const rot = alongX ? (face > 0 ? 0 : Math.PI) : (face > 0 ? Math.PI / 2 : -Math.PI / 2);
+    const sm = EU_SIGN[name] || (EU_SIGN[name] = tkSignMat(name, col[0], col[1], false));   // gleiches Schild = gleiches Material
+    tkSign(cx + fx * (half + 0.05), 2.95, cz + fz * (half + 0.05), Math.min(w - 1, 6), 0.55, rot, sm);
+  }
+  // Balkone an manchen Fensterachsen (Achsen liegen bei 1,6 + k·3,2 m vom Rand)
+  const axes = Math.round(w / 3.2);
+  for (let f = 1; f < floors; f++) for (let k = 0; k < axes; k++) {
+    if (srand() > 0.22) continue;
+    const u = -w / 2 + 1.6 + k * 3.2, y = f * FLOOR_H + 0.05;
+    at(u, 0.5, y, 2.2, 0.14, 1.0, F.trim);
+    at(u, 0.97, y + 0.14, 2.2, 0.9, 0.05, MAT.metal);
+  }
+  // Dach
+  if (srand() < 0.6) {
+    const roof = E.roofs[Math.floor(srand() * E.roofs.length)], rise = d * 0.3, run = d / 2 + 0.35, slope = Math.hypot(run, rise), ang = Math.atan2(rise, run), y0 = top + 0.4;
+    for (const s of [1, -1]) {
+      const r = new THREE.Mesh(boxGeo(alongX ? bx + 0.3 : slope, 0.16, alongX ? slope : bz + 0.3, 2.5), roof);
+      if (alongX) { r.position.set(cx, y0 + rise / 2, cz + s * run / 2); r.rotation.x = s * ang; }
+      else { r.position.set(cx + s * run / 2, y0 + rise / 2, cz); r.rotation.z = -s * ang; }
+      r.castShadow = true; r.receiveShadow = true; scene.add(r);
+    }
+    const gable = new THREE.Shape(); gable.moveTo(-d / 2, 0); gable.lineTo(d / 2, 0); gable.lineTo(0, rise); gable.closePath();
+    for (const s of [1, -1]) {
+      const gm = new THREE.Mesh(withUv2(new THREE.ShapeGeometry(gable)), F.gable);
+      if (alongX) { gm.position.set(cx + s * bx / 2, y0, cz); gm.rotation.y = s * Math.PI / 2; }
+      else { gm.position.set(cx, y0, cz + s * bz / 2); gm.rotation.y = s > 0 ? 0 : Math.PI; }
+      scene.add(gm);
+    }
+    if (srand() < 0.6) addBox(cx + (alongX ? srnd(-w / 3, w / 3) : -face * d / 5), y0, cz + (alongX ? -face * d / 5 : srnd(-w / 3, w / 3)), 0.6, rise * 0.75 + 0.9, 0.6, MAT.brick, 1, { decor: true, round: 0 });   // Schornstein
+  } else {   // Flachdach mit Technik
+    addBox(cx + srnd(-bx / 4, bx / 4), top + 0.4, cz + srnd(-bz / 4, bz / 4), 1.6, 1.0, 1.2, MAT.metal, 1, { decor: true, round: 0.03 });
+    if (srand() < 0.5) addBox(cx + srnd(-bx / 4, bx / 4), top + 0.4, cz + srnd(-bz / 4, bz / 4), 0.5, 1.4, 0.5, MAT.hallMetal, 1, { decor: true, round: 0 });
+  }
+}
+// Häuserzeile in einer Lücke [a0, a1] entlang einer Straße: Breiten in Vielfachen von 3,2 m, mittig ausgerichtet
+function euRow(a0, a1, front, alongX, face, depth, keepFree) {
+  let n = Math.floor((a1 - a0) / 3.2); if (n < 2) return;
+  let a = (a0 + a1) / 2 - n * 3.2 / 2;
+  while (n >= 2) {
+    const k = n <= 4 ? n : Math.min(n - 2, 2 + Math.floor(srand() * 3)), w = k * 3.2, c = a + w / 2;
+    const cx = alongX ? c : front - face * depth / 2, cz = alongX ? front - face * depth / 2 : c;
+    const bx = alongX ? w : depth, bz = alongX ? depth : w;
+    if (!keepFree.some(([px, pz]) => Math.abs(px - cx) < bx / 2 + 1 && Math.abs(pz - cz) < bz / 2 + 1)) euHouse(cx, cz, w, depth, 3 + Math.floor(srand() * 4), alongX, face);
+    a += w; n -= k;
+  }
+}
+// Gehweg mit Pflaster und Bordstein rund um einen Block
+function sidewalkRing(x0, x1, z0, z1, wd = 3) {
+  const E = euMats(), cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, W = x1 - x0, D = z1 - z0;
+  decalT(cx, z0 + wd / 2, W, wd, E.pave, 2, 0, 0.011); decalT(cx, z1 - wd / 2, W, wd, E.pave, 2, 0, 0.011);
+  decalT(x0 + wd / 2, cz, wd, D - 2 * wd, E.pave, 2, 0, 0.011); decalT(x1 - wd / 2, cz, wd, D - 2 * wd, E.pave, 2, 0, 0.011);
+  const o = { decor: true, round: 0, shadow: false };
+  addBox(cx, 0, z0 + 0.1, W, 0.13, 0.2, E.curb, 1, o); addBox(cx, 0, z1 - 0.1, W, 0.13, 0.2, E.curb, 1, o);
+  addBox(x0 + 0.1, 0, cz, 0.2, 0.13, D, E.curb, 1, o); addBox(x1 - 0.1, 0, cz, 0.2, 0.13, D, E.curb, 1, o);
 }
 /* ===== DRIFT-ARENA auf dem Feld im Südosten (x 155 … 292, z 52 … 145) =====
    Rundkurs mit S-Kurven, Haarnadeln, rot-weißen Randsteinen an den Kurven, Reifenstapeln außen
@@ -1601,6 +1786,13 @@ function hillMeshRect(x0, x1, z0, z1, mat, tile, S = 2) {
   g.setIndex(idx); g.computeVertexNormals();
   const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
 }
+// Waffen zum Aufsammeln auf der Karte „Welt“ (vorab festgelegt, damit dort keine Häuser gebaut werden)
+const WELT_PICKS = [
+  { w: 0, x: 10, y: 0, z: -14 }, { w: 1, x: -14, y: 0, z: 10 }, { w: 0, x: 70, y: 0, z: -50 }, { w: 2, x: 130, y: 0, z: -150 }, { w: 1, x: 190, y: 0, z: -130 },
+  { w: 0, x: 250, y: 0, z: -250 }, { w: 2, x: 70, y: 6.4, z: -68 }, { w: 0, x: -75, y: 0, z: 68 }, { w: 1, x: -145, y: 0, z: 177 }, { w: 0, x: -215, y: 0, z: 192 },
+  { w: 2, x: -95, y: 4, z: -230 }, { w: 0, x: -170, y: 0, z: -95 }, { w: 1, x: -150, y: 0, z: -200 }, { w: 0, x: 205, y: 0, z: 180 }, { w: 1, x: 100, y: 0, z: 80 },
+  { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 }, { w: 2, x: -226, y: 0, z: -232 },
+];
 function buildWeltMap() {
   const S = 300;
   /* --- Hügel: Wald (Berg), Felder beim Bauernhof --- */
@@ -1661,9 +1853,11 @@ function buildWeltMap() {
   const cityMats = [TKM.glassBlue, TKM.office, TKM.officeDark, TKM.tile, TKM.glassGreen];
   const germanShops = ['BÄCKEREI', 'APOTHEKE', 'SUPERMARKT', 'CAFÉ', 'BANK', 'KIOSK', 'FRISEUR', 'HOTEL', 'KINO', 'BUCHLADEN', 'ELEKTRO', 'DÖNER'];
   let shopN = 0;
+  const KEEP_FREE = WELT_PICKS.map(p => [p.x, p.z]);   // Waffen am Boden bleiben erreichbar
   for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
     const x0 = CX[i] + 4.5, x1 = CX[i + 1] - 4.5, z1 = CZ[j] - 4.5, z0 = CZ[j + 1] + 4.5, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
-    decalT(cx, cz, x1 - x0, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.008);
+    decalT(cx, cz, x1 - x0, z1 - z0, euMats().plaza, 2, 0, 0.008);
+    sidewalkRing(x0, x1, z0, z1);
     const key = i + ',' + j;
     if (key === '0,0') {   // POST (Firma)
       building(cx - 6, cz + 2, 22, 14, 2, MAT.plaster, { s: [-4, 4] }, { crates: 0 });
@@ -1699,21 +1893,45 @@ function buildWeltMap() {
       // 4 Bauplätze: Geschäftshäuser (begehbar, 2–4 Etagen) oder Hochhäuser mit begehbarer Eingangshalle
       const slots = [[x0 + 12, z0 + 11, false], [x1 - 12, z0 + 11, false], [x0 + 12, z1 - 11, true], [x1 - 12, z1 - 11, true]];
       const shopMats = [MAT.plaster, MAT.plaster2, MAT.brick, MAT.concrete];
+      const half = [], halfD = [];   // halbe Breite/Tiefe der Häuser an den 4 Ecken (für die Lücken dazwischen)
       for (const [bx, bz, faceS] of slots) {
-        if (srand() < 0.15) { tkPlanter(bx, bz, 4, 1.2); bench(bx, bz + 2, true); leafTree(bx + 4, bz, 0.8); continue; }   // kleiner Platz
-        if (srand() < 0.35) towerLobby(bx, bz, srnd(15, 18), srnd(14, 17), srnd(28, 45) + (i + (3 - j)) * srnd(2, 6), cityMats[Math.floor(srand() * cityMats.length)], faceS);
-        else {
-          const name = germanShops[shopN++ % germanShops.length], col = TK_COLORS[shopN % 8];
-          cityShop(bx, bz, srnd(14, 18), srnd(12, 15), 2 + Math.floor(srand() * 3), shopMats[Math.floor(srand() * shopMats.length)], faceS, name, col);
+        if (srand() < 0.15) { tkPlanter(bx, bz, 4, 1.2); bench(bx, bz + 2, true); leafTree(bx + 4, bz, 0.8); half.push(8); halfD.push(7); continue; }   // kleiner Platz
+        if (srand() < 0.35) {
+          const w = srnd(15, 18), d = srnd(14, 17), h = srnd(28, 45) + (i + (3 - j)) * srnd(2, 6);
+          towerLobby(bx, bz, w, d, h, cityMats[Math.floor(srand() * cityMats.length)], faceS); half.push(w / 2); halfD.push(d / 2);
+        } else {
+          const name = germanShops[shopN++ % germanShops.length], col = TK_COLORS[shopN % 8], w = srnd(14, 18), d = srnd(12, 15);
+          cityShop(bx, bz, w, d, 2 + Math.floor(srand() * 3), shopMats[Math.floor(srand() * shopMats.length)], faceS, name, col); half.push(w / 2); halfD.push(d / 2);
         }
       }
-      // Bäume und Fahrradständer auf dem Gehweg
-      for (const tx of [x0 + 25.5]) { leafTree(tx, z0 + 1.6, 0.75); leafTree(tx, z1 - 1.6, 0.75); }
+      // Westseite des Blocks: Häuserzeile zwischen den Eckhäusern (Ostseite bleibt Zugang zum Hinterhof)
+      euRow(z0 + 11 + halfD[0] + 0.6, z1 - 11 - halfD[2] - 0.6, x0 + 3.5, false, -1, 11, KEEP_FREE);
+      // Altbau-Häuserzeilen in den Lücken zwischen den Eckhäusern (Straßenseite), Hinterhof in der Mitte bleibt offen
+      euRow(x0 + 12 + half[0] + 0.6, x1 - 12 - half[1] - 0.6, z0 + 3.5, true, -1, 11, KEEP_FREE);
+      euRow(x0 + 12 + half[2] + 0.6, x1 - 12 - half[3] - 0.6, z1 - 3.5, true, 1, 11, KEEP_FREE);
+      // grüner Hinterhof mit Baum und Bank (Zugang von West und Ost)
+      decalT(cx, cz, 10, 12, MAT.grass, 2, 0, 0.012);
+      leafTree(cx - 2.5, cz + 3, 0.8); bench(cx + 2, cz - 2, false);
     }
+    // Sonderblöcke: Häuserzeilen an freien Straßenseiten (Eingänge von Post und Taxi bleiben frei)
+    if (key === '0,0') euRow(x0 + 3.5, cx + 4.4, z0 + 3.5, true, -1, 10, KEEP_FREE);
+    if (key === '1,0') { euRow(x0 + 3.5, cx - 8.6, z0 + 3.5, true, -1, 9, KEEP_FREE); euRow(cx + 8.6, x1 - 3.5, z0 + 3.5, true, -1, 9, KEEP_FREE); }
+    // Straßenbäume und Laternen auf dem Gehweg (nicht an Haltepunkten von Taxi/Lieferungen und nicht auf Waffen)
+    const sTree = (x, z) => { if (!window.MAP_ADDR.some(a => Math.hypot(a.x - x, a.z - z) < 3) && !KEEP_FREE.some(([px, pz]) => Math.hypot(px - x, pz - z) < 3)) leafTree(x, z, 0.75); };
+    for (const tx of [x0 + 8, x0 + 25.5, x1 - 8]) { sTree(tx, z0 + 1.6); sTree(tx, z1 - 1.6); }
+    for (const tz of [z0 + 10, z1 - 10]) { sTree(x0 + 1.6, tz); sTree(x1 - 1.6, tz); }
+    tkLamp(x0 + 1, cz, 1, 0); tkLamp(x1 - 1, cz, -1, 0);
     // Laternen an den Ecken
     tkLamp(x0 + 1, z0 + 1, 1, 0); tkLamp(x1 - 1, z1 - 1, -1, 0);
   }
   for (const x of CX) for (const z of CZ) if (srand() < 0.6) tkSignal(x + 5, z + 5, -1, 0);
+  // Zebrastreifen an allen Kreuzungen der Stadt (nur wo die Straße weitergeht)
+  { const ZB = euMats().zebra;
+    for (const x of CX) for (const z of CZ) for (const s of [-1, 1]) {
+      if (z + s * 6.5 > -290 && z + s * 6.5 < -30) decalT(x, z + s * 6.5, 9, 3, ZB, 0, 0, 0.014);                    // über die Nord-Süd-Straße
+      if (x + s * 6.5 > 30 && x + s * 6.5 < 290) decalT(x + s * 6.5, z, 9, 3, ZB, 0, Math.PI / 2, 0.014);           // über die Ost-West-Straße
+    }
+  }
   // Tankstelle an der großen Kreuzung (Südost-Ecke)
   for (const [x, z] of [[16, 16], [32, 16], [16, 30], [32, 30]]) addBox(x, 0, z, 0.4, 5, 0.4, MAT.metal, 1);
   addBox(24, 5, 23, 22, 0.5, 20, TKM.white, 2, { decor: true });
@@ -1728,7 +1946,8 @@ function buildWeltMap() {
   const DX = [-40, -110, -180, -250], DZ = [40, 110, 180, 250];
   for (const x of DX) road(x, 30, x, 290, 8);
   for (const z of DZ) road(-290, z, -30, z, 8);
-  const houseMats = [MAT.plaster, MAT.plaster2, MAT.brick];
+  const tint = (r, g, b) => pbr('concrete', 2.7, { mat: { color: new THREE.Color(r, g, b) } });
+  const houseMats = [MAT.plaster, MAT.plaster2, MAT.brick, tint(1.12, 1.02, 0.68), tint(0.86, 0.96, 0.78), tint(1.1, 1.08, 1.02), tint(1.1, 0.84, 0.74)];
   for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
     const x1 = DX[i] - 4, x0 = DX[i + 1] + 4, z0 = DZ[j] + 4, z1 = DZ[j + 1] - 4, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     if (i === 0 && j === 0) {   // Dorfmitte: Marktplatz, Kirche, Pizzeria, Feuerwehr
@@ -1770,7 +1989,7 @@ function buildWeltMap() {
     decalT(x0 + SW / 2, cz, SW, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.012); decalT(x1 - SW / 2, cz, SW, z1 - z0, MAT.concreteFloor, 2.7, 0, 0.012);
     const px0 = x0 + SW + 0.2, pw = (x1 - SW - 0.2 - px0) / 4;
     for (const [zs, face] of [[z0, -1], [z1, 1]]) {
-      for (let k = 0; k < 4; k++) weltPlot(px0 + k * pw, px0 + (k + 1) * pw, zs, face, cz, houseMats[Math.floor(srand() * 3)]);
+      for (let k = 0; k < 4; k++) weltPlot(px0 + k * pw, px0 + (k + 1) * pw, zs, face, cz, houseMats[Math.floor(srand() * houseMats.length)]);
       const zf = zs - face * 2.4;
       addBox(px0 + 4 * pw, 0, (zf + cz) / 2, 0.08, 0.85, Math.abs(cz - zf), TKM.wood, 1, { round: 0 });   // Zaun am Blockende
       for (let k = 1; k < 4; k++) leafTree(px0 + k * pw, zs - face * 1.1, 0.7);   // Straßenbäume
@@ -1895,12 +2114,7 @@ function buildWeltMap() {
   for (const [x, z, ax] of [[-6, -20, false], [6, 40, false], [-60, 8, true], [70, -6, true], [-55, 70, false], [-110, 62, false], [120, -35, true], [230, -100, true], [-150, -20, false], [160, 140, true]]) car(x, z, ax);
 
   /* --- Waffen zum Aufsammeln --- */
-  MAP_PICKUPS.push(
-    { w: 0, x: 10, y: 0, z: -14 }, { w: 1, x: -14, y: 0, z: 10 }, { w: 0, x: 70, y: 0, z: -50 }, { w: 2, x: 130, y: 0, z: -150 }, { w: 1, x: 190, y: 0, z: -130 },
-    { w: 0, x: 250, y: 0, z: -250 }, { w: 2, x: 70, y: 6.4, z: -68 }, { w: 0, x: -75, y: 0, z: 68 }, { w: 1, x: -145, y: 0, z: 177 }, { w: 0, x: -215, y: 0, z: 192 },
-    { w: 2, x: -95, y: 4, z: -230 }, { w: 0, x: -170, y: 0, z: -95 }, { w: 1, x: -150, y: 0, z: -200 }, { w: 0, x: 205, y: 0, z: 180 }, { w: 1, x: 100, y: 0, z: 80 },
-    { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 }, { w: 2, x: -226, y: 0, z: -232 },
-  );
+  MAP_PICKUPS.push(...WELT_PICKS);
   for (const p of MAP_PICKUPS) if (!p.y) p.y = hillH(p.x, p.z);   // auf die Hügel setzen
 }
 
@@ -1917,7 +2131,7 @@ if (MAP_ID === 'hafen') {
 
 /* Alle festen Karten-Objekte pro Material zu einem Objekt zusammenfassen (viel weniger Zeichenaufrufe) */
 // Auf der großen Karte „Welt“ in 70-m-Stücken zusammenfassen: dann zeichnet die Grafikkarte nur, was im Blick und nah genug ist
-const CHUNK = MAP_ID === 'welt' ? 110 : 0;
+const CHUNK = MAP_ID === 'welt' ? 160 : 0;
 let CULL_DIST = 250;
 (function mergeStatic() {
   scene.updateMatrixWorld(true);
