@@ -23,10 +23,12 @@ const AXIS_NAMES = ['L-Stick ↔', 'L-Stick ↕', 'R-Stick ↔', 'R-Stick ↕'];
    Gerät 1 (normaler Controller) behält die üblichen Nummern, weitere Geräte (z. B. Arduino-Lenkrad) bekommen eigene:
    Tasten ab 32 / 64 …, Achsen ab 16 / 32 … So können Lenkrad und Controller gleichzeitig benutzt werden. */
 const SLOT_B = 32, SLOT_A = 16;
-const isStdPad = p => p.mapping === 'standard' || p.buttons.length >= 12;
+const isStdPad = p => p.mapping === 'standard' || (p.buttons.length >= 12 && p.buttons.length <= 20);
+// vJoy = leeres virtuelles Gerät (Treiber-Rest) – würde sonst als „Controller 1“ zählen und echte Geräte verdrängen
+const isJunkPad = p => /vjoy|virtual joystick/i.test(p.id);
 function realPads() {
   const ps = navigator.getGamepads ? [...navigator.getGamepads()] : [];
-  return ps.filter(p => p && p.connected && ((p.axes && p.axes.length) || (p.buttons && p.buttons.length)))
+  return ps.filter(p => p && p.connected && !isJunkPad(p) && ((p.axes && p.axes.length) || (p.buttons && p.buttons.length)))
     .sort((a, b) => (isStdPad(b) - isStdPad(a)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : a.index - b.index));
 }
 const padShortName = p => {
@@ -101,6 +103,7 @@ const padToast = document.createElement('div');
 padToast.id = 'padToast'; document.body.appendChild(padToast);
 function showPadToast(t) { padToast.textContent = t; padToast.classList.add('on'); clearTimeout(padToast._t); padToast._t = setTimeout(() => padToast.classList.remove('on'), 2600); }
 window.addEventListener('gamepadconnected', e => {
+  if (isJunkPad(e.gamepad)) return;
   showPadToast((isStdPad(e.gamepad) ? '🎮 Controller' : '🕹 Gerät') + ' erkannt: ' + padShortName(e.gamepad) + ' (' + e.gamepad.axes.length + ' Achsen, ' + e.gamepad.buttons.length + ' Tasten)');
   document.body.classList.add('hasPad'); renderPadCfg();
 });
