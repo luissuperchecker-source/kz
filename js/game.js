@@ -207,6 +207,8 @@ document.addEventListener('keydown', e => {
   if (!running) return;
   if (e.code === 'Tab') { e.preventDefault(); $('board').classList.remove('hidden'); renderBoard(); }
   if (e.code === 'KeyI') { e.preventDefault(); toggleInventory(); }
+  // „/“ = Gas geben (Ziffernblock-/, Taste „/“ bzw. Umschalt+7). preventDefault: sonst öffnet Firefox die Schnellsuche
+  if (e.key === '/' || e.code === 'NumpadDivide' || e.code === 'Slash') { e.preventDefault(); keys.Gas = e.code; return; }
   if (!locked) return;
   if (e.code === 'ControlLeft' || e.code === 'KeyC') e.preventDefault();
   // Doppelt W tippen = Sprinten (solange W gehalten wird)
@@ -230,6 +232,7 @@ document.addEventListener('keydown', e => {
 });
 document.addEventListener('keyup', e => {
   keys[e.code] = false;
+  if (keys.Gas && e.code === keys.Gas) keys.Gas = false;
   if (e.code === 'KeyW') me.sprintTap = false;
   if (e.code === 'Tab') $('board').classList.add('hidden');
 });
@@ -438,7 +441,7 @@ function updateLocal(dt, now) {
   }
   if (me.alive) {
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
-    let iF = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), iR = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), analog = 1;
+    let iF = (keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), iR = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), analog = 1;
     if (touchIn.mx || touchIn.my) {   // Handy-Joystick / Controller / Lenkrad: nur die benutzte Richtung ersetzen
       if (touchIn.my) iF = -touchIn.my;
       if (touchIn.mx) iR = touchIn.mx;
