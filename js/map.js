@@ -340,19 +340,19 @@ const ARCH_GEO = new THREE.TorusGeometry(0.43, 0.05, 8, 20, Math.PI);
 const SKY_TOP = [[-1, 0.95], [-0.97, 1.0], [-0.66, 1.02], [-0.3, 1.0], [0.33, 0.98], [0.6, 0.9], [0.9, 0.8], [1, 0.72]];
 const SKY_BOTTOM = [[-1, 0.32], [-0.9, 0.19], [0.9, 0.17], [1, 0.3]];
 const SKY_WIDTH = [[-1, 0.86], [-0.88, 0.9], [-0.63, 0.95], [-0.4, 0.9], [0.4, 0.9], [0.62, 0.95], [0.86, 0.9], [1, 0.85]];
-const SKY_BODY_GEO = loftGeo(56, 32, u => ({ x: u * 2.3, bottom: curve(SKY_BOTTOM, u), top: curve(SKY_TOP, u), halfW: curve(SKY_WIDTH, u), p: 5.5 }), 16);
+const SKY_BODY_GEO = loftGeo(56, 32, u => ({ x: u * 2.3, bottom: curve(SKY_BOTTOM, u), top: curve(SKY_TOP, u), halfW: curve(SKY_WIDTH, u), p: 12 }), 40);
 const SKY_CAB0 = -1.55, SKY_CAB1 = 0.8;
 const skyCab = u => {
   const x = SKY_CAB0 + (u + 1) / 2 * (SKY_CAB1 - SKY_CAB0);
-  return { x, bottom: 0.88, top: curve([[-1, 1.0], [-0.42, 1.37], [0.3, 1.37], [1, 0.97]], u), halfW: curve([[-1, 0.74], [0, 0.79], [1, 0.74]], u), p: 3.4 };
+  return { x, bottom: 0.88, top: curve([[-1, 1.0], [-0.42, 1.37], [0.3, 1.37], [1, 0.97]], u), halfW: curve([[-1, 0.76], [0, 0.8], [1, 0.76]], u), p: 7 };
 };
-const SKY_CABIN_GEO = loftGeo(36, 24, skyCab, 9);
+const SKY_CABIN_GEO = loftGeo(36, 28, skyCab, 16);
 // Dach (lackiert) als dünne Schale über dem Glas
 const SKY_ROOF_GEO = loftGeo(20, 24, u => {
   const s = skyCab(-0.36 + (u + 1) / 2 * 0.62), hy = (s.top - s.bottom) / 2, y = s.top - 0.06 - (s.top + s.bottom) / 2;
   const w = s.halfW * Math.pow(1 - Math.pow(Math.abs(y / hy), s.p), 1 / s.p);
-  return { x: s.x, bottom: s.top - 0.07, top: s.top + 0.012, halfW: w + 0.012, p: 4 };
-}, 10);
+  return { x: s.x, bottom: s.top - 0.07, top: s.top + 0.012, halfW: w + 0.012, p: 10 };
+}, 20);
 const SPOKE_GEO = [0.35, 0.37].map(R => withUv2(new THREE.BoxGeometry(0.032, R * 1.38, 0.025)));
 // Statt Autos: Abstellplätze für fahrbare Mopeds (werden in vehicles.js gebaut und gesteuert)
 const MAP_VEHICLES = [];
