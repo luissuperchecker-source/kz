@@ -337,22 +337,53 @@ const CAR_CABIN_GEO = loftGeo(30, 22, u => {
 const ARCH_GEO = new THREE.TorusGeometry(0.43, 0.05, 8, 20, Math.PI);
 /* Japanisches 90er-Sportcoupé (Skyline-Form): kantig, lange flache Motorhaube, steile Kabine, kurzes hohes Heck,
    ausgestellte Kotflügel über den Rädern (x = ±1,42 / -1,45) */
-const SKY_TOP = [[-1, 0.95], [-0.97, 1.0], [-0.66, 1.02], [-0.3, 1.0], [0.33, 0.98], [0.6, 0.9], [0.9, 0.8], [1, 0.72]];
-const SKY_BOTTOM = [[-1, 0.32], [-0.9, 0.19], [0.9, 0.17], [1, 0.3]];
-const SKY_WIDTH = [[-1, 0.86], [-0.88, 0.9], [-0.63, 0.95], [-0.4, 0.9], [0.4, 0.9], [0.62, 0.95], [0.86, 0.9], [1, 0.85]];
-const SKY_BODY_GEO = loftGeo(56, 32, u => ({ x: u * 2.3, bottom: curve(SKY_BOTTOM, u), top: curve(SKY_TOP, u), halfW: curve(SKY_WIDTH, u), p: 12 }), 40);
-const SKY_CAB0 = -1.55, SKY_CAB1 = 0.8;
-const skyCab = u => {
-  const x = SKY_CAB0 + (u + 1) / 2 * (SKY_CAB1 - SKY_CAB0);
-  return { x, bottom: 0.88, top: curve([[-1, 1.0], [-0.42, 1.37], [0.3, 1.37], [1, 0.97]], u), halfW: curve([[-1, 0.76], [0, 0.8], [1, 0.76]], u), p: 7 };
+// Gerade Verbindung zwischen Stützpunkten [[x, Wert], …] (für flache Flächen)
+const lin = (pts, x) => {
+  if (x <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const a = pts[i - 1], b = pts[i]; return a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]); }
+  return pts[pts.length - 1][1];
 };
-const SKY_CABIN_GEO = loftGeo(36, 28, skyCab, 16);
-// Dach (lackiert) als dünne Schale über dem Glas
-const SKY_ROOF_GEO = loftGeo(20, 24, u => {
-  const s = skyCab(-0.36 + (u + 1) / 2 * 0.62), hy = (s.top - s.bottom) / 2, y = s.top - 0.06 - (s.top + s.bottom) / 2;
-  const w = s.halfW * Math.pow(1 - Math.pow(Math.abs(y / hy), s.p), 1 / s.p);
-  return { x: s.x, bottom: s.top - 0.07, top: s.top + 0.012, halfW: w + 0.012, p: 10 };
-}, 20);
+// Kantiger Körper: an jeder Station xs ein konvexer Querschnitt ring(x) = [[z, y], …]; flache Flächen, harte Kanten, flache Enden
+function prismGeo(xs, ring) {
+  const R = xs.map(x => ring(x)), pos = [], uv = [];
+  const tri = (a, b, c, out) => {   // Dreieck so drehen, dass die Fläche nach außen zeigt
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    if (nx * out[0] + ny * out[1] + nz * out[2] < 0) { const t = b; b = c; c = t; }
+    for (const p of [a, b, c]) { pos.push(p[0], p[1], p[2]); uv.push(p[0] / 4.6 + 0.5, p[1]); }
+  };
+  const P = (i, k) => [xs[i], R[i][k][1], R[i][k][0]];
+  for (let i = 0; i < xs.length - 1; i++) {
+    const n = R[i].length;
+    for (let k = 0; k < n; k++) {
+      const k2 = (k + 1) % n, a = P(i, k), b = P(i, k2), c = P(i + 1, k), d = P(i + 1, k2);
+      const cy = (R[i].reduce((s, q) => s + q[1], 0)) / n, out = [0, (a[1] + b[1]) / 2 - cy, (a[2] + b[2]) / 2];
+      tri(a, b, c, out); tri(b, d, c, out);
+    }
+  }
+  for (const [i, dir] of [[0, -1], [xs.length - 1, 1]]) {   // Deckel vorne/hinten
+    const n = R[i].length, c = [xs[i], R[i].reduce((s, q) => s + q[1], 0) / n, 0];
+    for (let k = 0; k < n; k++) tri(c, P(i, k), P(i, (k + 1) % n), [dir, 0, 0]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.computeVertexNormals();
+  return withUv2(g);
+}
+// Seitenlinie: Unterkante, Oberkante (Kofferraum – Gürtellinie – flache Motorhaube), Breite mit Kotflügel-Verbreiterungen
+const SKY_TOP = [[-2.3, 0.94], [-2.2, 1.01], [-1.5, 1.02], [0.85, 0.99], [2.15, 0.8], [2.32, 0.74]];
+const SKY_BOTTOM = [[-2.3, 0.3], [-2.15, 0.19], [2.1, 0.17], [2.32, 0.28]];
+const SKY_WIDTH = [[-2.3, 0.86], [-2.15, 0.9], [-1.9, 0.95], [-1.0, 0.95], [-0.8, 0.9], [0.95, 0.9], [1.1, 0.95], [1.9, 0.95], [2.15, 0.9], [2.32, 0.86]];
+const SKY_BODY_GEO = prismGeo([-2.3, -2.2, -2.15, -1.9, -1.5, -1.0, -0.8, 0.85, 0.95, 1.1, 1.9, 2.15, 2.32], x => {
+  const y0 = lin(SKY_BOTTOM, x), y1 = lin(SKY_TOP, x), w = lin(SKY_WIDTH, x), c = 0.07;
+  return [[w * 0.93, y0], [w, y0 + 0.12], [w, y1 - c], [w - c * 1.3, y1], [-(w - c * 1.3), y1], [-w, y1 - c], [-w, y0 + 0.12], [-w * 0.93, y0]];
+});
+// Kabine (Glas): flache Front- und Heckscheibe, Seitenscheiben nach innen geneigt
+const SKY_CAB_TOP = [[-1.55, 1.0], [-0.85, 1.37], [0.05, 1.37], [0.8, 0.98]];
+const skyCabRing = (x, grow = 0) => { const y1 = lin(SKY_CAB_TOP, x) + grow; return [[0.8 + grow, 0.9], [0.62 + grow, y1], [-0.62 - grow, y1], [-0.8 - grow, 0.9]]; };
+const SKY_CABIN_GEO = prismGeo([-1.55, -0.85, 0.05, 0.8], x => skyCabRing(x));
+// Dach (lackiert): dünne Platte auf dem Glas
+const SKY_ROOF_GEO = prismGeo([-0.85, 0.05], x => [[0.64, 1.36], [0.6, 1.385], [-0.6, 1.385], [-0.64, 1.36]]);
 const SPOKE_GEO = [0.35, 0.37].map(R => withUv2(new THREE.BoxGeometry(0.032, R * 1.38, 0.025)));
 // Statt Autos: Abstellplätze für fahrbare Mopeds (werden in vehicles.js gebaut und gesteuert)
 const MAP_VEHICLES = [];

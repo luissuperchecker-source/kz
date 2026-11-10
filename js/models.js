@@ -288,7 +288,8 @@ function partsToGroup(parts, shadow = false, userData = null) {
     byMat.get(pt.mat).push(g);
   }
   const grp = new THREE.Group(); grp.userData.meshes = [];
-  for (const [mat, geos] of byMat) {
+  for (const [mat, list] of byMat) {
+    const geos = list.some(g => g.index) && list.some(g => !g.index) ? list.map(g => g.index ? g.toNonIndexed() : g) : list;   // gemischte Arten angleichen
     const m = new THREE.Mesh(THREE.BufferGeometryUtils.mergeBufferGeometries(geos), mat);
     m.castShadow = shadow; m.receiveShadow = shadow;
     if (userData) m.userData = Object.assign({}, userData);

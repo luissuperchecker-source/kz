@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261110-140659 durch eine Versionsnummer ersetzt */
-const BUILD = '20261110-140659';
+/* Update-Prüfung: beim Veröffentlichen wird 20261110-142215 durch eine Versionsnummer ersetzt */
+const BUILD = '20261110-142215';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {

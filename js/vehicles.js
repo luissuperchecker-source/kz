@@ -175,7 +175,7 @@ function makeCar(paint, rim = RIM) {
     { geo: SKY_BODY_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] }, { geo: SKY_CABIN_GEO, mat: CAR_GLASS, p: [0, 0, 0], r: [0, 0, 0] },
     { geo: SKY_ROOF_GEO, mat: paint, p: [0, 0, 0], r: [0, 0, 0] },
     // Front: großer Lufteinlass, schmaler Grill, Carbon-Lippe
-    B(0.08, 0.2, 1.1, CAR_BLACK, 2.25, 0.38, 0), B(0.06, 0.07, 0.46, CAR_BLACK, 2.24, 0.63, 0), B(0.3, 0.035, 1.74, CARBON, 2.1, 0.17, 0),
+    B(0.06, 0.2, 1.1, CAR_BLACK, 2.32, 0.4, 0), B(0.05, 0.08, 0.5, CAR_BLACK, 2.32, 0.62, 0), B(0.28, 0.035, 1.74, CARBON, 2.22, 0.17, 0),
     // Heck: schwarze Blende mit den runden Doppel-Rückleuchten, Diffusor, dickes Endrohr
     B(0.04, 0.25, 1.6, CAR_BLACK, -2.27, 0.83, 0), B(0.45, 0.13, 1.5, CARBON, -2.12, 0.27, 0),
     { geo: new THREE.CylinderGeometry(0.075, 0.075, 0.2, 14), mat: CHROME, p: [-2.28, 0.33, 0.42], r: [0, 0, Math.PI / 2] },
@@ -183,7 +183,7 @@ function makeCar(paint, rim = RIM) {
   const lamp = new THREE.CylinderGeometry(0.1, 0.1, 0.05, 20), ring = new THREE.CylinderGeometry(0.118, 0.118, 0.035, 20);
   for (const s of [-1, 1]) body.push(
     // eckige Scheinwerfer, Motorhauben-Schlitze, Spiegel, Seitenschweller, Kotflügel-Verbreiterungen
-    B(0.32, 0.085, 0.44, HEADLIGHT, 2.12, 0.68, s * 0.56, 0, s * 0.18, -0.3), B(0.33, 0.13, 0.46, CAR_BLACK, 2.08, 0.665, s * 0.56, 0, s * 0.18, -0.3),
+    B(0.06, 0.1, 0.42, HEADLIGHT, 2.33, 0.64, s * 0.58), B(0.05, 0.14, 0.46, CAR_BLACK, 2.315, 0.64, s * 0.58),
     B(0.4, 0.02, 0.16, CAR_BLACK, 1.35, 0.915, s * 0.3, 0, 0, -0.14),
     B(0.18, 0.1, 0.13, paint, 0.62, 1.04, s * 0.88), B(0.04, 0.04, 0.12, CAR_BLACK, 0.62, 1.0, s * 0.8),
     B(2.3, 0.09, 0.06, CARBON, -0.02, 0.22, s * 0.93),
@@ -263,7 +263,7 @@ function liveryMat(tex, base, cfg) {
     float sd = dot(ln, uLat.xyz) < 0.0 ? -1.0 : 1.0;
     vec2 luv = vec2(dot(vLivP, uLong.xyz) * uLong.w * sd + 0.5, dot(vLivP, uUp.xyz) * uUp.w + uLat.w);
     vec3 lc = pow(texture2D(uLiv, clamp(luv, 0.001, 0.999)).rgb, vec3(2.2));
-    float top = smoothstep(0.5, 0.85, abs(dot(ln, uUp.xyz)));
+    float top = max(smoothstep(0.5, 0.85, abs(dot(ln, uUp.xyz))), smoothstep(0.5, 0.85, abs(dot(ln, uLong.xyz))));   // Dach, Haube, Front und Heck: Grundfarbe
     diffuseColor.rgb *= mix(lc, uBase, top);
   }`);
   };
