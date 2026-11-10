@@ -342,7 +342,9 @@ function exitRide(silent) {
 /* ---------- Fahrphysik (eigenes Moped) ---------- */
 function updateRide(dt) {
   let thr = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
-  if (touchIn.mx || touchIn.my) { thr = -touchIn.my; steer = -touchIn.mx; }
+  // Joystick/Lenkrad/Pedale ersetzen nur die Richtung, die sie gerade benutzen (Lenkrad lenkt, W/S gibt weiter Gas)
+  if (touchIn.my) thr = -touchIn.my;
+  if (touchIn.mx) steer = -touchIn.mx;
   // Gas / Bremse / Rückwärts
   const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car';
   if (isCar) carDrive(dt, thr, steer, !!keys.Space, !!(touchIn.mx || touchIn.my));   // Auto: Drift-Physik (wie in Drift-Welt)

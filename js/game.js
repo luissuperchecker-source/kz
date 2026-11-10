@@ -439,7 +439,11 @@ function updateLocal(dt, now) {
   if (me.alive) {
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
     let iF = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), iR = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0), analog = 1;
-    if (touchIn.mx || touchIn.my) { iF = -touchIn.my; iR = touchIn.mx; analog = Math.min(1, Math.hypot(iF, iR)); }   // Handy-Joystick
+    if (touchIn.mx || touchIn.my) {   // Handy-Joystick / Controller / Lenkrad: nur die benutzte Richtung ersetzen
+      if (touchIn.my) iF = -touchIn.my;
+      if (touchIn.mx) iR = touchIn.mx;
+      analog = Math.min(1, Math.hypot(iF, iR));
+    }
     let wx = fx * iF + rx * iR, wz = fz * iF + rz * iR;
     const len = Math.hypot(wx, wz);
     // Ducken: Taste gehalten (oder Rutschen). Aufstehen nur, wenn über dem Kopf Platz ist.

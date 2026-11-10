@@ -159,7 +159,7 @@ function renderPadCfg() {
   st.textContent = L ? (L.type === 'axis'
       ? `Bewege jetzt den Stick für „${PAD_AXES.find(a => a[0] === L.key)[1]}“ ${PAD_AXES.find(a => a[0] === L.key)[2]} …${step}`
       : `Drücke jetzt die Taste für „${PAD_ACTIONS.find(a => a[0] === L.key)[1]}“ …${step}`) + '  (Esc = abbrechen)'
-    : gp ? '✅ Erkannt: ' + gp.pads.map((q, i) => (i + 1) + '. ' + padShortName(q) + ' (' + q.axes.length + ' Achsen, ' + q.buttons.length + ' Tasten)').join(' · ') : 'Kein Gerät erkannt – drücke einen Knopf oder dreh am Lenkrad.';
+    : gp ? '✅ Erkannt: ' + gp.pads.map((q, i) => (i + 1) + '. ' + padShortName(q) + ' (' + q.axes.length + ' Achsen, ' + q.buttons.length + ' Tasten)').join(' · ') : 'Kein Gerät erkannt – drücke einen Knopf am Controller oder dreh das Lenkrad einmal GANZ nach links und rechts (der Browser gibt Geräte erst danach frei).';
   st.classList.toggle('ok', !!gp && !L);
   const isL = (t, k) => L && L.type === t && L.key === k;
   $('padAxList').innerHTML = PAD_AXES.map(([k, label]) =>
@@ -399,7 +399,24 @@ function padGame(gp, pressed, released, dt) {
   if (on('pause')) { if (document.pointerLockElement) document.exitPointerLock(); setLocked(false); }
 }
 
+// Lenkrad & Co. (kein normaler Controller) beim ersten Erkennen automatisch einrichten: erste Achse = Lenken
+function autoSetupDevices() {
+  for (const p of realPads()) {
+    if (isStdPad(p) || !p.axes.length) continue;
+    PCFG.auto = PCFG.auto || {};
+    if (PCFG.auto[p.id]) continue;
+    PCFG.auto[p.id] = true;
+    const used = Object.values(PCFG.axes).some(c => c.dev === p.id);
+    if (!used) {
+      const rest = p.axes[0] || 0;
+      PCFG.axes.moveX = { dev: p.id, k: 0, a: 0, inv: false, r: Math.abs(rest) > 0.5 ? rest : 0, set: true };
+      showPadToast(`🕹 ${padShortName(p)} als Lenkrad eingerichtet (Achse 1 = lenken, Gas mit W/S). Ändern: Optionen → Controller anpassen`);
+    }
+    savePad(); renderPadCfg();
+  }
+}
 function pollGamepad(dt) {
+  if (realPads().length) autoSetupDevices();
   const gp = getPad();
   if (!$('padCfg').classList.contains('hidden')) drawPadViz(gp);
   if (PAD.listen) {   // wartet auf eine neue Taste / Stick-Bewegung
