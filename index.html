@@ -98,7 +98,11 @@
   .coin { display: inline-block; width: 0.95em; height: 0.95em; border-radius: 50%; vertical-align: -0.12em;
     background: radial-gradient(circle at 35% 35%, #fff1a8, #f2c230 45%, #b8860b 100%); border: 1px solid #7a5a00;
     box-shadow: inset 0 0 0 2px rgba(255,255,255,.25); }
-  #feed { position: absolute; right: 16px; top: 14px; width: 360px; text-align: right; font-size: 15px; }
+  #feed { position: absolute; right: 16px; top: 44px; width: 360px; text-align: right; font-size: 15px; }
+  #fpsBox { position: absolute; right: 16px; top: 12px; font: 700 14px/1 Rajdhani, system-ui, sans-serif; letter-spacing: .5px; background: rgba(0,0,0,.5);
+    padding: 5px 9px; border-radius: 6px; color: #7dff7a; pointer-events: none; min-width: 58px; text-align: center; }
+  #fpsBox.mid { color: #ffd84a; } #fpsBox.bad { color: #ff5a4a; } #fpsBox.off { display: none; }
+  body.touch #fpsBox { right: 14px; top: 60px; font-size: 12px; padding: 4px 7px; min-width: 0; }
   #feed div { background: rgba(0,0,0,.55); padding: 4px 10px; border-radius: 5px; margin-bottom: 4px; display: inline-block; clear: both; float: right; font-weight: 600; }
   #feed .me { border: 1px solid #ffcc33; }
   #feed .fw { color: #fff; background: rgba(255,255,255,.12); padding: 0 6px; border-radius: 3px; font-size: 12px; margin: 0 4px; }
@@ -303,7 +307,7 @@
   body.touch #hpText { font-size: 24px; }
   body.touch #ammoBox { right: auto; left: 50%; bottom: 8px; transform: translateX(-50%); text-align: center; }
   body.touch #ammoText { font-size: 28px; }
-  body.touch #feed { right: 116px; width: 230px; font-size: 12px; }
+  body.touch #feed { right: 116px; top: 14px; width: 230px; font-size: 12px; }
   body.touch #topScore { font-size: 13px; top: 60px; }
   body.touch #roomInfo { font-size: 12px; }
   body.touch #radar { top: auto; bottom: 170px; left: 14px; width: 110px; height: 110px; }
@@ -386,6 +390,7 @@
   <canvas id="radar" width="170" height="170"></canvas>
   <div id="topScore"></div>
   <div id="timer"></div>
+  <div id="fpsBox">– FPS</div>
   <div id="feed"></div>
   <div id="center" class="hidden"><div id="centerBig"></div><div id="centerSmall"></div></div>
   <div id="streakMsg"></div>
@@ -468,6 +473,7 @@
     <label for="gfxIn">Grafik</label>
     <select id="gfxIn"><option value="high">Hoch (schärfste Grafik)</option><option value="medium">Mittel (empfohlen)</option><option value="perf">Leistung (fast wie Mittel, mehr FPS)</option><option value="clean">Klar &amp; schnell (gute Grafik, ohne Bäume/Gras – viele FPS)</option><option value="low">Niedrig (keine Schatten, am flüssigsten)</option><option value="potato">Sehr niedrig (für schwache PCs)</option></select>
     <button id="btnFs" class="sec">⛶ Vollbild-Modus: AUS</button>
+    <button id="btnFps" class="sec">📊 FPS-Anzeige: AN</button>
     <button id="btnKbCfg" class="sec pcOnly">⌨️ Tastatur &amp; Maus anpassen</button>
     <button id="btnPadCfg" class="sec">🎮 Controller anpassen</button>
     <button id="setClose">Fertig</button>
@@ -557,17 +563,17 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261111-180655"></script>
-<script src="js/map.js?v=20261111-180655"></script>
-<script src="js/models.js?v=20261111-180655"></script>
-<script src="js/game.js?v=20261111-180655"></script>
-<script src="js/vehicles.js?v=20261111-180655"></script>
-<script src="js/net.js?v=20261111-180655"></script>
-<script src="js/ui.js?v=20261111-180655"></script>
-<script src="js/jobs.js?v=20261111-180655"></script>
-<script src="js/gamepad.js?v=20261111-180655"></script>
-<script src="js/keybinds.js?v=20261111-180655"></script>
-<script src="js/tuning.js?v=20261111-180655"></script>
-<script src="js/gunshop.js?v=20261111-180655"></script>
+<script src="js/core.js?v=20261111-181453"></script>
+<script src="js/map.js?v=20261111-181453"></script>
+<script src="js/models.js?v=20261111-181453"></script>
+<script src="js/game.js?v=20261111-181453"></script>
+<script src="js/vehicles.js?v=20261111-181453"></script>
+<script src="js/net.js?v=20261111-181453"></script>
+<script src="js/ui.js?v=20261111-181453"></script>
+<script src="js/jobs.js?v=20261111-181453"></script>
+<script src="js/gamepad.js?v=20261111-181453"></script>
+<script src="js/keybinds.js?v=20261111-181453"></script>
+<script src="js/tuning.js?v=20261111-181453"></script>
+<script src="js/gunshop.js?v=20261111-181453"></script>
 </body>
 </html>

@@ -275,6 +275,20 @@ function updateAtmosphere(dt) {
 
 /* ======================= Hauptschleife ======================= */
 const SHADOW = { t: 0 };
+// FPS-Anzeige oben rechts (2× pro Sekunde aktualisiert; grün ≥ 55, gelb ≥ 30, rot darunter)
+const FPS = { n: 0, t0: performance.now(), on: true };
+try { FPS.on = localStorage.getItem('kz_fps') !== '0'; } catch (e) {}
+const fpsLabel = () => { $('btnFps').textContent = '📊 FPS-Anzeige: ' + (FPS.on ? 'AN' : 'AUS'); $('fpsBox').classList.toggle('off', !FPS.on); };
+$('btnFps').onclick = () => { FPS.on = !FPS.on; try { localStorage.setItem('kz_fps', FPS.on ? '1' : '0'); } catch (e) {} fpsLabel(); };
+fpsLabel();
+function fpsTick(t) {
+  FPS.n++;
+  if (t - FPS.t0 < 500) return;
+  const fps = Math.round(FPS.n * 1000 / (t - FPS.t0)); FPS.n = 0; FPS.t0 = t;
+  if (!FPS.on) return;
+  const el = $('fpsBox'); el.textContent = fps + ' FPS';
+  el.classList.toggle('mid', fps < 55 && fps >= 30); el.classList.toggle('bad', fps < 30);
+}
 let last = performance.now();
 camera.position.set(0, 18, 34); camera.lookAt(0, 0, 0);
 function frame(t) {
@@ -306,5 +320,6 @@ function frame(t) {
   if (window.waterNormal) { window.waterNormal.offset.x += dt * 0.004; window.waterNormal.offset.y += dt * 0.0025; }
   skyMesh.position.copy(camera.position);
   renderer.render(scene, camera);
+  fpsTick(t);
 }
 requestAnimationFrame(frame);
