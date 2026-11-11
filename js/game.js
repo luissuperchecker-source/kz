@@ -219,6 +219,7 @@ const KB_ACTIONS = [
   ['w1', 'Waffe 1', ['Digit1', ''], null], ['w2', 'Waffe 2', ['Digit2', ''], null], ['w3', 'Waffe 3', ['Digit3', ''], null], ['w4', 'Waffe 4', ['Digit4', ''], null],
   ['w5', 'Ladenwaffe', ['Digit5', ''], null], ['board', 'Punktestand', ['Tab', ''], null], ['inv', 'Inventar', ['KeyI', ''], null], ['jobCancel', 'Job abbrechen', ['KeyJ', ''], null],
   ['trackStart', 'Zur Startlinie (Rennstrecke)', ['KeyT', ''], null],
+  ['tune', 'Tuning-Menü (im Auto)', ['KeyU', ''], null],
 ];
 const KB_DEFAULT = () => Object.fromEntries(KB_ACTIONS.map(a => [a[0], a[2].slice()]));
 let KB = KB_DEFAULT(), KB_LABEL = {};
@@ -267,6 +268,7 @@ function kbDown(a, repeat) {
   else if (a === 'w5') { const sp = me.owned.findIndex((o, i) => o && i >= BASE_WEAPONS); if (sp >= 0) switchWeapon(sp); }
   else if (a === 'jobCancel') document.dispatchEvent(new CustomEvent('kzaction', { detail: a }));
   else if (a === 'trackStart') trackToStart();
+  else if (a === 'tune') openTuning();
 }
 function kbUp(a) {
   if (KB_HOLD[a]) keys[KB_HOLD[a]] = false;

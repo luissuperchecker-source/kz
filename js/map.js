@@ -441,7 +441,7 @@ function car(x, z, alongX) {
   MAP_VEHICLES.push({ x, z, yaw });
 }
 // Fahrbares Auto abstellen (yaw: Fahrtrichtung, 0 = +x)
-function carSpot(x, z, yaw) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car' }); }
+function carSpot(x, z, yaw, ctype) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car', ctype }); }
 function truck(x, z, alongZ) {
   // Fahrerhaus + Kofferaufbau
   const cab = MAT.ctrRed;
@@ -1926,7 +1926,7 @@ function weltDriftArena() {
   addBox(st.x + 16, 0, Z0 - 0.5, 30, 0.6, 3, MAT.concrete, 2); addBox(st.x + 16, 0.6, Z0 - 1.2, 30, 0.6, 1.6, MAT.concrete, 2);
   for (let k = 0; k < 6; k++) { addBox(st.x + 3 + k * 5, 0, Z0 + 1.1, 0.1, 3, 0.1, MAT.metal, 1, { decor: true, round: 0 }); addBox(st.x + 3.5 + k * 5, 2.2, Z0 + 1.1, 0.9, 0.6, 0.03, [MAT.ctrRed, TKM.white][k % 2], 0, { decor: true, round: 0 }); }
   tkSign(X0 - 2.5, 1.6, 96, 6, 1.2, -Math.PI / 2, tkSignMat('DRIFT-ARENA →', '#d42a2a', '#ffffff', false));
-  carSpot(st.x - 10, st.z - 2.5, 0); carSpot(st.x - 10, st.z + 2.5, 0); carSpot(pcx, pcz + 12, 0);
+  carSpot(st.x - 10, st.z - 2.5, 0, 'drift'); carSpot(st.x - 10, st.z + 2.5, 0, 'race'); carSpot(pcx, pcz + 12, 0, 'drift');
   window.DRIFT_TRACK = { pts: pts.map(p => [p.x, p.z]), W, box: [155, 52, 292, 145], start: [st.x, st.z], name: 'Drift-Arena', key: '' };
   (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push(window.DRIFT_TRACK);
 }
@@ -1996,7 +1996,7 @@ function driftTrackBuild(T, name, key, sideMat) {
   addBox(st.x, 5.6, st.z, 0.5, 0.9, W + 3, MAT.metal, 1, { decor: true, round: 0 });
   for (const s of [-1, 1]) tkSign(st.x + s * 0.27, 6.05, st.z, W + 2, 1.6, s * Math.PI / 2, tkSignMat('🏁 ' + name.toUpperCase(), '#111111', '#ffd23f', false));
   const yaw = Math.atan2(-fz, fx);
-  for (const s of [-1, 1]) carSpot(st.x - fx * 10 + nrm[0][0] * s * 3.7, st.z - fz * 10 + nrm[0][1] * s * 3.7, yaw);   // am Rand, Mitte bleibt frei
+  for (const s of [-1, 1]) carSpot(st.x - fx * 10 + nrm[0][0] * s * 3.7, st.z - fz * 10 + nrm[0][1] * s * 3.7, yaw, s < 0 ? 'drift' : 'muscle');   // am Rand, Mitte bleibt frei
   const xs = pts.map(p => p.x), zs = pts.map(p => p.z);
   (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push({ pts: pts.map(p => [p.x, p.z]), W, name, key, start: [st.x, st.z],
     box: [Math.min(...xs) - 12, Math.min(...zs) - 12, Math.max(...xs) + 12, Math.max(...zs) + 12] });
