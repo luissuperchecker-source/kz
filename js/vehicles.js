@@ -215,6 +215,88 @@ function makeCar(paint, rim = RIM, type = 'drift') {
   const dummy = new THREE.Group();
   return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true, paint };
 }
+/* ---------- Panzer (vorne = +x): Wanne, Ketten mit Laufrollen, drehbarer Turm, Kanone hebt/senkt sich ---------- */
+const TANK_MAT = {
+  olive: new THREE.MeshStandardMaterial({ color: 0x4f5a34, roughness: 0.8, metalness: 0.25 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x2c2f25, roughness: 0.85, metalness: 0.2 }),
+  track: new THREE.MeshStandardMaterial({ color: 0x1c1c1a, roughness: 0.95 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0x55574f, roughness: 0.5, metalness: 0.7 }),
+};
+const TANK_WHEEL_R = 0.42;
+function makeTank() {
+  const T = TANK_MAT, root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const hull = [
+    B(6.2, 0.9, 3.0, T.olive, 0, 1.15, 0), B(1.4, 0.6, 3.0, T.olive, 2.95, 1.05, 0, 0, 0, -0.5), B(0.9, 0.7, 3.0, T.olive, -3.0, 1.15, 0, 0, 0, 0.35),
+    B(6.0, 0.12, 3.6, T.dark, 0, 1.62, 0),                                          // Kettenabdeckung
+    B(0.6, 0.35, 0.6, T.dark, -2.6, 1.85, 1.1), B(0.6, 0.35, 0.6, T.dark, -2.6, 1.85, -1.1),   // Motorgitter
+    B(0.5, 0.25, 0.3, T.steel, -3.3, 1.35, 1.0),                                    // Auspuff
+  ];
+  for (const s of [-1, 1]) {
+    hull.push(B(6.6, 0.95, 0.7, T.track, 0, 0.55, s * 1.45));                      // Kette
+    hull.push(B(6.2, 0.08, 0.72, T.track, 0, 1.05, s * 1.45));
+    for (const x of [-3.1, 3.1]) hull.push({ geo: new THREE.CylinderGeometry(0.42, 0.42, 0.72, 14), mat: T.track, p: [x, 0.6, s * 1.45], r: [Math.PI / 2, 0, 0] });
+  }
+  root.add(partsToGroup(hull, true));
+  // Laufrollen (drehen sich beim Fahren)
+  const spinners = [];
+  for (const s of [-1, 1]) for (let k = 0; k < 6; k++) {
+    const pv = new THREE.Group(); pv.position.set(-2.4 + k * 0.96, TANK_WHEEL_R + 0.02, s * 1.83); root.add(pv);
+    const w = partsToGroup([{ geo: new THREE.CylinderGeometry(TANK_WHEEL_R, TANK_WHEEL_R, 0.12, 16), mat: T.dark, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(0.14, 0.14, 0.14, 10), mat: T.steel, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      B(0.5, 0.06, 0.13, T.steel, 0, 0, 0)], true);
+    pv.add(w); spinners.push(w);
+  }
+  // Turm mit Kanone
+  const turret = new THREE.Group(); turret.position.set(-0.3, 1.68, 0); root.add(turret);
+  turret.add(partsToGroup([
+    B(3.0, 0.85, 2.5, T.olive, 0, 0.42, 0), B(1.0, 0.7, 2.3, T.olive, 1.6, 0.38, 0, 0, 0, -0.35), B(0.8, 0.6, 2.2, T.dark, -1.75, 0.45, 0),
+    { geo: new THREE.CylinderGeometry(0.4, 0.42, 0.25, 16), mat: T.dark, p: [-0.4, 0.95, 0.55], r: [0, 0, 0] },      // Luke
+    B(0.5, 0.35, 0.5, T.dark, 0.3, 1.0, -0.65), B(0.08, 0.08, 0.9, T.steel, 0.6, 1.2, -0.65, 0, Math.PI / 2, 0),      // Optik + MG
+    B(0.15, 0.4, 0.08, T.steel, -1.2, 1.1, -0.9), B(0.02, 1.4, 0.02, T.steel, -1.2, 1.7, -0.9),                       // Antenne
+  ], true));
+  const barrel = new THREE.Group(); barrel.position.set(1.55, 0.45, 0); turret.add(barrel);
+  barrel.add(partsToGroup([
+    { geo: new THREE.CylinderGeometry(0.22, 0.26, 0.5, 14), mat: T.olive, p: [0.25, 0, 0], r: [0, 0, Math.PI / 2] },
+    { geo: new THREE.CylinderGeometry(0.1, 0.12, 4.2, 14), mat: T.steel, p: [2.4, 0, 0], r: [0, 0, Math.PI / 2] },
+    { geo: new THREE.CylinderGeometry(0.16, 0.16, 0.45, 14), mat: T.dark, p: [4.4, 0, 0], r: [0, 0, Math.PI / 2] },   // Mündungsbremse
+  ], true));
+  scene.add(root);
+  const dummy = new THREE.Group();
+  return { root, spinners, fronts: [], turret, barrel, steer: dummy, stand: dummy, wf: dummy, wr: dummy, tank: true };
+}
+/* ---------- Helikopter (vorne = +x): Rumpf, Glaskanzel, Heckausleger, Haupt- und Heckrotor, Kufen, Raketenkästen ---------- */
+const HELI_MAT = {
+  body: new THREE.MeshStandardMaterial({ color: 0x3b4636, roughness: 0.55, metalness: 0.35 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x1d201c, roughness: 0.6, metalness: 0.4 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x15222c, roughness: 0.05, metalness: 0.6, envMapIntensity: 1.6 }),
+  blade: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 }),
+};
+function makeHeli() {
+  const H = HELI_MAT, root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const body = [
+    { geo: new THREE.SphereGeometry(1, 18, 12), mat: H.body, p: [0.2, 1.75, 0], r: [0, 0, 0], s: [2.3, 1.15, 1.1] },          // Rumpf
+    { geo: new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat: H.glass, p: [1.25, 1.75, 0], r: [0, 0, -Math.PI / 2], s: [1.05, 1.25, 0.95] },   // Kanzel
+    { geo: new THREE.CylinderGeometry(0.22, 0.42, 4.6, 12), mat: H.body, p: [-3.7, 2.05, 0], r: [0, 0, Math.PI / 2] },       // Heckausleger
+    B(1.2, 1.3, 0.12, H.body, -5.9, 2.6, 0, 0, 0, 0.35), B(0.7, 0.08, 1.4, H.body, -5.6, 2.15, 0),                          // Seitenleitwerk, Höhenleitwerk
+    B(1.6, 0.4, 0.9, H.dark, -0.4, 2.85, 0), { geo: new THREE.CylinderGeometry(0.16, 0.16, 0.5, 10), mat: H.dark, p: [0, 3.15, 0], r: [0, 0, 0] },   // Triebwerk, Rotormast
+    B(1.4, 0.12, 3.1, H.body, -0.1, 1.35, 0),                                                                               // Stummelflügel
+  ];
+  for (const s of [-1, 1]) body.push(
+    { geo: new THREE.CylinderGeometry(0.06, 0.06, 3.6, 8), mat: H.dark, p: [0.1, 0.12, s * 1.0], r: [0, 0, Math.PI / 2] },   // Kufe
+    { geo: new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8), mat: H.dark, p: [0.9, 0.65, s * 0.85], r: [s * 0.25, 0, 0] },
+    { geo: new THREE.CylinderGeometry(0.05, 0.05, 1.2, 8), mat: H.dark, p: [-0.8, 0.65, s * 0.85], r: [s * 0.25, 0, 0] },
+    { geo: new THREE.CylinderGeometry(0.2, 0.2, 1.3, 12), mat: H.dark, p: [0.1, 1.15, s * 1.45], r: [0, 0, Math.PI / 2] });  // Raketenkasten
+  root.add(partsToGroup(body, true));
+  const rotor = new THREE.Group(); rotor.position.set(0, 3.42, 0); root.add(rotor);
+  const blades = [{ geo: new THREE.CylinderGeometry(0.22, 0.22, 0.14, 12), mat: H.dark, p: [0, 0, 0], r: [0, 0, 0] }];
+  for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; blades.push(B(5.6, 0.04, 0.32, H.blade, Math.cos(a) * 2.9, 0, -Math.sin(a) * 2.9, 0, a, 0)); }
+  rotor.add(partsToGroup(blades, true));
+  const tail = new THREE.Group(); tail.position.set(-6.1, 2.75, 0.18); root.add(tail);
+  tail.add(partsToGroup([B(0.14, 1.5, 0.03, H.blade, 0, 0, 0), B(1.5, 0.14, 0.03, H.blade, 0, 0, 0)], true));
+  scene.add(root);
+  const dummy = new THREE.Group();
+  return { root, spinners: [], fronts: [], rotor, tail, steer: dummy, stand: dummy, wf: dummy, wr: dummy, heli: true };
+}
 // Folierung eines Autos tauschen (nur bei dir sichtbar)
 function setCarPaint(v, mat) {
   const m = v.mesh; if (!m.car || !mat || m.paint === mat) return;
@@ -351,7 +433,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   const kind = v.kind || 'moped';
   // Autotyp: an Drift-Strecken Drift-Autos, sonst abwechselnd Drift / Rennwagen / Muscle-Car (für alle Spieler gleich)
   const ctype = kind === 'car' ? (v.ctype || ['drift', 'race', 'muscle'][i % 3]) : null;
-  const m = kind !== 'car' ? makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length])
+  const m = kind === 'tank' ? makeTank() : kind === 'heli' ? makeHeli() : kind !== 'car' ? makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length])
     : ctype === 'race' ? makeCar(RACE_PAINTS[i % 4], SILVER_RIM, 'race')
     : ctype === 'muscle' ? makeCar(MUSCLE_PAINTS[i % 4], CAR_BLACK, 'muscle')
     : makeCar(CAR_PAINTS[(i + 5) % CAR_PAINTS.length], CAR_RIMS[(i + 5) % CAR_RIMS.length], 'drift');
@@ -406,6 +488,10 @@ const VK = {
     camD: 4.2, camH: 1.55, eyeUp: 1.5, eyeF: 0.08, eyeSide: 0, exitSide: 1.1, exitBack: 1.5, enter: 3.0, farDraw: 70 },
   car: { name: 'Auto', back: 0.1, up: 0, r: 1.25, h: 1.4, max: 32, acc: 8.5, top: 35, brake: 22, rev: -7, coast: 2.6, steer: 1.6, steerHi: 34,
     camD: 7.2, camH: 2.4, eyeUp: 1.08, eyeF: -0.15, eyeSide: -0.38, exitSide: 2.0, exitBack: 3.3, enter: 3.8, farDraw: 140 },
+  tank: { name: 'Panzer', back: 0.3, up: 0, r: 1.9, h: 2.6, max: 11, acc: 3.6, top: 11.5, brake: 9, rev: -4.5, coast: 4, steer: 0.85, steerHi: 999,
+    camD: 11, camH: 4.6, eyeUp: 2.6, eyeF: 0, eyeSide: 0, exitSide: 2.9, exitBack: 4.6, enter: 4.6, farDraw: 260 },
+  heli: { name: 'Helikopter', back: 0, up: 0.6, r: 1.7, h: 2.9, max: 45, acc: 16, top: 45, brake: 10, rev: -10, coast: 3, steer: 1.3, steerHi: 999,
+    camD: 13, camH: 3.4, eyeUp: 2, eyeF: 0, eyeSide: 0, exitSide: 2.6, exitBack: 5, enter: 4.8, farDraw: 400 },
 };
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
@@ -431,7 +517,7 @@ function toggleRide() {
   const i = nearestFreeVehicle();
   if (i < 0) {
     // Moped in der Nähe, aber besetzt?
-    const busy = vehicles.find(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < VK[v.kind].enter); if (busy) showMsg(busy.kind === 'car' ? 'Dieses Auto ist besetzt' : 'Dieses Moped ist besetzt');
+    const busy = vehicles.find(v => v.d && v.d !== myId && Math.hypot(v.x - me.pos.x, v.z - me.pos.z) < VK[v.kind].enter); if (busy) showMsg('Dieses Fahrzeug ist besetzt');
     return;
   }
   const t0 = enterPending = performance.now();
@@ -454,7 +540,8 @@ function startRide(i) {
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
   me.yaw = ride.yaw - Math.PI / 2; me.pitch = -0.15;
   if (!myRider) { const mp = world.players[myId] || {}; myRider = makeAvatar({ id: '__me', name: '', color: mp.color || '#ffcc33', team: mp.team, w: me.weapon }); myRider.label.visible = false; myRider.parts.forEach(p => p.userData = {}); }
-  myRider.g.visible = v.kind !== 'car'; setAvatarGun(myRider, me.weapon);
+  myRider.g.visible = v.kind === 'moped'; setAvatarGun(myRider, me.weapon);
+  ride.turret = 0; ride.barrelP = 0; ride.tankShot = -9;
   engineSound(true);
   if (v.kind === 'car') {
     ride.ctype = v.ctype || 'drift'; ride.carK = carParams(ride.ctype);
@@ -462,7 +549,9 @@ function startRide(i) {
     const T = tuneOf(ride.ctype); setCarPaint(v, T.liv >= 0 ? paintFor(ride.ctype, T.liv) : v.origPaint);
     const ct = CAR_TYPES[ride.ctype];
     showMsg(`${ct.name}: ${ct.info}  ·  ${kbK('tune')} = Tuning`);
-  } else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
+  } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
+  else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
+  else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
 }
 function exitRide(silent) {
   if (ride.v < 0) return;
@@ -483,6 +572,7 @@ function exitRide(silent) {
   }
   if (!placed) p.set(ride.pos.x, ride.pos.y + 0.05, ride.pos.z);
   me.pos.copy(p); me.vel.set(0, 0, 0);
+  if (v.kind === 'heli') ride.pos.y = groundH(ride.pos.x, ride.pos.z, ride.pos.y);   // ohne Pilot landet der Heli (man selbst fällt aus der Höhe)
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
   rideLeft.v = ride.v; rideLeft.t = performance.now();
@@ -495,12 +585,13 @@ function exitRide(silent) {
 
 /* ---------- Fahrphysik (eigenes Moped) ---------- */
 function updateRide(dt) {
-  let thr = (keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
+  if (ride.kind === 'heli') return heliRide(dt);
+  let thr =(keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
   // Joystick/Lenkrad/Pedale ersetzen nur die Richtung, die sie gerade benutzen (Lenkrad lenkt, W/S gibt weiter Gas)
   if (touchIn.my) thr = -touchIn.my;
   if (touchIn.mx) steer = -touchIn.mx;
   // Gas / Bremse / Rückwärts
-  const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car';
+  const K = VK[ride.kind || 'moped'], isCar = ride.kind === 'car', isTank = ride.kind === 'tank';
   if (isCar) carDrive(dt, thr, steer, !!keys.Handbrake,!!(touchIn.mx || touchIn.my));   // Auto: Drift-Physik (wie in Drift-Welt)
   else {
     if (thr > 0) ride.speed += (ride.speed < 0 ? K.brake : K.acc * (1 - ride.speed / K.top)) * thr * dt;
@@ -515,9 +606,9 @@ function updateRide(dt) {
   const now0 = performance.now() / 1000;
   // Wheelie mit echter Kippbewegung: gehaltene Taste hebt das Vorderrad immer weiter; ab dem Gleichgewichtspunkt (0,75)
   // zieht die Schwerkraft nach hinten → wer nicht loslässt, kippt nach ~1 s über. Halten = um den Kipppunkt antippen.
-  const wantW = !isCar && keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
+  const wantW = !isCar && !isTank && keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
   const BAL = 0.75, wh0 = ride.wh || 0;
-  if (!isCar && (wantW || wh0 > 0)) {
+  if (!isCar && !isTank && (wantW || wh0 > 0)) {
     let acc = wh0 > BAL ? (wh0 - BAL) * 16 : -(BAL - wh0) * 0.8;                     // Schwerkraft: über dem Kipppunkt nach hinten
     if (wantW) acc += 1.7 + Math.max(0, thr) * 1.1 + Math.min(0.4, sp * 0.02);       // Leertaste (+ Gas) hebt
     else acc -= 6.5;                                                                  // losgelassen: Vorderrad fällt
@@ -538,7 +629,15 @@ function updateRide(dt) {
     if (ride.whT > 1.5 && ride.whT < 5) showMsg(`Wheelie ${ride.whT.toFixed(1)} s`);
     ride.whT = 0;
   }
-  if (!isCar) {
+  if (isTank) {   // Panzer: dreht auch im Stand (Ketten gegenläufig), Turm folgt der Blickrichtung
+    ride.yaw += steer * K.steer * dt; ride.lean = 0;
+    ride.vel.x = Math.cos(ride.yaw) * ride.speed; ride.vel.z = -Math.sin(ride.yaw) * ride.speed;
+    let d = (me.yaw + Math.PI / 2 - ride.yaw) - (ride.turret || 0); d = Math.atan2(Math.sin(d), Math.cos(d));
+    ride.turret = (ride.turret || 0) + Math.max(-1.3 * dt, Math.min(1.3 * dt, d));
+    const pt = Math.max(-0.12, Math.min(0.35, me.pitch + 0.06));
+    ride.barrelP = (ride.barrelP || 0) + Math.max(-0.6 * dt, Math.min(0.6 * dt, pt - (ride.barrelP || 0)));
+    ride.st = ride.turret;
+  } else if (!isCar) {
     const turn = steer * Math.min(1, sp / 3) * (K.steer - Math.min(K.steer * 0.57, sp / K.steerHi)) * Math.sign(ride.speed || 1) * (1 - Math.min(0.5, ride.wh * 0.6));
     ride.yaw += turn * dt;
     ride.lean += ((-steer * Math.min(1, sp / 9) * 0.42) - ride.lean) * Math.min(1, dt * 6);
@@ -583,9 +682,10 @@ function updateRide(dt) {
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * K.back, ride.pos.y + K.up, ride.pos.z + Math.sin(ride.yaw) * K.back);
   me.vel.set(ride.vel.x, 0, ride.vel.z); me.onGround = true;
   const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.wh; v.st = ride.st;
+  if (isTank) v.wh = ride.barrelP || 0;   // Panzer: wh = Rohrhöhe, st = Turmdrehung (gehen übers Netz an alle)
   // Kamera: hinter dem Fahrer, Maus schaut sich um; ohne Maus richtet sie sich langsam nach vorne aus
-  const aiming = riderAiming();
-  if (performance.now() - ride.lastMouse > (isCar ? 700 : 1500) && sp > (isCar ? 1 : 3) && !aiming) {
+  const aiming = riderAiming() && !isTank;
+  if (!isTank && performance.now() - ride.lastMouse > (isCar ? 700 : 1500) && sp > (isCar ? 1 : 3) && !aiming) {
     let d = (ride.yaw - Math.PI / 2) - me.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     me.yaw += d * Math.min(1, dt * (isCar ? 3.5 : 2.5)); me.pitch += ((isCar ? -0.2 : -0.15) - me.pitch) * Math.min(1, dt * 2);
   }
@@ -607,19 +707,98 @@ function updateRide(dt) {
   if (me.pumpT > 0) { const b = me.pumpT; me.pumpT = Math.max(0, me.pumpT - dt); if (b > 0.3 && me.pumpT <= 0.3) sndClick(0.08, 0.7); }
   if (me.boltT > 0) { const b = me.boltT; me.boltT = Math.max(0, me.boltT - dt); if (b > 0.55 && me.boltT <= 0.55) sndClick(0.08, 0.9); }
   if (me.reloading > 0) { me.reloading -= dt; if (me.reloading <= 0) { me.reloading = 0; me.ammo[me.weapon] = w.mag; } }
-  if (me.trigger && (w.auto || !me.firedPress)) tryShoot(now);
+  if (isTank) tankFire(now);
+  else if (me.trigger && (w.auto || !me.firedPress)) tryShoot(now);
   me.recoilP *= Math.exp(-9 * dt); me.recoilY *= Math.exp(-9 * dt);
   camera.rotation.x += me.recoilP; camera.rotation.y += me.recoilY;
   const targetFov = ride.fp > 0.5 ? (me.scoped ? w.zoom : fovBase + Math.min(4, sp * 0.25)) : fovBase + Math.min(10, sp * 0.6);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 10); camera.updateProjectionMatrix();
   engineSound(true, sp * Math.sign(ride.speed || 1), thr, ride.kind, isCar && (ride.drifting || ride.hand));
   if (isCar) carSkids(dt);
-  if (isCar && sp > 7) runOver(sp);
+  if ((isCar && sp > 7) || (isTank && sp > 2)) runOver(isTank ? Math.max(sp, 25) : sp);
   viewKnife.visible = false; viewNade.visible = false;
   if (ride.fp > 0.6) { me.bob += dt * sp * 0.6; animateViewModel(dt, w); }   // Waffe in der Hand wie zu Fuß
   else viewGun.visible = false;
 }
 document.addEventListener('mousemove', () => { if (ride.v >= 0) ride.lastMouse = performance.now(); });
+/* ---------- Helikopter fliegen: W/S vor/zurück (Nase kippt), A/D drehen, Leertaste steigen, C/Strg sinken ----------
+   Ohne Eingabe bleibt er in der Luft stehen (Schwebeflug). Linksklick: Raketen abwechselnd links/rechts (16, dann nachladen). */
+const HELI_AMMO = 16, HELI_RELOAD = 4;
+function heliHint() {
+  const nowS = performance.now() / 1000, rl = ride.heliReload > nowS ? ride.heliReload - nowS : 0;
+  return `🚁 <b>Helikopter</b> · <b>${kbK('forward')}/${kbK('back')}</b> vor/zurück · <b>${kbK('left')}/${kbK('right')}</b> drehen · <b>${kbK('jump')}</b> steigen · <b>${kbK('crouch')}</b> sinken · <b>Linksklick</b> Raketen ${rl > 0 ? `<span style="color:#ff9a3a">(lädt … ${rl.toFixed(1)} s)</span>` : `(${ride.heliAmmo}/${HELI_AMMO})`} · <b>${kbK('ride')}</b> aussteigen`;
+}
+function heliRide(dt) {
+  const K = VK.heli, now = performance.now() / 1000;
+  let thr = (keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
+  if (touchIn.my) thr = -touchIn.my;
+  if (touchIn.mx) steer = -touchIn.mx;
+  const up = (keys.Space ? 1 : 0) - (keys.KeyC || keys.ControlLeft ? 1 : 0);
+  const gh = groundH(ride.pos.x, ride.pos.z, ride.pos.y), air = ride.pos.y - gh > 0.25 || up > 0;
+  ride.yaw += steer * K.steer * dt * (air ? 1 : 0.4);
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), rx = Math.sin(ride.yaw), rz = Math.cos(ride.yaw);
+  if (air) { ride.vel.x += fx * thr * K.acc * dt; ride.vel.z += fz * thr * K.acc * dt; }
+  // Luftwiderstand: längs wenig, quer stark (er „rutscht“ nicht seitlich)
+  const vf = ride.vel.x * fx + ride.vel.z * fz, vs = ride.vel.x * rx + ride.vel.z * rz;
+  const nvf = vf * Math.exp(-0.38 * dt), nvs = vs * Math.exp(-2.2 * dt);
+  ride.vel.x = fx * nvf + rx * nvs; ride.vel.z = fz * nvf + rz * nvs;
+  const hs = Math.hypot(ride.vel.x, ride.vel.z);
+  if (hs > K.max) { ride.vel.x *= K.max / hs; ride.vel.z *= K.max / hs; }
+  ride.vel.y += (up * 8 - ride.vel.y) * Math.min(1, 2.5 * dt);
+  if (ride.pos.y > 110 && ride.vel.y > 0) ride.vel.y = 0;
+  if (!air) { ride.vel.x *= Math.exp(-6 * dt); ride.vel.z *= Math.exp(-6 * dt); if (ride.vel.y < 0) ride.vel.y = 0; }
+  moveBody(ride, ride.vel.x * dt, ride.vel.y * dt, ride.vel.z * dt);
+  if (ride.blocked && hs > 4) { if (hs > 14) { sndThud(0.9); me.shake = Math.max(me.shake, 0.6); } ride.vel.x *= -0.25; ride.vel.z *= -0.25; }
+  if (ride.pos.y < -10) ride.pos.set(0, 5, 0);
+  // Neigung: Nase runter beim Vorwärtsfliegen, seitlich in der Kurve
+  ride.pitch = (ride.pitch || 0) + ((-thr * 0.2 - Math.max(-0.1, Math.min(0.1, (vf - nvf) * 0))) - (ride.pitch || 0)) * Math.min(1, dt * 3);
+  ride.lean += ((air ? -steer * 0.16 * Math.min(1, hs / 8) : 0) - ride.lean) * Math.min(1, dt * 3);
+  ride.speed = vf; ride.wh = 0; ride.dive = 0; ride.thr = thr; ride.onGround = !air;
+  // Rotor-Abwind: Staub am Boden, wenn er tief fliegt
+  if (ride.pos.y - gh < 8) { ride.dustT = (ride.dustT || 0) - dt; if (ride.dustT <= 0) { ride.dustT = 0.06; const a = Math.random() * 6.28; puff(new THREE.Vector3(ride.pos.x + Math.cos(a) * 3, gh + 0.2, ride.pos.z + Math.sin(a) * 3), 0xc8b89a, 0.6, 1.0, new THREE.Vector3(Math.cos(a) * 5, 0.4, Math.sin(a) * 5), { opacity: 0.3, grow: 3 }); } }
+  me.pos.set(ride.pos.x, ride.pos.y + K.up, ride.pos.z); me.vel.set(0, 0, 0); me.onGround = true;
+  const v = vehicles[ride.v]; v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.lean = ride.lean; v.wh = ride.pitch; v.st = 0;
+  // Kamera: hinten oben, Maus schaut frei; ohne Maus langsam hinter den Heli
+  if (performance.now() - ride.lastMouse > 1200 && hs > 4 && !me.trigger) {
+    let d = (ride.yaw - Math.PI / 2) - me.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); me.yaw += d * Math.min(1, dt * 2);
+  }
+  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + K.camH, ride.pos.z);
+  const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
+  let dist = K.camD; const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(1, hit.dist - 0.3);
+  camera.position.copy(target).addScaledVector(back, dist);
+  camera.rotation.set(me.pitch, me.yaw, 0);
+  // Raketen
+  if (ride.heliAmmo === undefined) ride.heliAmmo = HELI_AMMO;
+  if (ride.heliReload && now >= ride.heliReload) { ride.heliReload = 0; ride.heliAmmo = HELI_AMMO; }
+  if (me.trigger && !ride.heliReload && now - (ride.heliShot || -9) > 0.28) {
+    ride.heliShot = now; ride.heliSide = -(ride.heliSide || 1);
+    const cp = Math.cos(me.pitch), dir = new THREE.Vector3(-Math.sin(me.yaw) * cp, Math.sin(me.pitch), -Math.cos(me.yaw) * cp);
+    const pod = new THREE.Vector3(ride.pos.x + fx * 0.9 + rx * ride.heliSide * 1.5, ride.pos.y + 1.15, ride.pos.z + fz * 0.9 + rz * ride.heliSide * 1.5);
+    fireRocket(pod, dir.multiplyScalar(85), true, HELI_W);
+    sndShot(10, 0.45); me.shake = Math.max(me.shake, 0.15);
+    if (--ride.heliAmmo <= 0) ride.heliReload = now + HELI_RELOAD;
+  }
+  me.shake = Math.max(0, me.shake - dt * 1.6);
+  const targetFov = me.scoped ? 40 : fovBase + Math.min(10, hs * 0.2);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
+  engineSound(true, hs, Math.max(Math.abs(thr), Math.abs(up)), 'heli');
+  viewKnife.visible = false; viewNade.visible = false; viewGun.visible = false;
+}
+// Panzerkanone: Linksklick, 2,5 s Nachladen; Granate fliegt aus der Rohrmündung in Rohrrichtung
+const TANK_RELOAD = 2.5;
+function tankFire(now) {
+  if (!me.trigger || me.firedPress) return;
+  me.firedPress = true;
+  if (now - (ride.tankShot || -9) < TANK_RELOAD) { sndClick(0.05, 2); return; }
+  ride.tankShot = now;
+  const ty = ride.yaw + (ride.turret || 0), pit = ride.barrelP || 0, cp = Math.cos(pit);
+  const dir = new THREE.Vector3(Math.cos(ty) * cp, Math.sin(pit), -Math.sin(ty) * cp);
+  const piv = new THREE.Vector3(ride.pos.x - Math.cos(ride.yaw) * 0.3 + Math.cos(ty) * 1.55, ride.pos.y + 2.13, ride.pos.z + Math.sin(ride.yaw) * 0.3 - Math.sin(ty) * 1.55);
+  const tip = piv.clone().addScaledVector(dir, 4.8);
+  fireRocket(tip, dir.clone().multiplyScalar(95), true, TANK_W);
+  sndBoom(tip); me.shake = Math.max(me.shake, 0.5); ride.recoil = 1;
+  for (let k = 0; k < 5; k++) puff(tip.clone(), 0xd0d0d0, 0.6, 1.4, dir.clone().multiplyScalar(rnd(2, 5)).add(new THREE.Vector3(rnd(-1, 1), rnd(0, 1), rnd(-1, 1))), { opacity: 0.55, grow: 4 });
+}
 /* ---------- Auto-Fahrphysik aus „Drift-Welt“: Längs- und Quergeschwindigkeit, Reifenhaftung, Handbremse ----------
    Gas im Drift hält das Heck draußen, Handbremse (Leertaste / Sprung-Taste) bricht das Heck aus, abseits der Straße bremst Gras. */
 function carOnRoad(x, z) {
@@ -863,9 +1042,15 @@ function updateVehicles(dt) {
     if (m.isHi !== hi) { m.isHi = hi; m.hi.visible = hi; for (const c of m.lo) c.visible = !hi; }
   }
   for (const v of vehicles) {
-    const m = v.mesh, K = VK[v.kind], isCar = v.kind === 'car';
+    const m = v.mesh, K = VK[v.kind], isTank = v.kind === 'tank', isHeli = v.kind === 'heli', isCar = v.kind === 'car' || isTank || isHeli;
+    if (isHeli) {   // Rotoren drehen, solange jemand drin sitzt (laufen kurz nach)
+      const on = v.i === ride.v || !!v.d;
+      v.rot = (v.rot || 0) + ((on ? 26 : 0) - (v.rot || 0)) * Math.min(1, dt * (on ? 0.8 : 0.4));
+      m.rotor.rotation.y += v.rot * dt; m.tail.rotation.z += v.rot * 1.8 * dt;
+    }
     let x = v.x, y = v.y, z = v.z, yaw = v.yaw, lean = v.lean, pitch = 0, wh = 0, rider = null, st = 0;
-    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = (ride.pitch || 0) + (ride.dive || 0); wh = ride.wh || 0; st = ride.st || 0; }
+    if (v.i === ride.v) { x = ride.pos.x; y = ride.pos.y; z = ride.pos.z; yaw = ride.yaw; lean = ride.lean; pitch = (ride.pitch || 0) + (ride.dive || 0); wh = isTank ? ride.barrelP || 0 : ride.wh || 0; st = ride.st || 0; }
+    else if (isTank) { v.stS = (v.stS || 0) + ((v.st || 0) - (v.stS || 0)) * Math.min(1, dt * 8); st = v.stS; wh = v.wh || 0; }
     else if (v.d && avatars[v.d] && avatars[v.d].g.visible) {
       // Fremdes Moped: an die (weich abgespielte) Figur des Fahrers koppeln
       rider = avatars[v.d];
@@ -875,6 +1060,12 @@ function updateVehicles(dt) {
       v.stS = (v.stS || 0) + ((v.st || 0) - (v.stS || 0)) * Math.min(1, dt * 10); st = v.stS;
     }
     m.steer.rotation.y = st;
+    if (isTank) {   // Turm drehen, Rohr heben, Rückstoß nach dem Schuss; danach wie ein Auto behandeln (kein Wheelie)
+      m.turret.rotation.y = st; m.barrel.rotation.z = wh;
+      const rc = v.i === ride.v ? (ride.recoil || 0) : 0; m.barrel.position.x = 1.55 - rc * 0.5;
+      if (v.i === ride.v) ride.recoil = Math.max(0, rc - dt * 2.5);
+      wh = 0;
+    }
     if (isCar) { for (const f of m.fronts) f.rotation.y = st; if (m.gltf) for (const f of m.frontW) f.rotation.y = st; }
     // Geschwindigkeit fürs Raddrehen
     const moved = Math.hypot(x - v.rx, z - v.rz);
@@ -883,9 +1074,10 @@ function updateVehicles(dt) {
       v.pitch = (v.pitch || 0) + (Math.max(-0.6, Math.min(0.6, pt)) - (v.pitch || 0)) * Math.min(1, dt * 6);
       pitch = v.pitch;
     }
+    if (isHeli) { pitch = v.i === ride.v ? (ride.pitch || 0) : (v.d ? v.wh || 0 : 0); wh = 0; }
     v.rx = x; v.rz = z; v.ry = y;
     const fwd = Math.cos(yaw) * 1, dirSign = ((x - (m.root.position.x)) * Math.cos(yaw) - (z - m.root.position.z) * Math.sin(yaw)) >= 0 ? 1 : -1;
-    v.spin += moved / (isCar ? CAR_WHEEL_R : WHEEL_R) * dirSign;
+    v.spin += moved / (isTank ? TANK_WHEEL_R : isCar ? CAR_WHEEL_R : WHEEL_R) * dirSign;
     if (isCar) { for (const s of m.spinners) s.rotation.z = -v.spin; if (m.gltf) for (const w of m.wheels) w.rotation.x = v.spin; } else m.wf.rotation.z = m.wr.rotation.z = -v.spin;
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
@@ -909,19 +1101,19 @@ function updateVehicles(dt) {
       rider.footDown = moved / Math.max(dt, 1e-3) < 0.6; rider.steerVis = st;
     }
     // Abgaswolken aus dem Auspuff (nur in der Nähe)
-    if (!parked && dCam < 30) {
+    if (!parked && dCam < 30 && !isHeli) {
       v.smokeT = (v.smokeT || 0) - dt;
       const gas = v.i === ride.v ? (ride.thr || 0) > 0 : moved / Math.max(dt, 1e-3) > 1;
       if (v.smokeT <= 0) {
         v.smokeT = gas ? 0.09 : 0.35;
-        const ex = m.root.localToWorld(isCar ? new THREE.Vector3(-2.4, 0.5, 0.12) : new THREE.Vector3(-0.9, 0.335, 0.18));
+        const ex = m.root.localToWorld(isTank ? new THREE.Vector3(-3.5, 1.4, 1.0) : isCar ? new THREE.Vector3(-2.4, 0.5, 0.12) : new THREE.Vector3(-0.9, 0.335, 0.18));
         puff(ex, 0xc8c8c8, gas ? 0.22 : 0.14, gas ? 1.1 : 0.8, new THREE.Vector3(-Math.cos(yaw) * 0.6, 0.35, Math.sin(yaw) * 0.6), { opacity: gas ? 0.28 : 0.16, grow: 2.2, fadeIn: 0.05 });
       }
     }
     void fwd;
   }
   // eigene Figur auf dem Moped (nur in der Außenansicht sichtbar)
-  if (myRider && ride.v >= 0 && ride.kind === 'car') myRider.g.visible = false;
+  if (myRider && ride.v >= 0 && ride.kind !== 'moped') myRider.g.visible = false;
   else if (myRider && ride.v >= 0) {
     myRider.g.visible = (ride.fp || 0) < 0.45;   // in der Ego-Ansicht eigene Figur ausblenden
     myRider.g.rotation.order = 'YXZ';
@@ -984,6 +1176,14 @@ function engineSound(on, speed = 0, thr = 0, kind = 'moped', squeal = false) {
     eng = { o, o2, f, g, kind };
   }
   const t = actx.currentTime, sp = Math.abs(speed);
+  if (kind === 'tank' || kind === 'heli') {   // Panzer: tiefes Dieselgrollen · Heli: schnelles Rotor-Wummern
+    const heli = kind === 'heli';
+    eng.o.frequency.setTargetAtTime(heli ? 55 + thr * 12 : 22 + sp * 2 + thr * 6, t, 0.1);
+    eng.o2.frequency.setTargetAtTime(heli ? 17 + thr * 3 : 7 + sp * 0.6, t, 0.1);
+    eng.f.frequency.setTargetAtTime(heli ? 480 + thr * 200 : 230 + thr * 170, t, 0.1);
+    eng.g.gain.setTargetAtTime(heli ? 0.07 + thr * 0.02 : 0.075 + thr * 0.03, t, 0.1);
+    return;
+  }
   // Auto: Gänge – die Drehzahl fällt bei jedem Gangwechsel wieder ab
   const rpm = car ? (sp % 8.5) / 8.5 + Math.min(1, sp / 30) * 0.4 : 0;
   eng.o.frequency.setTargetAtTime(car ? 32 + rpm * 46 + thr * 8 : 38 + sp * 7 + thr * 14, t, 0.08);

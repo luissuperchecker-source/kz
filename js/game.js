@@ -522,7 +522,7 @@ function updateRockets(dt) {
     const nx = r.pos.clone().add(step);
     if (!hitP && nx.y < groundH(nx.x, nx.z, nx.y) + 0.05) hitP = nx;
     if (hitP || r.t > 3) {
-      blast(hitP || r.pos, r.mine, r.w, 8, 150);
+      blast(hitP || r.pos, r.mine, r.w, r.w === TANK_W ? 9 : r.w === HELI_W ? 6 : 8, r.w === TANK_W ? 160 : r.w === HELI_W ? 110 : 150);
       scene.remove(r.m); rockets.splice(i, 1); continue;
     }
     r.pos.copy(nx); r.m.position.copy(r.pos);

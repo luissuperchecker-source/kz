@@ -2389,6 +2389,19 @@ function buildWeltMap() {
   for (const l of layers) scene.add(l);
   scene.add(trunks);
 
+  /* --- Panzer (an der Hauptstraße, beide Seiten) und Helikopter auf Landeplätzen --- */
+  MAP_VEHICLES.push({ x: -60, z: 21, yaw: 0, kind: 'tank' }, { x: 66, z: 24, yaw: Math.PI, kind: 'tank' });
+  { const hp = new THREE.MeshStandardMaterial({ map: (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+      g.fillStyle = '#5d6168'; g.beginPath(); g.arc(128, 128, 126, 0, 7); g.fill();
+      g.lineWidth = 10; g.strokeStyle = '#f2d21b'; g.beginPath(); g.arc(128, 128, 112, 0, 7); g.stroke();
+      g.fillStyle = '#f4f4f4'; g.fillRect(78, 64, 22, 128); g.fillRect(156, 64, 22, 128); g.fillRect(78, 117, 100, 22);
+      const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })(), transparent: true, alphaTest: 0.5, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
+    for (const [x, z] of [[129, 28], [-130, 21]]) {
+      const pad = new THREE.Mesh(new THREE.PlaneGeometry(13, 13), hp); pad.rotation.x = -Math.PI / 2; pad.position.set(x, 0.02, z); scene.add(pad);
+      MAP_VEHICLES.push({ x, z, yaw: Math.PI / 2, kind: 'heli' });
+    }
+  }
   /* --- Mopeds --- */
   for (const [x, z, ax] of [[-6, -20, false], [6, 40, false], [-60, 8, true], [70, -6, true], [-55, 70, false], [-110, 62, false], [120, -35, true], [230, -100, true], [-150, -20, false], [160, 140, true]]) car(x, z, ax);
 
