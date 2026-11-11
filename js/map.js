@@ -2192,6 +2192,11 @@ function buildWeltMap() {
   building(24, 42, 14, 8, 1, MAT.plaster2, { n: [0] }, { crates: 2 });
   tkSign(24, 3.7, 37.95, 6, 1.1, Math.PI, tkSignMat('SHOP 24/7', '#12a05a', '#ffffff', false));
   carSpot(24, 18.5, 0); car(36, 24, false); car(36, 27, false);
+  // Recyclinghof der Stadtreinigung (Firma) neben der Tankstelle: Container + Schild
+  for (const [x, mat] of [[38.5, MAT.ctrGreen], [41.5, MAT.ctrBlue], [44.5, MAT.yellow]]) addBox(x, 0, 44, 2.6, 1.7, 2.2, mat, 2.6, { round: 0.05 });
+  tkSign(41.5, 2.6, 42.85, 7, 0.8, Math.PI, tkSignMat('♻ STADTREINIGUNG', '#1d6b3a', '#ffffff', false));
+  addBox(41.5, 0, 42.9, 0.12, 2.2, 0.12, MAT.metal, 1, { decor: true, round: 0 });
+  window.MAP_JOBS.push({ id: 'trash', x: 41.5, z: 38.5 }); window.TRASH_BOSS = [44, 39.5];
   decalT(24, 26, 34, 26, MAT.concreteFloor, 2.7, 0, 0.009);
 
   /* ===== DORF „Birkendorf“ (Südwesten, x -290 … -30, z 30 … 290) ===== */
@@ -2220,6 +2225,7 @@ function buildWeltMap() {
       // Feuerwehr
       addBox(cx + 12, 0, cz + 18, 16, 6, 10, MAT.ctrRed, 2.6);
       tkSign(cx + 12, 4.5, cz + 12.95, 9, 1.2, Math.PI, tkSignMat('FEUERWEHR', '#ffffff', '#c0262b', false));
+      window.MAP_JOBS.push({ id: 'fire', x: cx + 12, z: cz + 9.5 }); window.FIRE_BOSS = [cx + 15, cz + 11];   // Feuerwehr (Firma)
       // Marktbrunnen + Stände
       addBox(cx, 0, cz, 4, 0.8, 4, TKM.stone, 2); addBox(cx, 0.8, cz, 0.5, 1.6, 0.5, TKM.stone, 1);
       for (const k of [-1, 1]) { addBox(cx + k * 7, 0, cz + 4, 3, 1, 1.6, MAT.crate, 0); addBox(cx + k * 7, 2.2, cz + 4, 3.4, 0.1, 2.2, MAT.ctrOrange, 2.6, { decor: true }); }

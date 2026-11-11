@@ -11,7 +11,10 @@ const JOB_INFO = {
   post: { name: 'Post', icon: '📦', title: 'Paketzusteller', pay: '250–700', boss: 'Frau Becker' },
   taxi: { name: 'Taxi-Zentrale', icon: '🚕', title: 'Taxifahrer', pay: '150–550', boss: 'Herr Yilmaz' },
   farm: { name: 'Hof Huber', icon: '🌾', title: 'Erntehelfer', pay: '400–550', boss: 'Bauer Huber' },
+  fire: { name: 'Feuerwehr Birkendorf', icon: '🚒', title: 'Feuerwehrmann', pay: '300–650', boss: 'Kommandant Weber' },
+  trash: { name: 'Stadtreinigung', icon: '🗑️', title: 'Müllwerker', pay: '250–500', boss: 'Herr Kraus' },
 };
+const FIRE_TIME = 6;   // so lange muss man löschen (Sekunden)
 const RANKS = ['Aushilfe', 'Mitarbeiter', 'Profi', 'Chef'];
 const JOBS = { list: window.MAP_JOBS || [], cur: null, near: null, markers: [], done: 0, xp: {}, chain: 0, offer: null, uiT: 0 };
 try { JOBS.done = parseInt(localStorage.getItem('kz_jobs')) || 0; JOBS.xp = JSON.parse(localStorage.getItem('kz_jobxp') || '{}'); } catch (e) {}
@@ -84,6 +87,7 @@ if (WELT) {
   const mk = (id, pos, outfit, seed) => { if (!pos) return; const n = makeNPC(seed, outfit); NPCS.push(n); bosses[id] = n; npcShow(n, pos[0], pos[1], pos[0], pos[1] + 5); };
   mk('pizza', window.PIZZA_CHEF, 'chef', 3); mk('post', window.POST_CLERK, 'post', 11);
   mk('taxi', window.TAXI_BOSS, null, 17); mk('farm', window.FARM_BOSS, null, 29);
+  mk('fire', window.FIRE_BOSS, null, 41); mk('trash', window.TRASH_BOSS, 'post', 53);
   if (bosses.pizza) npcLook(bosses.pizza, window.PIZZA_PICKUP[0], window.PIZZA_PICKUP[1]);
   if (bosses.post) npcLook(bosses.post, window.POST_PICKUP[0], window.POST_PICKUP[1]);
 }
@@ -97,18 +101,36 @@ const CARRY = {
   pizza: (() => { const g = new THREE.Group(); const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.07, 0.42), [MAT.crate, MAT.crate, new THREE.MeshStandardMaterial({ map: pizzaTex, roughness: 0.9 }), MAT.crate, MAT.crate, MAT.crate]); g.add(box); return g; })(),
   parcel: (() => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.28, 0.32), new THREE.MeshStandardMaterial({ color: 0xb08850, roughness: 0.9 }))); const tape = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.29, 0.06), new THREE.MeshStandardMaterial({ color: 0xd8c27a, roughness: 0.6 })); g.add(tape); return g; })(),
   hay: (() => { const g = new THREE.Group(); const c = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.7, 14), new THREE.MeshStandardMaterial({ color: 0xd9b55a, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 })); c.rotation.z = Math.PI / 2; g.add(c); return g; })(),
+  hose: (() => {   // Strahlrohr der Feuerwehr
+    const g = new THREE.Group(), red = new THREE.MeshStandardMaterial({ color: 0xb8231c, roughness: 0.5 }), al = new THREE.MeshStandardMaterial({ color: 0xbfc3c8, roughness: 0.3, metalness: 0.8 });
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.42, 12), al); a.rotation.x = Math.PI / 2; a.position.z = -0.12; g.add(a);
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.12, 12), red); b.rotation.x = Math.PI / 2; b.position.z = 0.12; g.add(b);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.06), red); h.position.set(0, -0.09, 0.05); g.add(h);
+    return g;
+  })(),
 };
+// Mülltonne (grau mit grünem Deckel)
+const BIN_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.7 }), BIN_LID = new THREE.MeshStandardMaterial({ color: 0x2f7a3c, roughness: 0.6 });
+function binMesh(x, z) {
+  const g = new THREE.Group(), y = hillH(x, z);
+  const b = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.0, 0.7), BIN_MAT); b.position.y = 0.5; b.castShadow = true; g.add(b);
+  const l = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.07, 0.74), BIN_LID); l.position.y = 1.03; g.add(l);
+  for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.06, 10), NPC_SHOE); w.rotation.z = Math.PI / 2; w.position.set(s * 0.33, 0.1, 0.3); g.add(w); }
+  g.position.set(x, y, z); scene.add(g); return g;
+}
 for (const k in CARRY) { const m = CARRY[k]; m.visible = false; m.position.set(0.05, -0.42, -0.62); m.rotation.set(0.25, 0, 0); camera.add(m); }
 function carryItem() {
   const j = JOBS.cur; if (!j) return null;
   if (j.id === 'pizza' && j.stage === 'deliver') return 'pizza';
   if (j.id === 'post' && j.stage === 'deliver') return 'parcel';
   if (j.id === 'farm' && j.hand) return 'hay';
+  if (j.id === 'fire' && j.to && Math.hypot(j.to.door.x - me.pos.x, j.to.door.z - me.pos.z) < 30) return 'hose';
   return null;
 }
-// Mit vollen Händen kann man nicht schießen
+// Mit vollen Händen kann man nicht schießen (mit dem Schlauch: Linksklick = löschen)
 const _jobTryShoot = tryShoot;
 window.tryShoot = now => {
+  if (carryItem() === 'hose' && ride.v < 0) return;
   if (carryItem() && ride.v < 0) { if (!JOBS.handsMsg || now - JOBS.handsMsg > 2) { JOBS.handsMsg = now; showMsg(`Hände voll – erst abliefern (${kbK('jobCancel')} = Job abbrechen)`); } return; }
   return _jobTryShoot(now);
 };
@@ -182,6 +204,15 @@ function acceptJob(c, chained) {
       j.bales.push({ x, z, m: hayMesh(x, 0.75 + hillH(x, z), z), got: false });   // auf dem Hügel liegen
     }
     jobSay(`${info.icon} ${info.boss}: „6 Strohballen liegen auf den Feldern – bring sie in die Scheune!“`);
+  } else if (c.id === 'fire') {   // Alarm: ein Haus brennt → hinfahren, aussteigen, löschen
+    j.to = pickAddr(c, 80, 320); j.stage = 'drive'; j.prog = 0; j.fx = 0;
+    j.t = jdist(j.to, c) / 7 + 55;
+    jobSay(`🚨 ${info.boss}: „Alarm! Feuer in der ${j.to.label} – fahr sofort hin und lösch es!“`); sndBeep(990, 0.3, 0.12, 'square'); setTimeout(() => sndBeep(740, 0.3, 0.12, 'square'), 320);
+  } else if (c.id === 'trash') {   // 4 Mülltonnen leeren, dann zurück zum Recyclinghof
+    j.stage = 'collect'; j.bins = []; j.emptied = 0; j.earned = 0; let p = c;
+    for (let k = 0; k < 4; k++) { const a = pickAddr(p, 40, 220, null, j.bins[k - 1] && j.bins[k - 1].a); j.bins.push({ a, m: binMesh(a.x, a.z), done: false }); p = a; }
+    j.t = 60 + j.bins.reduce((s, b, k) => s + jdist(b.a, k ? j.bins[k - 1].a : c) / 6, 0) + jdist(j.bins[3].a, c) / 6 + 40;
+    jobSay(`🗑️ ${info.boss}: „4 Tonnen warten auf dich – danach alles hier zum Recyclinghof!“`);
   }
   if (boss) { boss.mode = 'wave'; setTimeout(() => { if (boss.mode === 'wave') boss.mode = 'idle'; }, 1600); }
   j.tMax = j.t;
@@ -198,6 +229,7 @@ function startTaxiPickup(j) {
 function cancelJob(reason) {
   const j = JOBS.cur; if (!j) return;
   if (j.bales) for (const b of j.bales) if (b.m) scene.remove(b.m);
+  if (j.bins) for (const b of j.bins) if (b.m) scene.remove(b.m);
   customer.g.visible = false; passenger.g.visible = false;
   JOBS.cur = null; JOBS.chain = 0; beam.visible = beamRing.visible = false; window.JOB_TGT = null;
   for (const k in CARRY) CARRY[k].visible = false;
@@ -227,6 +259,11 @@ function currentTarget() {
   if (j.id === 'taxi') {
     if (j.stage === 'car') { const cars = vehicles.filter(v => v.kind === 'car' && !v.d); let best = cars[0], bd = 1e9; for (const v of cars) { const d = Math.hypot(v.x - me.pos.x, v.z - me.pos.z); if (d < bd) { bd = d; best = v; } } return best ? { x: best.x, z: best.z, label: 'Freies Auto' } : null; }
     return j.stage === 'pickup' ? { x: j.from.x, z: j.from.z, label: 'Fahrgast: ' + j.from.label } : { x: j.to.x, z: j.to.z, label: 'Ziel: ' + j.to.label };
+  }
+  if (j.id === 'fire') return { x: j.to.door.x, z: j.to.door.z, label: '🔥 Brand: ' + j.to.label };
+  if (j.id === 'trash') {
+    let best = null, bd = 1e9; for (const b of j.bins) if (!b.done) { const d = Math.hypot(b.a.x - me.pos.x, b.a.z - me.pos.z); if (d < bd) { bd = d; best = b; } }
+    return best ? { x: best.a.x, z: best.a.z, label: 'Mülltonne: ' + best.a.label, door: true } : { x: j.c.x, z: j.c.z, label: 'Recyclinghof (abladen)' };
   }
   if (j.id === 'farm') {
     const full = j.hand || j.load.length >= (inCar() ? 3 : 1) || j.bales.every(b => b.got);
@@ -282,6 +319,21 @@ function jobInteract() {
         setTimeout(() => { if (customer.g.visible) { customer.mode = 'idle'; customer.g.visible = false; } }, 2500);
       }, 1100);
     }, 1300);
+    return true;
+  }
+  if (j.id === 'trash' && t.door && d < 2.6) {   // Tonne in den (gedachten) Müllwagen kippen
+    if (!onFoot()) { showMsg('Erst aussteigen, dann die Tonne leeren'); return false; }
+    const b = j.bins.find(q => !q.done && q.a.x === t.x && q.a.z === t.z); if (!b) return false;
+    j.busy = true; sndThud(0.5); showMsg('🗑️ Tonne wird geleert …');
+    const m = b.m; let k = 0; const tilt = setInterval(() => { k++; m.rotation.x = -Math.sin(Math.min(1, k / 10) * Math.PI) * 1.6; if (k >= 20) { clearInterval(tilt); m.rotation.x = 0; } }, 50);
+    setTimeout(() => {
+      if (JOBS.cur !== j) return;
+      j.busy = false; b.done = true; j.emptied++;
+      const pay = coinsR(40 * payMul('trash')); earn(pay); j.earned += pay; j.log.push([`Tonne ${j.emptied} · ${b.a.label}`, '+' + pay]);
+      sndBeep(660, 0.08, 0.1, 'triangle');
+      showMsg(j.emptied < j.bins.length ? `🗑️ Geleert +${pay} Coins · noch ${j.bins.length - j.emptied}` : '🗑️ Alle Tonnen leer – zurück zum Recyclinghof!');
+      updateJobTarget();
+    }, 1000);
     return true;
   }
   if (j.id === 'farm') {
@@ -361,6 +413,8 @@ function updateJobs(dt) {
       else if ((j.id === 'pizza' || j.id === 'post') && j.stage === 'deliver' && d < 6) hint = onFoot() ? (d < 2.4 ? `<b>${key}</b> = klingeln & übergeben` : 'Geh zur Haustür') : `<b>${key}</b> = absteigen, dann zur Tür gehen`;
       else if (j.id === 'farm' && onFoot() && !j.hand && t.label === 'Strohballen' && d < 2.4) hint = `<b>${key}</b> = Strohballen aufheben`;
       else if (j.id === 'farm' && onFoot() && j.hand && d < 4) hint = `<b>${key}</b> = Ballen abstellen`;
+      else if (j.id === 'fire' && d < 15) hint = onFoot() ? (d < 12 ? `🧯 <b>Linksklick halten</b> und aufs Feuer zielen = löschen · ${Math.round(j.prog / FIRE_TIME * 100)} %` : 'Näher ran ans Feuer!') : `<b>${kbK('ride')}</b> = aussteigen und löschen!`;
+      else if (j.id === 'trash' && t.door && d < 2.6) hint = onFoot() ? `<b>${key}</b> = Tonne leeren` : `<b>${kbK('ride')}</b> = aussteigen, dann Tonne leeren`;
     }
   }
   if (hint) { jobHint.innerHTML = hint; jobHint.classList.remove('hidden'); } else jobHint.classList.add('hidden');
@@ -389,7 +443,7 @@ function updateJobs(dt) {
   if (j.id === 'pizza' && j.stage === 'deliver') j.temp = Math.max(0, j.temp - dt * (100 / (j.tMax * 1.25)));
   if (j.t <= 0) {
     if (j.id === 'taxi' && j.stage === 'ride') { j.stars = Math.max(1, j.stars - dt * 0.2); j.t = 0; }   // Taxi: zu spät = schlechtere Bewertung
-    else return cancelJob(j.id === 'pizza' && j.stage === 'deliver' ? '⏱ Zu spät – der Kunde hat die Pizza storniert' : '⏱ Zeit abgelaufen – Auftrag nicht geschafft');
+    else return cancelJob(j.id === 'pizza' && j.stage === 'deliver' ? '⏱ Zu spät – der Kunde hat die Pizza storniert' : j.id === 'fire' ? '🔥 Zu spät – das Haus ist abgebrannt' : '⏱ Zeit abgelaufen – Auftrag nicht geschafft');
   }
   // Taxi-Ablauf
   if (j.id === 'taxi') {
@@ -427,6 +481,41 @@ function updateJobs(dt) {
       }
     }
   }
+  // Feuerwehr: Flammen + Rauchsäule am Haus; zu Fuß mit Linksklick aufs Feuer halten = löschen
+  if (j.id === 'fire') {
+    const fp = j.to.door, gy = hillH(fp.x, fp.z), inten = Math.max(0, 1 - j.prog / FIRE_TIME), dCam = Math.hypot(fp.x - camera.position.x, fp.z - camera.position.z);
+    j.fx -= dt;
+    if (j.fx <= 0 && dCam < 260) {
+      j.fx = 0.07;
+      const base = new THREE.Vector3(fp.x + rnd(-2.5, 2.5), gy + rnd(0.5, 3.5), fp.z + rnd(-1.5, 1.5));
+      if (inten > 0.05) puff(base, [0xff7a1a, 0xffb02a, 0xff4a10][Math.floor(Math.random() * 3)], 0.9 * inten + 0.25, 0.7, new THREE.Vector3(rnd(-0.3, 0.3), rnd(2, 3.5), rnd(-0.3, 0.3)), { opacity: 0.9, grow: 3 });
+      puff(base.clone().add(new THREE.Vector3(0, 3, 0)), inten > 0.05 ? 0x2a2a2a : 0xa8a8a8, 1.2, 3.2, new THREE.Vector3(rnd(-0.5, 0.5), rnd(2.5, 4), rnd(-0.5, 0.5)), { opacity: 0.45 * Math.max(0.3, inten), grow: 5 });
+    }
+    const dFire = Math.hypot(fp.x - me.pos.x, fp.z - me.pos.z);
+    if (onFoot() && dFire < 12 && me.trigger && me.alive && !j.busy) {
+      camera.updateMatrixWorld();
+      const o = camera.getWorldPosition(new THREE.Vector3()), f = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      for (let k = 0; k < 2; k++) puff(o.clone().addScaledVector(f, 0.8).add(new THREE.Vector3(0, -0.25, 0)), 0xd8ecff, 0.18, 0.7, f.clone().multiplyScalar(rnd(13, 17)).add(new THREE.Vector3(rnd(-0.6, 0.6), rnd(0.5, 1.5), rnd(-0.6, 0.6))), { opacity: 0.7, grow: 4 });
+      const toF = new THREE.Vector3(fp.x - o.x, gy + 1.8 - o.y, fp.z - o.z).normalize();
+      if (f.dot(toF) > 0.82) { j.prog += dt; j.stage = 'extinguish'; }   // nur wer aufs Feuer zielt, löscht
+      j.hiss = (j.hiss || 0) - dt; if (j.hiss <= 0) { j.hiss = 0.22; sndClick(0.04, 0.4); }
+      if (j.prog >= FIRE_TIME) {
+        j.busy = true;
+        const base = coinsR((230 + jdist(j.to, j.c) * 0.6) * payMul('fire')), quick = coinsR(Math.max(0, j.t) * 2.2 * payMul('fire'));
+        jobSay('🧑 „Danke! Sie haben unser Haus gerettet!“');
+        finishJob([['Brand gelöscht · ' + j.to.label, base], ['Schnell vor Ort', '+' + quick]], base + quick);
+        return;
+      }
+    }
+  }
+  // Stadtreinigung: alle Tonnen leer → am Recyclinghof abladen (zu Fuß oder mit Fahrzeug)
+  if (j.id === 'trash' && j.emptied >= j.bins.length && Math.hypot(j.c.x - me.pos.x, j.c.z - me.pos.z) < 7 && (ride.v < 0 || Math.abs(ride.speed) < 3)) {
+    for (const b of j.bins) if (b.m) { scene.remove(b.m); b.m = null; }
+    const bonus = coinsR((60 + Math.max(0, j.t) * 0.5) * payMul('trash'));
+    jobSay('🗑️ Herr Kraus: „Sauber gemacht, danke!“');
+    finishJob([...j.log, ['Recyclinghof-Bonus', '+' + bonus]], bonus, j.earned + bonus);
+    return;
+  }
   // Hof: Ballen mit Fahrzeug einsammeln / in der Scheune abladen
   if (j.id === 'farm' && ride.v >= 0) {
     const cap = inCar() ? 3 : 1;
@@ -457,7 +546,9 @@ function updateJobs(dt) {
       else if (j.id === 'taxi') {
         task = j.stage === 'car' ? 'Steig in ein Auto' : j.stage === 'pickup' ? `Fahrgast abholen → ${j.from.label} (halten!)` : `${j.persona.icon} Fahrgast nach ${j.to.label} bringen`;
         if (j.stage === 'ride') info = `🚖 Taxameter <b>${coinsR((30 + j.meterM * 0.42 + j.meterT * 0.35) * payMul('taxi'))}</b> · ${stars(j.stars)}`;
-      } else if (j.id === 'farm') { task = tt.label === 'Strohballen' ? `Strohballen einsammeln (${j.stacked}/6 in der Scheune)` : `Zur Scheune bringen (${j.hand ? 1 : j.load.length} dabei)`; }
+      } else if (j.id === 'fire') { task = j.stage === 'drive' ? `🔥 Feuer in der ${j.to.label} – schnell hin!` : 'Feuer löschen!'; info = `🧯 ${bar(j.prog / FIRE_TIME * 100, '#5ab8ff')}`; }
+      else if (j.id === 'trash') { task = `Tonnen ${j.emptied}/${j.bins.length} → ${tt.label}`; info = `verdient ${j.earned}`; }
+      else if (j.id === 'farm') { task = tt.label === 'Strohballen' ? `Strohballen einsammeln (${j.stacked}/6 in der Scheune)` : `Zur Scheune bringen (${j.hand ? 1 : j.load.length} dabei)`; }
       $('jobText').innerHTML = `<div class="jTop">${j.info.icon} <b>${j.info.title}</b> · ${RANKS[jobLevel(j.id)]}${JOBS.chain ? ' · Serie ×' + (JOBS.chain + 1) : ''}</div>
         <div>${task}</div><div class="jInfo">${Math.round(d)} m · ${time}${info ? ' · ' + info : ''} · <span style="opacity:.65">${kbK('jobCancel')} = abbrechen</span></div>`;
     }
