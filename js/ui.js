@@ -257,7 +257,7 @@ function updateAtmosphere(dt) {
     a.setXYZ(i, x, y, z);
   }
   a.needsUpdate = true;
-  dust.visible = !gfxLow();
+  dust.visible = !gfxLow() && gfx !== 'clean';
   // Brennender Bus auf der Hauptstraße + Schornstein des Schiffs
   fireT -= dt;
   if (fireT <= 0) {
@@ -302,7 +302,7 @@ function frame(t) {
   updateAtmosphere(dt);
   const sunMoved = followSun(camera.position.x, camera.position.z);
   // Grafik „Leistung“: Schatten nur ~10× pro Sekunde neu zeichnen (und sofort, wenn der Schattenbereich mitwandert)
-  if (gfx === 'perf') { SHADOW.t -= dt; if (sunMoved || SHADOW.t <= 0) { renderer.shadowMap.needsUpdate = true; SHADOW.t = 0.1; } }
+  if (gfx === 'perf' || gfx === 'clean') { SHADOW.t -= dt; if (sunMoved || SHADOW.t <= 0) { renderer.shadowMap.needsUpdate = true; SHADOW.t = 0.1; } }
   if (window.waterNormal) { window.waterNormal.offset.x += dt * 0.004; window.waterNormal.offset.y += dt * 0.0025; }
   skyMesh.position.copy(camera.position);
   renderer.render(scene, camera);

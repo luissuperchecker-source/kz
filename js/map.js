@@ -2718,9 +2718,9 @@ window.cullChunks = dt => {
   for (const g of window.SHOP_DISPLAYS || []) g.visible = Math.hypot(g.userData.c[0] - c.x, g.userData.c[1] - c.z) < 70;   // Waffen im Laden nur in der Nähe zeichnen
   for (const g of FAR_GROUPS) {
     const dx = Math.max(g.r[0] - c.x, 0, c.x - g.r[2]), dz = Math.max(g.r[1] - c.z, 0, c.z - g.r[3]);
-    g.o.visible = Math.hypot(dx, dz) < CULL_DIST + 70 && (g.o !== window.grassI || !gfxLow());
+    g.o.visible = Math.hypot(dx, dz) < CULL_DIST + 70 && (g.o !== window.grassI || !gfxLow()) && !(g.o.userData.foliage && gfxClean());
   }
-  for (const m of mapMeshes) { const s = m.userData.cull; if (s) m.visible = c.distanceTo(s.center) - s.radius < CULL_DIST; }
+  for (const m of mapMeshes) { const s = m.userData.cull; if (s) m.visible = c.distanceTo(s.center) - s.radius < CULL_DIST && !(m.userData.foliage && gfxClean()); }
 };
 
 /* „Sehr niedrig“ für schwache PCs: einfache Licht-Berechnung (Lambert statt PBR), halbe Auflösung, kurze Sichtweite.
@@ -2763,25 +2763,55 @@ function potatoTick(dt) {
   swapMats(true);
 }
 const gfxLow = () => gfx === 'low' || gfx === 'potato';
-// Grafikstufen: Hoch / Mittel / Niedrig / Sehr niedrig
+const gfxClean = () => gfx === 'clean';
+/* „Klar & schnell“: Laub, Nadeln, Gras, Büsche und Schilf ausblenden (Stämme, Steine und Hecken bleiben – die sind fest)
+   und Relief-Texturen (Normal-/Rauheits-/AO-Karten) abschalten. Beim Wechsel zurück kommt alles wieder. */
+let FOLIAGE = null;
+function foliageList() {
+  if (FOLIAGE) return FOLIAGE;
+  FOLIAGE = [];
+  const leafy = m => m && m !== HEDGE_MAT && (m === leafMat2 || m === treeLeafMat || m.map === TEX.needles || m.map === TEX.blades);
+  scene.traverse(o => {
+    if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+    const p = o.geometry && o.geometry.parameters, reed = o.isInstancedMesh && o.geometry.type === 'ConeGeometry' && p && p.radius < 0.1;
+    if (leafy(o.material) || reed) { o.userData.foliage = true; FOLIAGE.push(o); }
+  });
+  return FOLIAGE;
+}
+let RELIEF = null;
+function setRelief(off) {
+  if (!RELIEF) { RELIEF = new Set(); scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) if (m.normalMap || m.aoMap || m.roughnessMap || m.metalnessMap || m.bumpMap) RELIEF.add(m); }); }
+  for (const m of RELIEF) {
+    if (off && !m.userData.relief) {
+      m.userData.relief = { n: m.normalMap, a: m.aoMap, r: m.roughnessMap, mt: m.metalnessMap, b: m.bumpMap, rough: m.roughness, metal: m.metalness };
+      if (m.metalnessMap) { m.metalness = 0; m.roughness = 0.85; }   // Foto-Materialien: ohne ARM-Karte nicht metallisch
+      m.normalMap = m.aoMap = m.roughnessMap = m.metalnessMap = m.bumpMap = null; m.needsUpdate = true;
+    } else if (!off && m.userData.relief) {
+      const s = m.userData.relief; m.normalMap = s.n; m.aoMap = s.a; m.roughnessMap = s.r; m.metalnessMap = s.mt; m.bumpMap = s.b; m.roughness = s.rough; m.metalness = s.metal;
+      delete m.userData.relief; m.needsUpdate = true;
+    }
+  }
+}
+// Grafikstufen: Hoch / Mittel / Leistung / Klar & schnell / Niedrig / Sehr niedrig
 function applyGfx(v) {
-  const wasPotato = gfx === 'potato' && LAMB.size;
+  const wasPotato = gfx === 'potato' && LAMB.size, wasClean = gfx === 'clean';
   gfx = v;
-  const dpr = devicePixelRatio || 1;
-  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : v === 'perf' ? 0.9 : v === 'low' ? 0.7 : 0.5);
-  // „Leistung“: Schattenbild nicht in jedem Bild neu zeichnen (ui.js stößt es ~10× pro Sekunde an)
-  renderer.shadowMap.autoUpdate = v !== 'perf'; renderer.shadowMap.needsUpdate = true;
-  // „Leistung“: einfachere Schattenkanten (PCF statt weich gefiltert) – braucht neu übersetzte Shader
-  const shType = v === 'perf' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  const dpr = devicePixelRatio || 1, C = v === 'clean', thr = v === 'perf' || C;
+  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' || C ? 1 : v === 'perf' ? 0.9 : v === 'low' ? 0.7 : 0.5);
+  // „Leistung“/„Klar & schnell“: Schattenbild nicht in jedem Bild neu zeichnen (ui.js stößt es ~10× pro Sekunde an)
+  renderer.shadowMap.autoUpdate = !thr; renderer.shadowMap.needsUpdate = true;
+  // einfachere Schattenkanten (PCF statt weich gefiltert) – braucht neu übersetzte Shader
+  const shType = thr ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   if (renderer.shadowMap.type !== shType) { renderer.shadowMap.type = shType; scene.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.needsUpdate = true; }); }
-  if (window.setTreeLOD) window.setTreeLOD(v === 'perf' || v === 'low' || v === 'potato');   // einfachere Baumformen
+  if (window.setTreeLOD) window.setTreeLOD(thr || v === 'low' || v === 'potato');   // einfachere Baumformen
   sun.castShadow = !gfxLow();
-  if (window.grassI) window.grassI.visible = !gfxLow();
+  if (window.grassI) window.grassI.visible = !gfxLow() && !C;
   const P = v === 'potato';
   scene.fog.near = P ? FOG0.near * 0.45 : FOG0.near; scene.fog.far = P ? FOG0.far * 0.55 : FOG0.far;
   camera.far = P ? scene.fog.far + 10 : FOG0.cam; camera.updateProjectionMatrix();
-  CULL_DIST = P ? 150 : v === 'low' ? 200 : v === 'perf' ? 215 : FOG0.cull;
+  CULL_DIST = P ? 150 : v === 'low' ? 200 : thr ? 215 : FOG0.cull;
   if (P) swapMats(true); else if (wasPotato) swapMats(false);
+  if (C || wasClean) { for (const o of foliageList()) o.visible = !C; setRelief(C); }   // „Klar & schnell“ an/aus
   const size = v === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== size) {
     sun.shadow.mapSize.set(size, size);
