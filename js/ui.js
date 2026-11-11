@@ -88,7 +88,8 @@ function updateHUD(dt) {
   }
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1, gshop = ride.v < 0 ? nearGunShop() : null;
-  if (gshop) { hudSet('rideHint', 'html', `<b>${TOUCH ? 'EINSTEIGEN' : kbK('ride')}</b> – 🔫 Waffenladen öffnen (Waffen, Munition, Granaten)`); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
+  if (gshop) { hudSet('rideHint', 'html', gunshopHint(gshop)); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
+  if (GS.aim) { GS.aim.scale.setScalar(GS.aim.userData.s0); GS.aim = null; }   // Laden verlassen: Hervorhebung weg
   if (ride.v >= 0 && (ride.kind === 'tank' || ride.kind === 'heli')) {
     const nowS = performance.now() / 1000;
     if (ride.kind === 'tank') {

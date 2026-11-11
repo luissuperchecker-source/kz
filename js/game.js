@@ -315,16 +315,9 @@ document.addEventListener('wheel', e => {
   for (const a of kbActionsFor(e.deltaY > 0 ? 'WheelDown' : 'WheelUp')) { kbDown(a, false); kbUp(a); }
 });
 
-// Waffenladen auf der Karte (Kiosk): davor stehen und E drücken
-function nearGunShop() {
-  if (!me.alive) return null;
-  for (const s of window.GUN_SHOPS || []) if (Math.hypot(s.x - me.pos.x, s.z - me.pos.z) < 3.2) return s;
-  return null;
-}
-function openGunShop() {
-  if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) {} }
-  openShop(true);
-}
+// Waffenladen auf der Karte: drinnen stehen, Waffe anschauen und E drücken (gunshop.js)
+function nearGunShop() { return shopInside(); }
+function openGunShop() { gunshopInteract(); }
 function switchWeapon(n) {
   if (n === me.weapon || !me.owned[n]) return;
   me.weapon = n; me.reloading = 0; me.lastShot = performance.now() / 1000 - WEAPONS[n].rate + 0.3; me.scoped = false;

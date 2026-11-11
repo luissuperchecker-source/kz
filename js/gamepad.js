@@ -288,7 +288,7 @@ renderPadCfg();
 
 /* ---------- Menüs mit dem Controller bedienen ---------- */
 function padLayer() {
-  for (const id of ['tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
+  for (const id of ['gunCard', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
     const el = document.getElementById(id);
     if (el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none') return el;
   }
@@ -351,7 +351,8 @@ function padMenu(gp, pressed, dt) {
   }
   if (pressed(1)) {   // B = zurück
     const close = { tune: 'tuneClose', kbCfg: 'kbClose', padCfg: 'padClose', shop: 'shopClose', settings: 'setClose', inv: 'invClose' }[layer.id];
-    if (close) $(close).click();
+    if (layer.id === 'gunCard') gcClose();
+    else if (close) $(close).click();
     else if (layer.id === 'pause') padResume();
   }
   if (pressed(9)) {   // Start
@@ -450,7 +451,7 @@ function pollGamepad(dt) {
     }
     PAD.prev = cur; return;
   }
-  const overlay = ['tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
+  const overlay = ['gunCard', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
   if (running && locked && !overlay) {
     if (PAD.focus) padSetFocus(null);
     padGame(gp, pressed, released, dt);

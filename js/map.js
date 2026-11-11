@@ -472,11 +472,11 @@ function gunKiosk(x, z, f) {
   for (const s of [-2.2, 0, 2.2]) addBox(x + s, H - 0.12, z, 1.2, 0.08, 0.35, SHOP_LAMP, 0, { decor: true, round: 0, shadow: false });
   // Plätze für die ausgestellten Waffen: Wand hinten (2 Reihen), Seitenwände, Theke
   const displays = [];
-  let w = 0; const nextW = () => (w++ * 5 + 1) % 13;
+  let w = 0; const NB = WEAPONS.length - BASE_WEAPONS, nextW = () => BASE_WEAPONS + ((w++ * 4 + 2) % NB);   // nur Waffen, die man kaufen kann
   for (const y of [1.45, 2.35]) for (const ox of [-3, -1, 1, 3]) displays.push({ w: nextW(), x: x + ox, y, z: zBi + f * 0.14, ry: Math.PI / 2, rz: 0 });
   for (const s of [-1, 1]) for (const oz of [-1.9, -0.3]) displays.push({ w: nextW(), x: x + s * (W / 2 - T - 0.16), y: 1.75, z: z + f * oz, ry: 0, rz: 0 });
   for (const ox of [-1.7, 0, 1.7]) displays.push({ w: nextW(), x: x + ox, y: 1.13, z: zC, ry: Math.PI / 2 + (ox ? 0.25 : -0.15), rz: Math.PI / 2, lie: true });
-  window.GUN_SHOPS.push({ x, z: zC + f * 1.25, displays, keeper: [x + 0.8, zC - f * 1.0, x, zC + f * 3] });
+  window.GUN_SHOPS.push({ x, z: zC + f * 1.25, cx: x, cz: z, W, D, displays, keeper: [x + 0.8, zC - f * 1.0, x, zC + f * 3] });
 }
 function carSpot(x, z, yaw, ctype) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car', ctype }); }
 function truck(x, z, alongZ) {
@@ -2302,6 +2302,7 @@ function buildWeltMap() {
       window.MAP_JOBS.push({ id: 'post', x: cx - 6, z: cz + 13 });
       for (let k = 0; k < 2; k++) carSpot(cx + 14, cz - 6 + k * 6, Math.PI / 2);
       towerLobby(cx + 12, cz - 14, 14, 12, 34, TKM.office, false);
+      gunKiosk(cx + 18, cz + 18, 1);   // Waffenladen am Stadteingang (Tür zur Hauptstraße)
     } else if (key === '1,0') {   // TAXI-ZENTRALE (Firma)
       building(cx, cz - 10, 16, 10, 1, MAT.plaster2, { s: [0] }, { crates: 1 });
       tkSign(cx, 3.7, cz - 4.95, 8, 1.4, 0, tkSignMat('🚕 TAXI', '#ffd21f', '#111111', false));
@@ -2352,7 +2353,7 @@ function buildWeltMap() {
     if (key === '0,0') euRow(x0 + 3.5, cx + 4.4, z0 + 3.5, true, -1, 10, KEEP_FREE);
     if (key === '1,0') { euRow(x0 + 3.5, cx - 8.6, z0 + 3.5, true, -1, 9, KEEP_FREE); euRow(cx + 8.6, x1 - 3.5, z0 + 3.5, true, -1, 9, KEEP_FREE); }
     // Straßenbäume und Laternen auf dem Gehweg (nicht an Haltepunkten von Taxi/Lieferungen und nicht auf Waffen)
-    const sTree = (x, z) => { if (!window.MAP_ADDR.some(a => Math.hypot(a.x - x, a.z - z) < 3) && !KEEP_FREE.some(([px, pz]) => Math.hypot(px - x, pz - z) < 3)) leafTree(x, z, 0.75); };
+    const sTree = (x, z) => { if (!window.MAP_ADDR.some(a => Math.hypot(a.x - x, a.z - z) < 3) && !KEEP_FREE.some(([px, pz]) => Math.hypot(px - x, pz - z) < 3) && !window.GUN_SHOPS.some(s => Math.hypot(s.cx - x, s.cz - z) < 9)) leafTree(x, z, 0.75); };
     for (const tx of [x0 + 8, x0 + 25.5, x1 - 8]) { sTree(tx, z0 + 1.6); sTree(tx, z1 - 1.6); }
     for (const tz of [z0 + 10, z1 - 10]) { sTree(x0 + 1.6, tz); sTree(x1 - 1.6, tz); }
     tkLamp(x0 + 1, cz, 1, 0); tkLamp(x1 - 1, cz, -1, 0);
@@ -2414,7 +2415,6 @@ function buildWeltMap() {
       for (const k of [-1, 1]) { addBox(cx + k * 7, 0, cz + 4, 3, 1, 1.6, MAT.crate, 0); addBox(cx + k * 7, 2.2, cz + 4, 3.4, 0.1, 2.2, MAT.ctrOrange, 2.6, { decor: true }); }
       for (const [x, z] of [[cx + 6, cz - 6], [cx - 6, cz + 10]]) leafTree(x, z, 0.8);
       car(cx + 2, cz + 8, true); car(cx - 2, cz + 8, true); car(cx + 20, cz - 6, false);
-      gunKiosk(cx - 14, cz + 22, -1);   // Waffenladen am Marktplatz
       continue;
     }
     if (i === 2 && j === 2) {   // Badesee-Wiese
