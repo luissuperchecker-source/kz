@@ -475,6 +475,16 @@ function makeGun(w) {
 function makeGunParts(w, parent, shadow = false) {
   const g = makeGun(w); parent.add(partsToGroup(g.parts, shadow)); return g.len;
 }
+// Waffenläden (map.js): Waffen an der Wand und auf der Theke aufstellen (weit weg werden sie ausgeblendet, siehe cullChunks)
+window.SHOP_DISPLAYS = [];
+for (const s of window.GUN_SHOPS || []) {
+  const grp = new THREE.Group();
+  for (const d of s.displays || []) {
+    const g = new THREE.Group(); makeGunParts(d.w, g, false);
+    g.position.set(d.x, d.y, d.z); g.rotation.set(0, d.ry, d.rz); g.scale.setScalar(d.lie ? 1.25 : 1.45); grp.add(g);
+  }
+  grp.userData.c = [s.x, s.z]; scene.add(grp); window.SHOP_DISPLAYS.push(grp);
+}
 let gunInfo = null;
 // Waffe in der Hand: Hauptteil + bewegliche Teile (Magazin, Pumpe, Verschluss, linke Hand)
 const vm = { main: null, mag: null, pump: null, bolt: null, left: null, eject: null };

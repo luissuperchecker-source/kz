@@ -442,19 +442,41 @@ function car(x, z, alongX) {
   MAP_VEHICLES.push({ x, z, yaw });
 }
 // Fahrbares Auto abstellen (yaw: Fahrtrichtung, 0 = +x)
-// Waffenladen-Kiosk: Häuschen mit Theke, Schaufenster und Schild; face = Richtung der Theke (+1 = +z, -1 = -z)
+/* Begehbarer Waffenladen: Tür und Schaufenster vorne, innen Holzboden, Waffenwand (hinten und an den Seiten),
+   Verkaufstheke mit Waffen darauf, Verkäufer dahinter. face = Seite der Tür (+1 = +z, -1 = -z).
+   Die Waffen-Modelle kommen aus models.js (werden dort an den gespeicherten Plätzen aufgestellt). */
 window.GUN_SHOPS = [];
-function gunKiosk(x, z, face) {
-  const dark = MAT.dark || MAT.concrete;
-  addBox(x, 0, z, 5, 3.2, 3.2, MAT.concrete, 2, { round: 0 });
-  addBox(x, 3.2, z, 5.6, 0.25, 3.8, dark, 1, { decor: true, round: 0 });
-  const fz = z + face * 1.6;
-  addBox(x, 0, fz + face * 0.35, 4.2, 1.05, 0.7, TKM.wood, 2, { round: 0.03 });   // Theke
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.6), new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.15, metalness: 0.6 }));
-  glass.position.set(x, 1.95, fz + face * 0.02); glass.rotation.y = face > 0 ? 0 : Math.PI; scene.add(glass);
-  tkSign(x, 2.95, fz + face * 0.03, 4.6, 0.55, face > 0 ? 0 : Math.PI, tkSignMat('🔫 WAFFENLADEN', '#1b1b1b', '#ffcc33', false));
-  addBox(x, 2.6, fz + face * 0.7, 5.2, 0.08, 1.4, MAT.ctrRed, 2.6, { decor: true, round: 0 });   // Markise
-  window.GUN_SHOPS.push({ x, z: fz + face * 1.6 });
+const SHOP_LAMP = new THREE.MeshStandardMaterial({ color: 0xfff6e0, emissive: 0xfff1d0, emissiveIntensity: 1.2 });
+function gunKiosk(x, z, f) {
+  const W = 9, D = 8, H = 3.6, T = 0.25, NR = { round: 0 };
+  const zF = z + f * (D / 2 - T / 2), zB = z - f * (D / 2 - T / 2);
+  wallRun('x', x - W / 2, x + W / 2, zF, 0, H, T, MAT.brick, [[x - 1.1, x + 1.1, 0, 2.6], [x - 3.7, x - 2.0, 0.9, 2.5], [x + 2.0, x + 3.7, 0.9, 2.5]], NR);
+  wallRun('x', x - W / 2, x + W / 2, zB, 0, H, T, MAT.brick, [], NR);
+  for (const s of [-1, 1]) wallRun('z', z - D / 2 + T, z + D / 2 - T, x + s * (W / 2 - T / 2), 0, H, T, MAT.brick, [], NR);
+  addBox(x, H, z, W + 0.5, 0.3, D + 0.5, MAT.dark, 1, NR);
+  decalT(x, z, W - 0.5, D - 0.5, TKM.wood, 2, 0, 0.015);
+  // Schaufensterglas, Türrahmen, Schild und Markise außen
+  const glassM = new THREE.MeshStandardMaterial({ color: 0x9fc4d8, roughness: 0.05, metalness: 0.4, transparent: true, opacity: 0.3, depthWrite: false });
+  for (const s of [-1, 1]) { const g = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.6), glassM); g.position.set(x + s * 2.85, 1.7, zF); g.userData.noMerge = true; scene.add(g); }
+  for (const s of [-1, 1]) addBox(x + s * 1.18, 0, zF + f * 0.08, 0.16, 2.7, 0.2, MAT.dark, 1, { decor: true, round: 0 });
+  addBox(x, 2.6, zF + f * 0.08, 2.5, 0.16, 0.2, MAT.dark, 1, { decor: true, round: 0 });
+  tkSign(x, 3.1, zF + f * 0.15, 6.5, 0.8, f > 0 ? 0 : Math.PI, tkSignMat('🔫 WAFFENLADEN', '#1b1b1b', '#ffcc33', false));
+  addBox(x, 2.75, zF + f * 0.75, 8, 0.08, 1.3, MAT.ctrRed, 2.6, { decor: true, round: 0 });
+  // Innen: Holzverkleidung hinten, Theke mit Glasplatte, Lampen
+  const zBi = zB + f * (T / 2 + 0.04);
+  addBox(x, 0.8, zBi + f * 0.03, W - 1.2, 2.5, 0.06, TKM.wood, 2, { decor: true, round: 0 });
+  for (const s of [-1, 1]) addBox(x + s * (W / 2 - T - 0.03), 1.1, z - f * 0.6, 0.06, 1.8, 5.2, TKM.wood, 2, { decor: true, round: 0 });
+  const zC = z - f * 1.0;
+  addBox(x, 0, zC, 5.4, 1.05, 0.85, TKM.wood, 2, { round: 0.02 });
+  addBox(x, 1.05, zC, 5.5, 0.05, 0.95, MAT.dark, 1, { decor: true, round: 0 });
+  for (const s of [-2.2, 0, 2.2]) addBox(x + s, H - 0.12, z, 1.2, 0.08, 0.35, SHOP_LAMP, 0, { decor: true, round: 0, shadow: false });
+  // Plätze für die ausgestellten Waffen: Wand hinten (2 Reihen), Seitenwände, Theke
+  const displays = [];
+  let w = 0; const nextW = () => (w++ * 5 + 1) % 13;
+  for (const y of [1.45, 2.35]) for (const ox of [-3, -1, 1, 3]) displays.push({ w: nextW(), x: x + ox, y, z: zBi + f * 0.14, ry: Math.PI / 2, rz: 0 });
+  for (const s of [-1, 1]) for (const oz of [-1.9, -0.3]) displays.push({ w: nextW(), x: x + s * (W / 2 - T - 0.16), y: 1.75, z: z + f * oz, ry: 0, rz: 0 });
+  for (const ox of [-1.7, 0, 1.7]) displays.push({ w: nextW(), x: x + ox, y: 1.13, z: zC, ry: Math.PI / 2 + (ox ? 0.25 : -0.15), rz: Math.PI / 2, lie: true });
+  window.GUN_SHOPS.push({ x, z: zC + f * 1.25, displays, keeper: [x + 0.8, zC - f * 1.0, x, zC + f * 3] });
 }
 function carSpot(x, z, yaw, ctype) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car', ctype }); }
 function truck(x, z, alongZ) {
@@ -2667,6 +2689,7 @@ window.cullChunks = dt => {
   if (!CHUNK) return;
   cullT -= dt; if (cullT > 0) return; cullT = 0.2;
   const c = camera.position;
+  for (const g of window.SHOP_DISPLAYS || []) g.visible = Math.hypot(g.userData.c[0] - c.x, g.userData.c[1] - c.z) < 70;   // Waffen im Laden nur in der Nähe zeichnen
   for (const g of FAR_GROUPS) {
     const dx = Math.max(g.r[0] - c.x, 0, c.x - g.r[2]), dz = Math.max(g.r[1] - c.z, 0, c.z - g.r[3]);
     g.o.visible = Math.hypot(dx, dz) < CULL_DIST + 70 && (g.o !== window.grassI || !gfxLow());

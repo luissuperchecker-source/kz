@@ -88,6 +88,7 @@ if (WELT) {
   mk('pizza', window.PIZZA_CHEF, 'chef', 3); mk('post', window.POST_CLERK, 'post', 11);
   mk('taxi', window.TAXI_BOSS, null, 17); mk('farm', window.FARM_BOSS, null, 29);
   mk('fire', window.FIRE_BOSS, null, 41); mk('trash', window.TRASH_BOSS, 'post', 53);
+  (window.GUN_SHOPS || []).forEach((s, i) => { if (!s.keeper) return; const n = makeNPC(61 + i * 7, null); NPCS.push(n); npcShow(n, s.keeper[0], s.keeper[1], s.keeper[2], s.keeper[3]); });   // Verkäufer hinter der Theke
   if (bosses.pizza) npcLook(bosses.pizza, window.PIZZA_PICKUP[0], window.PIZZA_PICKUP[1]);
   if (bosses.post) npcLook(bosses.post, window.POST_PICKUP[0], window.POST_PICKUP[1]);
 }
@@ -392,7 +393,7 @@ function updateJobs(dt) {
     mk.ring.scale.setScalar(1 + Math.sin(tnow * 3) * 0.06); mk.sign.lookAt(camera.position.x, mk.sign.position.y, camera.position.z);
     if (me.alive && Math.hypot(mk.c.x - me.pos.x, mk.c.z - me.pos.z) < (ride.v >= 0 ? 5 : 3.2)) JOBS.near = mk.c;
   }
-  const key = TOUCH ? 'MOPED' : (typeof PCFG !== 'undefined' && document.body.classList.contains('hasPad') ? btnLabel(PCFG.map.ride) : 'E');
+  const key = TOUCH ? 'EINSTEIGEN' : (typeof PCFG !== 'undefined' && document.body.classList.contains('hasPad') ? btnLabel(PCFG.map.ride) : 'E');
   const j = JOBS.cur;
   // Hinweise unten
   let hint = '';

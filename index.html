@@ -137,6 +137,19 @@
   #tune .lv { display: inline-flex; gap: 3px; } #tune .lv i { width: 14px; height: 8px; border-radius: 2px; background: rgba(255,255,255,.15); } #tune .lv i.on { background: #ffcc33; }
   #tune .tSec { margin: 12px 0 6px; color: #ffcc33; font-weight: 700; font-size: 13px; letter-spacing: 1px; }
   #tune .chips { display: flex; flex-wrap: wrap; gap: 6px; } #tune .chips button { width: auto; margin: 0; padding: 6px 10px; font-size: 12.5px; } #tune .chips button.on { outline: 2px solid #ffcc33; }
+  #tune .panel { width: min(520px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; }
+  #tune .tName { font-size: 20px; font-weight: 800; } #tune .tInfo { color: #a8c0a8; font-size: 12.5px; margin-bottom: 8px; }
+  #tune .tStats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 6px 0 10px; }
+  #tune .tStats div { background: rgba(255,204,51,.08); border: 1px solid #4a5a3a; border-radius: 8px; padding: 6px 4px; text-align: center; }
+  #tune .tStats b { display: block; font-size: 17px; color: #ffcc33; } #tune .tStats span { font-size: 10.5px; color: #a8c0a8; }
+  #tune .tTabs { display: flex; gap: 8px; margin-bottom: 8px; } #tune .tTabs button { flex: 1; margin: 0; padding: 8px; }
+  #tune .tTabs button.on { outline: 2px solid #ffcc33; }
+  #tune .gain { display: block; font-style: normal; color: #7dff7a; font-size: 11.5px; font-weight: 700; }
+  #tune .lv i.own { background: rgba(255,204,51,.4); }
+  #tune .chips button.sw { width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); }
+  #tune .chips button.sw.on { outline: 3px solid #ffcc33; outline-offset: 2px; }
+  #tune .tNote { font-size: 11.5px; color: #8fa88f; margin-top: 10px; }
+  @media (max-width: 520px) { #tune .tStats { grid-template-columns: repeat(3, 1fr); } }
   #settings, #inv, #shop, #tune { position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
   #inv { z-index: 9; background: rgba(0,0,0,.45); }
   .invPanel { width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
@@ -258,6 +271,23 @@
   .tb[data-t=knife] { right: 184px; bottom: 160px; width: 50px; height: 50px; font-size: 11px; }
   .tb[data-t=pause] { right: 14px; top: 10px; width: 42px; height: 42px; border-radius: 9px; font-size: 18px; }
   .tb[data-t=board] { right: 64px; top: 10px; width: 42px; height: 42px; border-radius: 9px; font-size: 18px; }
+  /* Handy im Fahrzeug: Pfeile links, Gas/Bremse rechts; Fuß-Knöpfe ausblenden */
+  .tb.veh { display: none; }
+  body.inVeh .tb.veh { display: flex; }
+  body.inVeh #tStick, body.inVeh .tb[data-t=jump], body.inVeh .tb[data-t=scope], body.inVeh .tb[data-t=reload], body.inVeh .tb[data-t=swap],
+  body.inVeh .tb[data-t=crouch], body.inVeh .tb[data-t=nade], body.inVeh .tb[data-t=knife] { display: none; }
+  body.inVeh .tb[data-t=fire] { right: 30px; bottom: 210px; width: 74px; height: 74px; }
+  .tb[data-t=vl] { left: 22px; bottom: 30px; width: 96px; height: 96px; border-radius: 18px; font-size: 40px; }
+  .tb[data-t=vr] { left: 132px; bottom: 30px; width: 96px; height: 96px; border-radius: 18px; font-size: 40px; }
+  .tb[data-t=vg] { right: 22px; bottom: 30px; width: 104px; height: 104px; border-radius: 18px; font-size: 34px; background: rgba(40,170,70,.45); }
+  .tb[data-t=vb] { right: 140px; bottom: 30px; width: 84px; height: 84px; border-radius: 18px; font-size: 28px; background: rgba(200,60,40,.4); }
+  .tb[data-t=vg] small, .tb[data-t=vb] small, .tb[data-t=vd] small, .tb[data-t=nitro] small { font-size: 10px; }
+  .tb[data-t=vh] { right: 140px; bottom: 128px; width: 84px; height: 62px; border-radius: 14px; font-size: 11px; }
+  .tb[data-t=vd] { right: 236px; bottom: 30px; width: 70px; height: 70px; border-radius: 14px; font-size: 22px; }
+  .tb[data-t=tune] { right: 186px; top: 10px; width: 50px; height: 42px; border-radius: 9px; font-size: 20px; }
+  body.inVeh .tb[data-t=ride] { left: auto; right: 114px; top: 10px; width: 66px; height: 42px; font-size: 10px; }
+  .tb[data-t=nitro] { right: 236px; bottom: 30px; width: 70px; height: 70px; border-radius: 14px; font-size: 22px; background: rgba(255,120,20,.4); }
+  body.inVeh:not(.vCar) .tb[data-t=tune], body.inVeh:not(.vCar) .tb[data-t=nitro], body.inVeh:not(.vHeli) .tb[data-t=vd], body.inVeh.vTank .tb[data-t=vh] { display: none; }
   body.touch #hpBox { left: 14px; bottom: auto; top: 84px; width: 150px; }
   body.touch #hpText { font-size: 24px; }
   body.touch #ammoBox { right: auto; left: 50%; bottom: 8px; transform: translateX(-50%); text-align: center; }
@@ -366,9 +396,18 @@
   <div class="tb" data-t="crouch">DUCK</div>
   <div class="tb" data-t="nade">G</div>
   <div class="tb" data-t="knife">MES</div>
-  <div class="tb" data-t="ride">MOPED</div>
+  <div class="tb" data-t="ride">EIN-<br>STEIGEN</div>
   <div class="tb" data-t="board">☰</div>
   <div class="tb" data-t="pause">⏸</div>
+  <!-- im Fahrzeug: Pfeile zum Lenken, Gas/Bremse, Sondertaste, Tuning, Nitro -->
+  <div class="tb veh" data-t="vl">◀</div>
+  <div class="tb veh" data-t="vr">▶</div>
+  <div class="tb veh" data-t="vg">▲<br><small>GAS</small></div>
+  <div class="tb veh" data-t="vb">▼<br><small>BREMSE</small></div>
+  <div class="tb veh" data-t="vh" id="tbVh">HAND-<br>BREMSE</div>
+  <div class="tb veh" data-t="vd">▼<br><small>RUNTER</small></div>
+  <div class="tb veh" data-t="tune">🔧</div>
+  <div class="tb veh" data-t="nitro">🔥<br><small>NITRO</small></div>
 </div>
 <div id="rotateHint">📱↻<br>Bitte das Handy quer halten</div>
 
@@ -506,16 +545,16 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261111-170806"></script>
-<script src="js/map.js?v=20261111-170806"></script>
-<script src="js/models.js?v=20261111-170806"></script>
-<script src="js/game.js?v=20261111-170806"></script>
-<script src="js/vehicles.js?v=20261111-170806"></script>
-<script src="js/net.js?v=20261111-170806"></script>
-<script src="js/ui.js?v=20261111-170806"></script>
-<script src="js/jobs.js?v=20261111-170806"></script>
-<script src="js/gamepad.js?v=20261111-170806"></script>
-<script src="js/keybinds.js?v=20261111-170806"></script>
-<script src="js/tuning.js?v=20261111-170806"></script>
+<script src="js/core.js?v=20261111-172423"></script>
+<script src="js/map.js?v=20261111-172423"></script>
+<script src="js/models.js?v=20261111-172423"></script>
+<script src="js/game.js?v=20261111-172423"></script>
+<script src="js/vehicles.js?v=20261111-172423"></script>
+<script src="js/net.js?v=20261111-172423"></script>
+<script src="js/ui.js?v=20261111-172423"></script>
+<script src="js/jobs.js?v=20261111-172423"></script>
+<script src="js/gamepad.js?v=20261111-172423"></script>
+<script src="js/keybinds.js?v=20261111-172423"></script>
+<script src="js/tuning.js?v=20261111-172423"></script>
 </body>
 </html>

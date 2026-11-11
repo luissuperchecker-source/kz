@@ -135,6 +135,15 @@ if (TOUCH) {
     if (name === 'fire') { me.trigger = down; if (down) me.firedPress = false; }
     else if (name === 'jump') keys.Space = keys.Handbrake = down;
     else if (name === 'crouch') { if (down) startCrouch(); keys.KeyC = down; }
+    // Fahrzeug-Knöpfe (gehalten)
+    else if (name === 'vl') keys.KeyA = down;
+    else if (name === 'vr') keys.KeyD = down;
+    else if (name === 'vg') keys.KeyW = down;
+    else if (name === 'vb') keys.KeyS = down;
+    else if (name === 'vh') keys.Space = keys.Handbrake = down;
+    else if (name === 'vd') keys.KeyC = down;
+    else if (name === 'nitro') { if (down) useNitro(); }
+    else if (name === 'tune') { if (down) openTuning(); }
     else if (!down) { if (name === 'board') $('board').classList.add('hidden'); }
     else if (name === 'scope') me.scoped = !me.scoped;
     else if (name === 'reload') startReload();
@@ -155,7 +164,7 @@ if (TOUCH) {
         btn.classList.add('on');
         fingers.set(t.identifier, { x: t.clientX, y: t.clientY, btn, look: btn.dataset.t === 'fire' });
         press(btn.dataset.t, true);
-      } else if (t.clientX < innerWidth * 0.4 && moveId === null) {
+      } else if (t.clientX < innerWidth * 0.4 && moveId === null && ride.v < 0) {   // im Fahrzeug: Pfeile statt Joystick
         moveId = t.identifier; mx0 = t.clientX; my0 = t.clientY;
         stick.classList.add('on'); stick.style.left = mx0 + 'px'; stick.style.top = my0 + 'px'; knob.style.transform = '';
       } else fingers.set(t.identifier, { x: t.clientX, y: t.clientY, look: true });
@@ -220,6 +229,7 @@ const KB_ACTIONS = [
   ['w5', 'Ladenwaffe', ['Digit5', ''], null], ['board', 'Punktestand', ['Tab', ''], null], ['inv', 'Inventar', ['KeyI', ''], null], ['jobCancel', 'Job abbrechen', ['KeyJ', ''], null],
   ['trackStart', 'Zur Startlinie (Rennstrecke)', ['KeyT', ''], null],
   ['tune', 'Tuning-Menü (im Auto)', ['KeyU', ''], null],
+  ['nitro', 'Nitro zünden (im Auto)', ['KeyN', ''], null],
 ];
 const KB_DEFAULT = () => Object.fromEntries(KB_ACTIONS.map(a => [a[0], a[2].slice()]));
 let KB = KB_DEFAULT(), KB_LABEL = {};
@@ -269,6 +279,7 @@ function kbDown(a, repeat) {
   else if (a === 'jobCancel') document.dispatchEvent(new CustomEvent('kzaction', { detail: a }));
   else if (a === 'trackStart') trackToStart();
   else if (a === 'tune') openTuning();
+  else if (a === 'nitro') useNitro();
 }
 function kbUp(a) {
   if (KB_HOLD[a]) keys[KB_HOLD[a]] = false;

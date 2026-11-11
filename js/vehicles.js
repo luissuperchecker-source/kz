@@ -195,7 +195,9 @@ function makeCar(paint, rim = RIM, type = 'drift') {
   if (type === 'race') body.push(B(0.5, 0.03, 1.9, CARBON, 2.3, 0.13, 0));   // breitere Frontlippe
   const bodyG = partsToGroup(body, true); root.add(bodyG);
   if (type === 'race') bodyG.position.y = -0.05;   // tiefergelegt
-  if (type !== 'muscle') { const wing = makeWing(paint, type === 'race'); wing.userData.isWing = true; if (type === 'race') wing.position.y = -0.05; root.add(wing); }
+  let wing = null;
+  if (type !== 'muscle') { wing = makeWing(paint, type === 'race'); wing.userData.isWing = true; if (type === 'race') wing.position.y = -0.05; root.add(wing); }
+  const baseY = bodyG.position.y;
   // Räder: Lenk-Gelenk (vorne) → drehendes Rad mit Reifen, Felge, Speichen
   const spinners = [], fronts = [];
   for (const wx of [1.42, -1.45]) for (const s of [-1, 1]) {
@@ -213,7 +215,41 @@ function makeCar(paint, rim = RIM, type = 'drift') {
   }
   scene.add(root);
   const dummy = new THREE.Group();
-  return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true, paint };
+  return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true, paint, rim, bodyG, wing, baseY };
+}
+// Optik-Tuning (nur bei dir sichtbar): Felgen, Neon-Unterboden, Heckflügel, Tieferlegung
+const RIM_COLS = [0xc8ccd2, 0x18191b, 0xd4af37, 0xff2e9a, 0x00e5ff, 0x9dff00, 0xff3b30, 0xffffff];
+const RIM_MATS = RIM_COLS.map(c => new THREE.MeshStandardMaterial({ color: c, roughness: 0.28, metalness: 0.85, emissive: c, emissiveIntensity: 0.05 }));
+const NEON_COLS = [0x00e5ff, 0xff2e9a, 0x9dff00, 0x8a2be2, 0xff7a00, 0xffffff];
+function applyLook(v, type) {
+  const m = v.mesh; if (!m.car) return;
+  const T = tuneOf(type);
+  if (!v.origPaint) v.origPaint = m.paint;
+  if (!v.origRim) v.origRim = m.rim;
+  setCarPaint(v, T.liv >= 0 ? paintFor(type, T.liv) : v.origPaint);
+  const rim = T.rim >= 0 ? RIM_MATS[T.rim] : v.origRim;
+  if (m.rim !== rim) { const old = m.rim; m.root.traverse(o => { if (o.isMesh && o.material === old) o.material = rim; }); m.rim = rim; }
+  if (T.neon >= 0) {
+    if (!m.neon) {
+      m.neon = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 2.3), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, map: NEON_TEX }));
+      m.neon.rotation.x = -Math.PI / 2; m.neon.position.y = 0.04; m.root.add(m.neon);
+    }
+    m.neon.material.color.setHex(NEON_COLS[T.neon]); m.neon.visible = true;
+  } else if (m.neon) m.neon.visible = false;
+  if (m.wing) m.wing.visible = T.wing !== false;
+  const low = 0.035 * T.susp; m.bodyG.position.y = m.baseY - low; if (m.wing) m.wing.position.y = (type === 'race' ? -0.05 : 0) - low;
+}
+// weicher Lichtfleck für das Neon (in der Mitte hell, zum Rand hin aus)
+const NEON_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 8, 64, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.6, 'rgba(255,255,255,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c); })();
+// Nitro (Lachgas): 3 s mehr Schub, danach 12 s aufladen
+const NITRO_T = 3, NITRO_CD = 12;
+function useNitro() {
+  if (ride.v < 0 || ride.kind !== 'car') return;
+  if (!tuneOf(ride.ctype).nitro) { showMsg('🔥 Kein Nitro eingebaut – im Tuning-Menü kaufen (' + kbK('tune') + ')'); return; }
+  if ((ride.nitroCd || 0) > 0) { showMsg(`🔥 Nitro lädt noch (${Math.ceil(ride.nitroCd)} s)`); return; }
+  ride.nitroT = NITRO_T; ride.nitroCd = NITRO_T + NITRO_CD; sndBoom(ride.pos.clone()); me.shake = Math.max(me.shake, 0.25);
 }
 /* ---------- Panzer (vorne = +x): Wanne, Ketten mit Laufrollen, drehbarer Turm, Kanone hebt/senkt sich ---------- */
 const TANK_MAT = {
@@ -415,15 +451,17 @@ const TIRES = [{ n: 'Drift-Reifen', muR: 0.86, muF: 0.97, price: 300 }, { n: 'Se
 const TUNE_COST = { eng: [400, 900, 1800], susp: [300, 700], steer: [250, 600], brake: [250, 600] };
 let TUNE = {};
 try { TUNE = JSON.parse(localStorage.getItem('kz_tune') || '{}'); } catch (e) {}
-const tuneOf = t => (TUNE[t] = Object.assign({ eng: 0, susp: 0, steer: 0, brake: 0, tire: 1, tires: [1], liv: -1 }, TUNE[t] || {}));
+const TUNE_DEF = { eng: 0, susp: 0, steer: 0, brake: 0, tire: 1, tires: [1], liv: -1, rim: -1, neon: -1, neonOwn: false, wing: true, nitro: false };
+// immer dasselbe Objekt pro Autotyp (fehlende Werte werden ergänzt)
+const tuneOf = t => { const o = TUNE[t] || (TUNE[t] = {}); for (const k in TUNE_DEF) if (o[k] === undefined) o[k] = Array.isArray(TUNE_DEF[k]) ? TUNE_DEF[k].slice() : TUNE_DEF[k]; return o; };
 const saveTune = () => { try { localStorage.setItem('kz_tune', JSON.stringify(TUNE)); } catch (e) {} };
 function carParams(type) {
   const T = tuneOf(type), K = Object.assign({}, CARP, (CAR_TYPES[type] || CAR_TYPES.drift).p), tr = TIRES[T.tire] || TIRES[1];
-  K.P *= 1 + 0.13 * T.eng; K.Fmax *= 1 + 0.1 * T.eng;
+  K.P *= 1 + 0.13 * T.eng; K.Fmax *= 1 + 0.1 * T.eng; K.rev *= 1 + 0.06 * T.eng;   // Motor: mehr Leistung und höhere Drehzahl
   K.muR *= tr.muR; K.muF *= tr.muF;
   K.h -= 0.05 * T.susp; K.Iz *= 1 - 0.05 * T.susp;
   K.maxSteer += 0.09 * T.steer;
-  K.brake *= 1 + 0.18 * T.brake;
+  K.brake *= 1 + 0.18 * T.brake; K.absD = 1.3 * T.brake;   // Bremsen-Tuning: stärkere Beläge + ABS (zusätzliche Verzögerung)
   return K;
 }
 
@@ -545,10 +583,9 @@ function startRide(i) {
   engineSound(true);
   if (v.kind === 'car') {
     ride.ctype = v.ctype || 'drift'; ride.carK = carParams(ride.ctype);
-    if (!v.origPaint) v.origPaint = v.mesh.paint;
-    const T = tuneOf(ride.ctype); setCarPaint(v, T.liv >= 0 ? paintFor(ride.ctype, T.liv) : v.origPaint);
+    applyLook(v, ride.ctype); ride.nitroT = 0; ride.nitroCd = 0;
     const ct = CAR_TYPES[ride.ctype];
-    showMsg(`${ct.name}: ${ct.info}  ·  ${kbK('tune')} = Tuning`);
+    showMsg(`${ct.name}: ${ct.info}  ·  ${TOUCH ? '🔧' : kbK('tune')} = Tuning`);
   } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
   else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
   else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
@@ -676,7 +713,15 @@ function updateRide(dt) {
     ride.speed *= 0.25;
     if (isCar) { ride.cvx *= 0.3; ride.cvz *= 0.3; ride.yawRate *= 0.3; if (sp > 6 && DRIFT.pts > 0) { showMsg('💥 CRASH! Drift verloren'); DRIFT.pts = 0; DRIFT.time = 0; } }
   }
-  if (isCar) { driftScore(dt); trackLap(dt); }
+  if (isCar) {
+    driftScore(dt); trackLap(dt);
+    if (ride.nitroT > 0) {   // Nitro-Flammen aus dem Auspuff
+      ride.nitroT -= dt;
+      const ex = vehicles[ride.v].mesh.root.localToWorld(new THREE.Vector3(-2.45, 0.33, 0.42));
+      puff(ex, Math.random() < 0.5 ? 0x4aa8ff : 0xff8a20, 0.28, 0.25, new THREE.Vector3(-Math.cos(ride.yaw) * 6, 0.3, Math.sin(ride.yaw) * 6), { opacity: 0.9, grow: 2.5 });
+    }
+    if (ride.nitroCd > 0) ride.nitroCd -= dt;
+  }
   if (ride.pos.y < -10) ride.pos.set(0, 2, 0);
   // Spielerposition = auf dem Sitz
   me.pos.set(ride.pos.x - Math.cos(ride.yaw) * K.back, ride.pos.y + K.up, ride.pos.z + Math.sin(ride.yaw) * K.back);
@@ -853,7 +898,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     const capR = K.muR * FzR;
     if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W; FxF = -Fb * 0.65; brakeR = Fb * 0.35; }
     else if (brakeIn) drive = u > -12 ? -brakeIn * 4200 : 0;   // rückwärts
-    else if (gas) drive = wR > K.rev ? 0 : gas * Math.min(K.Fmax, K.P / Math.max(Math.abs(wR), 4));
+    else if (gas) { const nb = ride.nitroT > 0 ? 1.65 : 1; drive = wR > K.rev * (nb > 1 ? 1.2 : 1) ? 0 : gas * nb * Math.min(K.Fmax, K.P / Math.max(Math.abs(wR), 4)); }   // Nitro: mehr Schub und Drehzahl
     if (K.tc && gas && wR - u > 0.08 * Math.max(Math.abs(u), 3)) drive *= 1 - K.tc;   // Traktionskontrolle (Rennwagen): Gas weg, wenn die Räder durchdrehen
     FxF = Math.max(-K.muF * FzF, FxF);
     if (hand && Math.abs(u) > 1) brakeR = Math.max(brakeR, 2.2 * capR);   // Handbremse blockiert die Hinterräder
@@ -875,6 +920,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     const Fx = FxR + FxF * cd - FyF * sd - Fdrag, Fy = FyR + FxF * sd + FyF * cd;
     const axNew = Fx / K.m;
     u += (axNew + r * vy) * h; vy += (Fy / K.m - r * u) * h;
+    if (K.absD && brakeIn && u > 0.5) u = Math.max(0.3, u - K.absD * brakeIn * h);
     r += ((K.a * (FyF * cd + FxF * sd)) - K.b * FyR) / K.Iz * h;
     // Drift-Hilfe (Tastatur stark, Lenkrad schwächer): ab ~40° Querstellung bremst sie das Weiterdrehen, damit man sich nicht sofort dreht
     const beta = Math.atan2(vy, Math.max(Math.abs(u), 1));
