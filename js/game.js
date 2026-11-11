@@ -94,8 +94,23 @@ function lockPointer() {
       if (f && !document.fullscreenElement) { const r = f.call(d); if (r && r.then) r.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {}); } } catch (e) {}
     setLocked(true); return;
   }
+  if (FS.on) fsEnter();
   try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
 }
+// Vollbild-Modus (Optionen): an = Spiel läuft im Vollbild, auch nach dem Zurückkehren ins Spiel
+const FS = { on: false };
+try { FS.on = localStorage.getItem('kz_fs') === '1'; } catch (e) {}
+function fsEnter() {
+  const d = document.documentElement, f = d.requestFullscreen || d.webkitRequestFullscreen;
+  if (f && !document.fullscreenElement) { try { const r = f.call(d); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+}
+function fsLabel() { $('btnFs').textContent = '⛶ Vollbild-Modus: ' + (FS.on ? 'AN' : 'AUS'); }
+$('btnFs').onclick = () => {
+  FS.on = !FS.on; try { localStorage.setItem('kz_fs', FS.on ? '1' : '0'); } catch (e) {}
+  if (FS.on) fsEnter(); else if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+  fsLabel();
+};
+fsLabel();
 const touchIn = { mx: 0, my: 0, sprint: false };
 function setLocked(v) {
   locked = v;

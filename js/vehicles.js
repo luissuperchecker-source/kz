@@ -381,7 +381,7 @@ function startRide(i) {
   const v = vehicles[i]; if (!v || ride.v === i || !me.alive) return;
   enterPending = 0; rideLeft.v = -1;
   ride.v = i; ride.pos.set(v.x, v.y, v.z); ride.vel.set(0, 0, 0); ride.yaw = v.yaw; ride.speed = 0; ride.lean = 0; ride.fp = 0;
-  ride.wh = 0; ride.whT = 0; ride.whCreep = 0;
+  ride.wh = 0; ride.whT = 0; ride.whV = 0;
   ride.kind = v.kind; const K = VK[v.kind]; ride.h = K.h; ride.r = K.r; ride.runT = {};
   ride.cvx = 0; ride.cvz = 0; ride.yawRate = 0; ride.steerS = 0; ride.slip = 0; ride.ax = 0; ride.wspin = 0; ride.wR = 0; ride.gasS = 0; DRIFT.pts = 0; DRIFT.time = 0; lastSkid = null;
   me.scoped = false; me.trigger = false; me.sprintTap = false; me.rideAimT = -9;
@@ -440,14 +440,22 @@ function updateRide(dt) {
   // Wheelie: Leertaste (Handy: SPRUNG) während der Fahrt → Vorderrad hoch. Mit W geht es höher,
   // S drückt es runter. Wer zu lange Vollgas gibt, kippt nach hinten über.
   const now0 = performance.now() / 1000;
+  // Wheelie mit echter Kippbewegung: gehaltene Taste hebt das Vorderrad immer weiter; ab dem Gleichgewichtspunkt (0,75)
+  // zieht die Schwerkraft nach hinten → wer nicht loslässt, kippt nach ~1 s über. Halten = um den Kipppunkt antippen.
   const wantW = !isCar && keys.Space && ride.onGround && ride.speed > 2.2 && now0 > (ride.whBlock || 0);
-  ride.whCreep = wantW && thr > 0 ? (ride.whCreep || 0) + dt * 0.045 : Math.max(0, (ride.whCreep || 0) - dt * 0.3);
-  let wt = wantW ? 0.42 + Math.max(0, thr) * 0.24 + Math.min(0.08, sp * 0.005) + ride.whCreep + Math.sin(now0 * 2.3) * 0.03 : 0;
-  if (thr < 0) wt = Math.min(wt, 0.08);
-  ride.wh = (ride.wh || 0) + (wt - (ride.wh || 0)) * Math.min(1, dt * (wt > (ride.wh || 0) ? 2.2 : 3.2));
-  if (ride.wh > 0.98) {   // Überschlag
-    ride.wh = 0; ride.whCreep = 0; ride.whBlock = now0 + 1.2; ride.speed *= 0.15;
-    sndThud(0.9); me.shake = Math.max(me.shake, 0.6); showMsg('Überschlag! Nicht zu lange Vollgas beim Wheelie');
+  const BAL = 0.75, wh0 = ride.wh || 0;
+  if (!isCar && (wantW || wh0 > 0)) {
+    let acc = wh0 > BAL ? (wh0 - BAL) * 16 : -(BAL - wh0) * 0.8;                     // Schwerkraft: über dem Kipppunkt nach hinten
+    if (wantW) acc += 1.7 + Math.max(0, thr) * 1.1 + Math.min(0.4, sp * 0.02);       // Leertaste (+ Gas) hebt
+    else acc -= 6.5;                                                                  // losgelassen: Vorderrad fällt
+    if (thr < 0) acc -= 9;                                                            // Bremse holt es runter
+    ride.whV = ((ride.whV || 0) + acc * dt) * Math.max(0, 1 - 1.6 * dt);
+    ride.wh = wh0 + ride.whV * dt;
+    if (ride.wh <= 0) { ride.wh = 0; ride.whV = 0; }
+  } else { ride.wh = 0; ride.whV = 0; }
+  if (ride.wh > 1.0) {   // Überschlag
+    ride.wh = 0; ride.whV = 0; ride.whBlock = now0 + 1.4; ride.speed *= 0.1;
+    sndThud(0.9); me.shake = Math.max(me.shake, 0.7); showMsg('Überschlag! Leertaste kurz loslassen, um den Wheelie zu halten');
     ride.whT = 0;
   }
   if (ride.wh > 0.3 && ride.onGround) {
