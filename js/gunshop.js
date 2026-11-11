@@ -96,6 +96,17 @@ function gcEquip(w) {
     me.owned[w] = true; me.ammo[w] = WEAPONS[w].mag; me.weapon = -1; switchWeapon(w);
   }
 }
+/* ---------- Beim Laden alles vorbereiten: Shader für ALLE Objekte einmal übersetzen ----------
+   Sonst übersetzt die Grafikkarte sie erst, wenn man etwas zum ersten Mal sieht → kurzes Ruckeln mitten im Spiel. */
+setTimeout(() => {
+  const el = $('loadInfo'); if (el) el.textContent = 'Grafik wird vorbereitet …';
+  setTimeout(() => {
+    const hidden = []; scene.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    try { renderer.compile(scene, camera); } catch (e) {}
+    for (const o of hidden) o.visible = false;
+    if (el) el.textContent = 'Grafik vorbereitet ✓';
+  }, 50);
+}, 400);
 $('gcBody').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || b.disabled) return;
   const a = b.dataset.gc, w = +b.dataset.w;

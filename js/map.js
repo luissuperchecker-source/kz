@@ -2202,7 +2202,7 @@ function weltRing(road, S) {
       return THREE.BufferGeometryUtils.mergeBufferGeometries([g1, g2]);
     })();
     const NG = 7000, gi = window.grassI = new THREE.InstancedMesh(bg, new THREE.MeshLambertMaterial({ map: TEX.blades, alphaTest: 0.45, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.95, 0.55), emissive: new THREE.Color(0.16, 0.26, 0.07), emissiveMap: TEX.blades }), NG);   // leicht selbstleuchtend: Rückseiten sonst schwarz
-    const blocked = (x, z) => Math.abs(x) < 8 || Math.abs(z) < 8 || (x > 26 && x < 294 && z > -294 && z < -26) || (x < -26 && x > -294 && z > 26 && z < 294)
+    const blocked = (x, z) => Math.abs(x) < 8 || Math.abs(z) < 8 || Math.abs(Math.abs(x) - 150) < 5 || Math.abs(Math.abs(z) - 150) < 5 || (x > 26 && x < 294 && z > -294 && z < -26) || (x < -26 && x > -294 && z > 26 && z < 294)
       || (x > 153 && x < 294 && z > 50 && z < 147) || (x > 6 && x < 48 && z > 6 && z < 48) || Math.hypot(x + 205, z + 95) < 30 || trackDist(x, z) < 8 || isBusy(x, z, 1)
       || (x > 188 && x < 276 && z > 182 && z < 242);
     let n = 0, tries = 0;
@@ -2683,6 +2683,23 @@ if (CHUNK) {
     FAR_GROUPS.push({ o, r: [x0, z0, x1, z1] });
   });
 }
+// Einfachere Baumformen (weniger Ecken, gleiche Größe/Lage) für „Leistung“ und darunter – schon beim Laden vorbereitet
+const LOD_GEO = new Map(), _ca = new THREE.Vector3(), _cb = new THREE.Vector3();
+function lowGeo(g) {
+  if (LOD_GEO.has(g)) return LOD_GEO.get(g);
+  const p = g.parameters || {}; let n = null;
+  if (g.type === 'ConeGeometry' && p.radialSegments > 8) n = new THREE.ConeGeometry(p.radius, p.height, Math.round(p.radialSegments / 2.5), 1, p.openEnded);
+  else if (g.type === 'CylinderGeometry' && p.radialSegments > 8) n = new THREE.CylinderGeometry(p.radiusTop, p.radiusBottom, p.height, Math.round(p.radialSegments / 2), 1, p.openEnded);
+  else if (g.type === 'IcosahedronGeometry' && p.detail > 0) n = new THREE.IcosahedronGeometry(p.radius, 0);
+  if (n) { g.computeBoundingBox(); n.computeBoundingBox(); g.boundingBox.getCenter(_ca); n.boundingBox.getCenter(_cb); n.translate(_ca.x - _cb.x, _ca.y - _cb.y, _ca.z - _cb.z); withUv2(n); }
+  LOD_GEO.set(g, n); return n;
+}
+for (const fg of FAR_GROUPS) { fg.geoHi = fg.o.geometry; fg.geoLo = lowGeo(fg.o.geometry); }
+window.setTreeLOD = lo => { for (const fg of FAR_GROUPS) if (fg.geoLo) fg.o.geometry = lo ? fg.geoLo : fg.geoHi; };
+// Feste Kartenteile (zusammengefasste Häuser/Boden, Wälder, Gras) bewegen sich nie: Lage einmal berechnen,
+// danach nicht mehr in jedem Bild (spart Rechenzeit)
+for (const m of mapMeshes) { m.updateMatrix(); m.updateMatrixWorld(true); m.matrixAutoUpdate = false; }
+for (const g of FAR_GROUPS) { g.o.updateMatrix(); g.o.updateMatrixWorld(true); g.o.matrixAutoUpdate = false; }
 window.cullChunks = dt => {
   for (const w of window.WINDMILLS || []) w.o.rotation[w.axis] += w.s * dt;   // Windräder / Windmühle
   if (gfx === 'potato') potatoTick(dt);
@@ -2742,13 +2759,16 @@ function applyGfx(v) {
   const wasPotato = gfx === 'potato' && LAMB.size;
   gfx = v;
   const dpr = devicePixelRatio || 1;
-  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : v === 'low' ? 0.7 : 0.5);
+  renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : v === 'perf' ? 0.9 : v === 'low' ? 0.7 : 0.5);
+  // „Leistung“: Schattenbild nicht in jedem Bild neu zeichnen (ui.js stößt es ~10× pro Sekunde an)
+  renderer.shadowMap.autoUpdate = v !== 'perf'; renderer.shadowMap.needsUpdate = true;
+  if (window.setTreeLOD) window.setTreeLOD(v === 'perf' || v === 'low' || v === 'potato');   // einfachere Baumformen
   sun.castShadow = !gfxLow();
   if (window.grassI) window.grassI.visible = !gfxLow();
   const P = v === 'potato';
   scene.fog.near = P ? FOG0.near * 0.45 : FOG0.near; scene.fog.far = P ? FOG0.far * 0.55 : FOG0.far;
   camera.far = P ? scene.fog.far + 10 : FOG0.cam; camera.updateProjectionMatrix();
-  CULL_DIST = P ? 150 : v === 'low' ? 200 : FOG0.cull;
+  CULL_DIST = P ? 150 : v === 'low' ? 200 : v === 'perf' ? 215 : FOG0.cull;
   if (P) swapMats(true); else if (wasPotato) swapMats(false);
   const size = v === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== size) {

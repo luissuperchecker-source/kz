@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261111-174235 durch eine Versionsnummer ersetzt */
-const BUILD = '20261111-174235';
+/* Update-Prüfung: beim Veröffentlichen wird 20261111-175203 durch eine Versionsnummer ersetzt */
+const BUILD = '20261111-175203';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -339,10 +339,10 @@ scene.add(sun); scene.add(sun.target);
 // Schattenbereich wandert mit dem Spieler mit (auf 4 m gerastert, damit Schatten nicht flimmern)
 const sunCenter = new THREE.Vector3();
 function placeSun() { sun.target.position.copy(sunCenter); sun.position.copy(sunCenter).addScaledVector(SUN_DIR, 110); }
-function followSun(x, z) {
+function followSun(x, z) {   // true = Schattenbereich ist gewandert
   const sx = Math.round(x / 4) * 4, sz = Math.round(z / 4) * 4;
-  if (sx === sunCenter.x && sz === sunCenter.z) return;
-  sunCenter.set(sx, 0, sz); placeSun();
+  if (sx === sunCenter.x && sz === sunCenter.z) return false;
+  sunCenter.set(sx, 0, sz); placeSun(); return true;
 }
 placeSun();
 

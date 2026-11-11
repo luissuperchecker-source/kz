@@ -274,6 +274,7 @@ function updateAtmosphere(dt) {
 }
 
 /* ======================= Hauptschleife ======================= */
+const SHADOW = { t: 0 };
 let last = performance.now();
 camera.position.set(0, 18, 34); camera.lookAt(0, 0, 0);
 function frame(t) {
@@ -299,7 +300,9 @@ function frame(t) {
   updateEffects(dt);
   updateVehicles(dt);
   updateAtmosphere(dt);
-  followSun(camera.position.x, camera.position.z);
+  const sunMoved = followSun(camera.position.x, camera.position.z);
+  // Grafik „Leistung“: Schatten nur ~10× pro Sekunde neu zeichnen (und sofort, wenn der Schattenbereich mitwandert)
+  if (gfx === 'perf') { SHADOW.t -= dt; if (sunMoved || SHADOW.t <= 0) { renderer.shadowMap.needsUpdate = true; SHADOW.t = 0.1; } }
   if (window.waterNormal) { window.waterNormal.offset.x += dt * 0.004; window.waterNormal.offset.y += dt * 0.0025; }
   skyMesh.position.copy(camera.position);
   renderer.render(scene, camera);
