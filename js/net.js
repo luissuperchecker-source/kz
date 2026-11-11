@@ -166,7 +166,7 @@ function hostHandle(from, m) {
   } else if (m.t === 'exit') {
     const v = vehicles[m.v];
     if (v && v.d === from) { v.d = 0; v.lean = 0; if (m.s) { v.x = m.s[0]; v.y = m.s[1]; v.z = m.s[2]; v.yaw = m.s[3]; } }
-  } else if (m.t === 'shot' || m.t === 'nade') {
+  } else if (m.t === 'shot' || m.t === 'nade' || m.t === 'rkt') {
     m.id = from;
     broadcast(m, from);
   } else if (m.t === 'pick') {
@@ -178,17 +178,17 @@ function hostHandle(from, m) {
   } else if (m.t === 'hit') {
     applyDamage(m.target, Math.min(250, +m.dmg || 0), from, m.w, m.head);
   } else if (m.t === 'boom') {
-    // Granaten-Explosion: Schaden im Umkreis, Wände schützen
+    // Explosion (Granate, Rakete, Granatwerfer): Schaden im Umkreis, Wände schützen
     const o = new THREE.Vector3(m.o[0], m.o[1] + 0.3, m.o[2]);
+    const R = Math.min(9, +m.r || 7), DM = Math.min(160, +m.dmg || 130), wq = WEAPONS[m.w] && (WEAPONS[m.w].rocket || WEAPONS[m.w].gl) ? m.w : (m.w === TANK_W || m.w === HELI_W ? m.w : NADE_W);
     for (const id in P) {
       const q = P[id]; if (!q.alive) continue;
       const c = new THREE.Vector3(q.x, q.y + 1.0, q.z), d = o.distanceTo(c);
-      if (d > 7) continue;
+      if (d > R) continue;
       const dir = c.clone().sub(o).normalize(), h = rayMap(o, dir, d);
       if (h && h.dist < d - 0.3) continue;
-      applyDamage(id, Math.round(130 * Math.pow(1 - d / 7, 1.1)), from, NADE_W, false);
-    }
-  }
+      applyDamage(id, Math.round(DM * Math.pow(1 - d / R, 1.1)), from, wq, false);
+    }  }
 }
 function hostDrop(id) {
   delete H.conns[id];
@@ -388,7 +388,8 @@ function clientHandle(m) {
     const o = new THREE.Vector3(...m.o);
     const fl = new THREE.Sprite(flashMat.clone()); fl.position.copy(o); fl.scale.set(0.7, 0.7, 1); fl.material.rotation = Math.random() * 6;
     scene.add(fl); effects.push({ o: fl, life: 0.06, max: 0.06 });
-    for (const e of m.e) {
+    if (WEAPONS[m.w] && WEAPONS[m.w].flame && m.e[0]) flameFx(o, new THREE.Vector3(...m.e[0]).sub(o).normalize());
+    else for (const e of m.e) {
       const end = new THREE.Vector3(...e); addTracer(o, end);
       const dir = end.clone().sub(o); const len = dir.length(); dir.normalize();
       const h = rayMap(o, dir, len + 0.1);
@@ -398,7 +399,9 @@ function clientHandle(m) {
     radarPing[m.id] = performance.now();
     if (avatars[m.id]) avatars[m.id].kick = 1;
   } else if (m.t === 'nade') {
-    if (m.id !== myId) startNade(m.i, new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false);
+    if (m.id !== myId) startNade(m.i, new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false, m.imp);
+  } else if (m.t === 'rkt') {
+    if (m.id !== myId) fireRocket(new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false, m.w);
   } else if (m.t === 'kill') {
     const head = m.head ? ' ◎' : '';
     feed(`<span style="color:${m.kc}">${esc(m.kn)}</span> <b class="fw">${weaponShort(m.w || 0)}${head}</b> <span style="color:${m.vc}">${esc(m.vn)}</span>`, m.k === myId || m.v === myId, true);

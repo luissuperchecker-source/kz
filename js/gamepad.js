@@ -390,7 +390,7 @@ function padGame(gp, pressed, released, dt) {
   if (on('jump')) keys.Space = keys.Handbrake = true; else if (off('jump')) keys.Space = keys.Handbrake = false;   // Sprung-Taste = auch Handbremse im Auto
   if (on('crouch')) { startCrouch(); keys.KeyC = true; PAD.sprint = false; } else if (off('crouch')) keys.KeyC = false;
   if (on('reload')) startReload();
-  if (on('ride')) toggleRide();
+  if (on('ride')) { if (ride.v < 0 && nearGunShop()) openGunShop(); else toggleRide(); }
   if (on('nade')) throwNade();
   if (on('knife')) knifeAttack();
   const N = WEAPONS.length, step = d => { let n = me.weapon; for (let i = 0; i < N; i++) { n = (n + d + N) % N; if (me.owned[n]) break; } switchWeapon(n); };

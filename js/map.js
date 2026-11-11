@@ -441,6 +441,20 @@ function car(x, z, alongX) {
   MAP_VEHICLES.push({ x, z, yaw });
 }
 // Fahrbares Auto abstellen (yaw: Fahrtrichtung, 0 = +x)
+// Waffenladen-Kiosk: Häuschen mit Theke, Schaufenster und Schild; face = Richtung der Theke (+1 = +z, -1 = -z)
+window.GUN_SHOPS = [];
+function gunKiosk(x, z, face) {
+  const dark = MAT.dark || MAT.concrete;
+  addBox(x, 0, z, 5, 3.2, 3.2, MAT.concrete, 2, { round: 0 });
+  addBox(x, 3.2, z, 5.6, 0.25, 3.8, dark, 1, { decor: true, round: 0 });
+  const fz = z + face * 1.6;
+  addBox(x, 0, fz + face * 0.35, 4.2, 1.05, 0.7, TKM.wood, 2, { round: 0.03 });   // Theke
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.6), new THREE.MeshStandardMaterial({ color: 0x1a222a, roughness: 0.15, metalness: 0.6 }));
+  glass.position.set(x, 1.95, fz + face * 0.02); glass.rotation.y = face > 0 ? 0 : Math.PI; scene.add(glass);
+  tkSign(x, 2.95, fz + face * 0.03, 4.6, 0.55, face > 0 ? 0 : Math.PI, tkSignMat('🔫 WAFFENLADEN', '#1b1b1b', '#ffcc33', false));
+  addBox(x, 2.6, fz + face * 0.7, 5.2, 0.08, 1.4, MAT.ctrRed, 2.6, { decor: true, round: 0 });   // Markise
+  window.GUN_SHOPS.push({ x, z: fz + face * 1.6 });
+}
 function carSpot(x, z, yaw, ctype) { MAP_VEHICLES.push({ x, z, yaw, kind: 'car', ctype }); }
 function truck(x, z, alongZ) {
   // Fahrerhaus + Kofferaufbau
@@ -2118,6 +2132,7 @@ function buildWeltMap() {
       const wd = new THREE.Mesh(new THREE.CircleGeometry(2.9, 24), TKM.water); wd.rotation.x = -Math.PI / 2; wd.position.set(cx, 0.5, cz + 12); scene.add(wd);
       collider(cx, 0, cz + 12, 5.2, 0.7, 5.2); addBox(cx, 0.7, cz + 12, 0.6, 1.6, 0.6, MAT.concrete, 2);
       for (const sx of [-1, 1]) { bench(cx + sx * 8, cz + 12, false); leafTree(cx + sx * 16, cz + 16, 0.9); }
+      gunKiosk(cx - 18, cz + 4, 1);   // Waffenladen am Rathausplatz
     } else if (key === '3,3') {   // Stadtpark
       decalT(cx, cz, x1 - x0 - 2, z1 - z0 - 2, MAT.grass, 2, 0, 0.01);
       decalT(cx, cz, 3, z1 - z0 - 2, MAT.concreteFloor, 2.7, 0, 0.012); decalT(cx, cz, x1 - x0 - 2, 3, MAT.concreteFloor, 2.7, 0, 0.012);
@@ -2210,6 +2225,7 @@ function buildWeltMap() {
       for (const k of [-1, 1]) { addBox(cx + k * 7, 0, cz + 4, 3, 1, 1.6, MAT.crate, 0); addBox(cx + k * 7, 2.2, cz + 4, 3.4, 0.1, 2.2, MAT.ctrOrange, 2.6, { decor: true }); }
       for (const [x, z] of [[cx + 6, cz - 6], [cx - 6, cz + 10]]) leafTree(x, z, 0.8);
       car(cx + 2, cz + 8, true); car(cx - 2, cz + 8, true); car(cx + 20, cz - 6, false);
+      gunKiosk(cx - 14, cz + 22, -1);   // Waffenladen am Marktplatz
       continue;
     }
     if (i === 2 && j === 2) {   // Badesee-Wiese

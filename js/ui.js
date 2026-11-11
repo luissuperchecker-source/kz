@@ -78,7 +78,8 @@ function updateHUD(dt) {
   }
   drawRadar(dt);
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
-  const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1;
+  const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1, gshop = ride.v < 0 ? nearGunShop() : null;
+  if (gshop) { hudSet('rideHint', 'html', `<b>${TOUCH ? 'MOPED' : kbK('ride')}</b> – 🔫 Waffenladen öffnen (Waffen, Munition, Granaten)`); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
   hudSet('rideHint', 'html', ride.v >= 0 ? (ride.kind === 'car' ? (TOUCH ? `<b>MOPED</b> aussteigen` : `<b>${kbK('ride')}</b> aussteigen · <b>${kbK('gas')}</b> Gas · <b>${kbK('back')}</b> Bremse/rückwärts · <b>${kbK('left')}/${kbK('right')}</b> lenken · <b>${kbK('handbrake')}</b> Handbremse`) : TOUCH ? `<b>MOPED</b> absteigen · <b>SPRUNG</b> Wheelie` : `<b>${kbK('ride')}</b> absteigen · <b>${kbK('gas')}</b> Gas · <b>${kbK('back')}</b> Bremse · <b>${kbK('left')}/${kbK('right')}</b> lenken · <b>${kbK('jump')}</b> Wheelie`)
     : near >= 0 ? `<b>${TOUCH ? 'MOPED' : 'E'}</b> – ${vehicles[near].kind === 'car' ? 'ins Auto einsteigen' : 'auf das Moped steigen'}` : '');
   hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
@@ -152,6 +153,7 @@ function drawRadar(dt) {
   }
   // Firmen mit Jobs (gelb) und aktuelles Job-Ziel (blau, am Rand wenn weiter weg)
   for (const T of window.DRIFT_TRACKS || []) { const [x, y] = toR(...T.start); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', x, y + 4); } }
+  for (const s of window.GUN_SHOPS || []) { const [x, y] = toR(s.x, s.z); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🔫', x, y + 4); } }
   for (const c of window.MAP_JOBS || []) { const [x, y] = toR(c.x, c.z); if (Math.hypot(x - R, y - R) < R - 6) { g.fillStyle = '#ffcc33'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText('$', x, y + 4); } }
   if (window.JOB_TGT) {
     let [x, y] = toR(window.JOB_TGT.x, window.JOB_TGT.z); const d = Math.hypot(x - R, y - R); if (d > R - 7) { x = R + (x - R) / d * (R - 7); y = R + (y - R) / d * (R - 7); }

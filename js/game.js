@@ -7,8 +7,8 @@ const me = { pos: new THREE.Vector3(0, 0, 0), vel: new THREE.Vector3(), yaw: 0, 
   crouch: false, crouchT: 0, slideT: 0, slideDir: new THREE.Vector3(), sneak: false, h: PH, nades: 2,
   knifeT: 0, throwT: 0, drawT: 0, inspectT: 0, pumpT: 0, boltT: 0, recoilP: 0, recoilY: 0, swayX: 0, swayY: 0, landT: 0, shake: 0, airVy: 0 };
 const START_WEAPON = 3;  // Pistole – alles andere muss man finden
-const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21, CAR_W = 22;
-const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : w === CAR_W ? 'ÜBERFAHREN' : (WEAPONS[w] ? WEAPONS[w].short : '?');
+const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21, CAR_W = 22, TANK_W = 23, HELI_W = 24;
+const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : w === CAR_W ? 'ÜBERFAHREN' : w === TANK_W ? 'PANZER' : w === HELI_W ? 'HELI' : (WEAPONS[w] ? WEAPONS[w].short : '?');
 let lastWTap = 0;
 let myId = null, isHost = false, running = false, locked = false, roomCode = '';
 let world = { players: {}, mode: 'ffa' };
@@ -141,7 +141,7 @@ if (TOUCH) {
     else if (name === 'swap') nextWeapon();
     else if (name === 'nade') throwNade();
     else if (name === 'knife') knifeAttack();
-    else if (name === 'ride') toggleRide();
+    else if (name === 'ride') { if (ride.v < 0 && nearGunShop()) openGunShop(); else toggleRide(); }
     else if (name === 'board') { $('board').classList.remove('hidden'); renderBoard(); }
     else if (name === 'pause') setLocked(false);
   };
@@ -259,7 +259,7 @@ function kbDown(a, repeat) {
   else if (a === 'knife') knifeAttack();
   else if (a === 'nade') throwNade();
   else if (a === 'inspect') { if (me.alive && me.reloading <= 0) me.inspectT = 2.2; }
-  else if (a === 'ride') toggleRide();
+  else if (a === 'ride') { if (ride.v < 0 && nearGunShop()) openGunShop(); else toggleRide(); }
   else if (a === 'next' || a === 'prev') {
     const N = WEAPONS.length, dir = a === 'next' ? 1 : N - 1; let n = me.weapon;
     for (let i = 0; i < N; i++) { n = (n + dir) % N; if (me.owned[n]) break; }
@@ -304,6 +304,16 @@ document.addEventListener('wheel', e => {
   for (const a of kbActionsFor(e.deltaY > 0 ? 'WheelDown' : 'WheelUp')) { kbDown(a, false); kbUp(a); }
 });
 
+// Waffenladen auf der Karte (Kiosk): davor stehen und E drücken
+function nearGunShop() {
+  if (!me.alive) return null;
+  for (const s of window.GUN_SHOPS || []) if (Math.hypot(s.x - me.pos.x, s.z - me.pos.z) < 3.2) return s;
+  return null;
+}
+function openGunShop() {
+  if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) {} }
+  openShop(true);
+}
 function switchWeapon(n) {
   if (n === me.weapon || !me.owned[n]) return;
   me.weapon = n; me.reloading = 0; me.lastShot = performance.now() / 1000 - WEAPONS[n].rate + 0.3; me.scoped = false;
@@ -347,6 +357,11 @@ function tryShoot(now) {
   const w = WEAPONS[me.weapon];
   const riding = ride.v >= 0;
   if (!me.alive || me.reloading > 0 || me.knifeT > 0 || me.throwT > 0 || (me.drawT > 0.12 && !riding) || now - me.lastShot < w.rate) return;
+  if (w.spin) {   // Minigun: Läufe müssen erst hochdrehen (Abzug gedrückt halten)
+    if (now - (me.spinLast || 0) > 0.15) { me.spinStart = now; sndClick(0.06, 0.5); }
+    me.spinLast = now;
+    if (now - me.spinStart < w.spin) return;
+  }
   if (me.ammo[me.weapon] <= 0) { startReload(); sndClick(0.05, 2); return; }
   me.lastShot = now; me.ammo[me.weapon]--; me.firedPress = true; me.inspectT = 0;
   const moving = Math.hypot(me.vel.x, me.vel.z) > 1.5;
@@ -364,17 +379,31 @@ function tryShoot(now) {
   const mz = tp ? new THREE.Vector3(me.pos.x, me.pos.y + 1.38, me.pos.z).addScaledVector(_f, 0.75).addScaledVector(_r, 0.12)
     : muzzle.getWorldPosition(new THREE.Vector3());
   if (tp) { const back = origin.distanceTo(mz); origin.addScaledVector(_f, Math.max(0, back - 0.3)); }   // nicht den eigenen Fahrer treffen
-  const parts = avatarParts(), dmgBy = {}, ends = [];
+  if (w.rocket || w.gl) {   // Geschosse: Rakete fliegt gerade, Granate im Bogen (explodiert beim Aufprall)
+    const aim = _f.clone().addScaledVector(_r, (Math.random() - 0.5) * w.spread).addScaledVector(_u, (Math.random() - 0.5) * w.spread).normalize();
+    if (w.rocket) fireRocket(mz.clone(), aim.multiplyScalar(70), true, me.weapon);
+    else {
+      const v = aim.multiplyScalar(30).add(new THREE.Vector3(0, 2.2, 0)), id = myId + '-' + (nadeSeq++);
+      startNade(id, mz.clone(), v, true, me.weapon);
+      net.send({ t: 'nade', i: id, o: [mz.x, mz.y, mz.z], v: [v.x, v.y, v.z], imp: me.weapon });
+    }
+    const rk = w.kick; me.pitch = Math.min(1.55, me.pitch + rk * 0.45); me.recoilP += rk * 0.9; me.kick = 1;
+    sndShot(me.weapon, 0.6); puff(mz, 0xd8d8d8, 0.4, 1.0, _f.clone().multiplyScalar(-1.5).add(new THREE.Vector3(0, 0.5, 0)), { opacity: 0.45, grow: 4 });
+    if (!tp) { flashT = 0.06; flash.visible = true; flashLight.intensity = 3; }
+    if (me.ammo[me.weapon] === 0) setTimeout(startReload, 300);
+    return;
+  }
+  const parts = avatarParts(), dmgBy = {}, ends = [], maxR = w.range || 300;
   let anyHead = false, anyHit = false;
   for (let i = 0; i < w.pellets; i++) {
     const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * spread;
     const dir = _f.clone().addScaledVector(_r, Math.cos(a) * r).addScaledVector(_u, Math.sin(a) * r).normalize();
-    const mh = rayMap(origin, dir, 300);
-    ray.set(origin, dir); ray.far = mh ? mh.dist : 300;
+    const mh = rayMap(origin, dir, maxR);
+    ray.set(origin, dir); ray.far = mh ? mh.dist : maxR;
     const ah = parts.length ? ray.intersectObjects(parts, false)[0] : null;
-    const end = ah ? ah.point.clone() : mh ? mh.point.clone() : origin.clone().addScaledVector(dir, 200);
+    const end = ah ? ah.point.clone() : mh ? mh.point.clone() : origin.clone().addScaledVector(dir, Math.min(200, maxR));
     ends.push([+end.x.toFixed(2), +end.y.toFixed(2), +end.z.toFixed(2)]);
-    if ((!me.scoped || !w.scope) && (i < 3)) addTracer(mz, end);
+    if (!w.flame && (!me.scoped || !w.scope) && (i < 3)) addTracer(mz, end);
     if (ah && ah.object.userData.pid && !friendly(ah.object.userData.pid)) {
       const u = ah.object.userData, fo = FALLOFF[me.weapon];
       let dmg = w.dmg * (u.head ? w.head : 1);
@@ -383,8 +412,9 @@ function tryShoot(now) {
       dmgBy[u.pid].dmg += dmg;
       if (u.head) { dmgBy[u.pid].head = true; anyHead = true; }
       anyHit = true; bloodFx(end);
-    } else if (mh && !ah) impactFx(mh.point, mh.normal);
+    } else if (mh && !ah && !w.flame) impactFx(mh.point, mh.normal);
   }
+  if (w.flame) flameFx(mz, _f);
   for (const pid in dmgBy) net.send({ t: 'hit', target: pid, dmg: Math.round(dmgBy[pid].dmg), w: me.weapon, head: dmgBy[pid].head });
   if (anyHit) showHitmarker(anyHead);
   net.send({ t: 'shot', id: myId, w: me.weapon, o: [+mz.x.toFixed(2), +mz.y.toFixed(2), +mz.z.toFixed(2)], e: ends });
@@ -399,14 +429,14 @@ function tryShoot(now) {
     const fl = new THREE.Sprite(flashMat.clone()); fl.position.copy(mz); fl.scale.set(0.6, 0.6, 1); fl.material.rotation = Math.random() * 6;
     scene.add(fl); effects.push({ o: fl, life: 0.06, max: 0.06 });
     me.rideAimT = now;
-    if (me.weapon !== 1 && me.weapon !== 2 && me.weapon !== 5 && me.weapon !== 8) ejectShell(mz.clone().addScaledVector(_f, -0.4), _r.clone());
+    if (!w.noShell && me.weapon !== 1 && me.weapon !== 2 && me.weapon !== 5 && me.weapon !== 8) ejectShell(mz.clone().addScaledVector(_f, -0.4), _r.clone());
     if (me.ammo[me.weapon] === 0) setTimeout(startReload, 250);
     return;
   }
   flashT = 0.05; flash.visible = true; flashMat.rotation = Math.random() * 6; flashLight.intensity = 2.5;
   if (me.weapon === 1) me.pumpT = 0.55;
   else if (me.weapon === 2) me.boltT = 0.9;
-  else if (me.weapon !== 5 && me.weapon !== 8) ejectShell(vm.eject.getWorldPosition(new THREE.Vector3()), _r.clone().add(_u.clone().multiplyScalar(0.3)));
+  else if (!w.noShell && me.weapon !== 5 && me.weapon !== 8) ejectShell(vm.eject.getWorldPosition(new THREE.Vector3()), _r.clone().add(_u.clone().multiplyScalar(0.3)));
   if (me.ammo[me.weapon] === 0) setTimeout(startReload, 250);
 }
 let hmTimer = 0;
@@ -460,9 +490,52 @@ function throwNade() {
     sndSwish(0.6);
   }, 230);
 }
-function startNade(id, o, v, mine) {
+function startNade(id, o, v, mine, imp) {
   const m = makeGrenadeMesh(); m.position.copy(o); scene.add(m);
-  nades.push({ id, m, pos: o.clone(), vel: v.clone(), t: 0, mine });
+  nades.push({ id, m, pos: o.clone(), vel: v.clone(), t: 0, mine, imp: imp || 0 });   // imp = Granatwerfer: explodiert beim Aufprall
+}
+// Explosion: Effekt + Wackeln für alle; der Werfer meldet sie dem Host (Schaden im Umkreis)
+function blast(pos, mine, w, r = 7, dmg = 130) {
+  explosionFx(pos.clone()); sndBoom(pos);
+  me.shake = Math.max(me.shake, Math.max(0, 1 - pos.distanceTo(me.pos) / (r * 3.5)));
+  if (mine) net.send({ t: 'boom', o: [pos.x, pos.y, pos.z], r, dmg, w });
+}
+/* ---------- Raketen (Raketenwerfer): fliegen gerade, Rauchspur, Explosion beim Aufprall ---------- */
+const rockets = [];
+function fireRocket(o, v, mine, w) {
+  const m = makeRocketMesh(); m.position.copy(o); m.lookAt(o.clone().add(v)); scene.add(m);
+  rockets.push({ m, pos: o.clone(), vel: v.clone(), t: 0, mine, w, smoke: 0 });
+  if (mine) net.send({ t: 'rkt', o: [o.x, o.y, o.z], v: [v.x, v.y, v.z], w });
+}
+function updateRockets(dt) {
+  for (let i = rockets.length - 1; i >= 0; i--) {
+    const r = rockets[i]; r.t += dt;
+    const step = r.vel.clone().multiplyScalar(dt), len = step.length(), dir = step.clone().normalize();
+    let hitP = null;
+    const mh = rayMap(r.pos, dir, len);
+    if (mh) hitP = mh.point;
+    if (r.mine) {   // Gegner direkt getroffen?
+      const parts = avatarParts(); ray.set(r.pos, dir); ray.far = mh ? mh.dist : len;
+      const ah = parts.length ? ray.intersectObjects(parts, false)[0] : null;
+      if (ah) hitP = ah.point;
+    }
+    const nx = r.pos.clone().add(step);
+    if (!hitP && nx.y < groundH(nx.x, nx.z, nx.y) + 0.05) hitP = nx;
+    if (hitP || r.t > 3) {
+      blast(hitP || r.pos, r.mine, r.w, 8, 150);
+      scene.remove(r.m); rockets.splice(i, 1); continue;
+    }
+    r.pos.copy(nx); r.m.position.copy(r.pos);
+    r.smoke -= dt;
+    if (r.smoke <= 0) { r.smoke = 0.02; puff(r.pos.clone().addScaledVector(dir, -0.5), 0xbdbdbd, 0.35, 1.2, new THREE.Vector3(rnd(-0.3, 0.3), rnd(0.2, 0.6), rnd(-0.3, 0.3)), { opacity: 0.5, grow: 3 }); }
+  }
+}
+// Flammenwerfer: Feuer-Wolken in Schussrichtung
+function flameFx(o, f) {
+  for (let k = 0; k < 3; k++) {
+    const v = f.clone().multiplyScalar(rnd(11, 16)).add(new THREE.Vector3(rnd(-1, 1), rnd(0, 1.2), rnd(-1, 1)));
+    puff(o.clone().addScaledVector(f, 0.3), [0xff7a1a, 0xffb02a, 0xff4a10][k], 0.3, 0.55, v, { opacity: 0.9, grow: 7 });
+  }
 }
 function pointInBoxes(p, list) {
   for (const b of list) if (p.x > b.min.x - 0.06 && p.x < b.max.x + 0.06 && p.y > b.min.y - 0.06 && p.y < b.max.y + 0.06 && p.z > b.min.z - 0.06 && p.z < b.max.z + 0.06) return true;
@@ -478,6 +551,7 @@ function updateNades(dt) {
       for (const ax of ['x', 'y', 'z']) {
         const old = n.pos[ax]; n.pos[ax] += n.vel[ax] * h;
         if (pointInBoxes(n.pos, near) || (ax === 'y' && n.pos.y < 0.06)) {
+          if (n.imp && n.t > 0.04) { n.t = 99; break; }   // Granatwerfer: Aufprall = Explosion
           n.pos[ax] = ax === 'y' && n.pos.y < 0.06 && !pointInBoxes(n.pos, near) ? 0.06 : old;
           if (Math.abs(n.vel[ax]) > 2) sndThud(0.15);
           n.vel[ax] *= -0.35;
@@ -487,11 +561,7 @@ function updateNades(dt) {
     }
     n.m.position.copy(n.pos); n.m.rotation.x += n.vel.length() * dt * 2; n.m.rotation.z += n.vel.length() * dt;
     if (n.t >= 2.4) {
-      explosionFx(n.pos.clone());
-      const d = n.pos.distanceTo(me.pos);
-      sndBoom(n.pos);
-      me.shake = Math.max(me.shake, Math.max(0, 1 - d / 25));
-      if (n.mine) net.send({ t: 'boom', i: n.id, o: [n.pos.x, n.pos.y, n.pos.z] });
+      blast(n.pos, n.mine, n.imp || NADE_W, n.imp ? 6 : 7, n.imp ? 110 : 130);
       scene.remove(n.m); nades.splice(i, 1);
     }
   }
@@ -504,7 +574,7 @@ function updateLocal(dt, now) {
   // Auf dem Moped: eigene Steuerung und Kamera (vehicles.js)
   if (ride.v >= 0) {
     if (!me.alive) exitRide(true);
-    else { updateRide(dt); updateNades(dt); flashT -= dt; if (flashT <= 0) { flash.visible = false; flashLight.intensity = 0; } return; }
+    else { updateRide(dt); updateNades(dt); updateRockets(dt); flashT -= dt; if (flashT <= 0) { flash.visible = false; flashLight.intensity = 0; } return; }
   }
   if (me.alive) {
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
@@ -532,6 +602,7 @@ function updateLocal(dt, now) {
     if (me.sneak) speed = 3.4;
     if (me.crouch) speed = 3.0;
     if (me.scoped) speed = Math.min(speed, 3.6);
+    if (w.heavy) speed *= w.heavy;   // schwere Waffen (Minigun, Raketenwerfer) machen langsam
     if (len > 0) { wx = wx / len * speed * analog; wz = wz / len * speed * analog; }
     if (me.slideT > 0) {   // Rutschen: Schwung in Rutschrichtung, langsam ausbremsen
       me.slideT -= dt;
@@ -562,7 +633,7 @@ function updateLocal(dt, now) {
       if (Math.sign(before) !== Math.sign(Math.sin(me.bob))) sndStep(me.sneak ? 0 : me.crouch ? 0.025 : me.sprinting ? 0.1 : 0.07);
     }
   }
-  updateNades(dt);
+  updateNades(dt); updateRockets(dt);
   flashT -= dt;
   if (flashT <= 0) { flash.visible = false; flashLight.intensity = 0; }
   // ---------- Kamera ----------
@@ -633,6 +704,10 @@ function animateViewModel(dt, w) {
   if (vm.pump) vm.pump.position.z = me.pumpT > 0 ? 0.09 * bell(1 - me.pumpT / 0.55, 0.15, 0.95) : 0;
   if (vm.bolt) { const b = me.boltT > 0 ? bell(1 - me.boltT / 0.9, 0.25, 0.85) : 0; vm.bolt.position.z = 0.06 * b; vm.bolt.position.y = 0.01 * b; rz += 0.15 * b; }
   if (vm.mag) { vm.mag.position.y = magY; vm.mag.position.z = magZ; }
+  if (vm.spin) {   // Minigun-Läufe drehen, solange gefeuert wird (laufen kurz nach)
+    me.spinV = (me.spinV || 0) + ((performance.now() / 1000 - (me.spinLast || 0) < 0.15 ? 32 : 0) - (me.spinV || 0)) * Math.min(1, dt * 3);
+    vm.spin.rotation.z += me.spinV * dt;
+  }
   if (vm.left) {
     vm.left.position.y = leftY; vm.left.position.z = leftZ;
     if (me.weapon === 1 && me.pumpT > 0) vm.left.position.z += vm.pump.position.z;

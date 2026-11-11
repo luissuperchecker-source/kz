@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261111-163810 durch eine Versionsnummer ersetzt */
-const BUILD = '20261111-163810';
+/* Update-Prüfung: beim Veröffentlichen wird 20261111-164513 durch eine Versionsnummer ersetzt */
+const BUILD = '20261111-164513';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -55,6 +55,15 @@ const WEAPONS = [
   // Günstige Einsteiger-Waffe
   { name:'Doppelflinte', short:'DF', dmg:11, head:1.5, rate:0.3, mag:2, reload:2.4, spread:0.085, move:0.03, pellets:10, auto:false, kick:0.075, zoom:60, snd:[600,0.25], price:1000,
     desc:'Zwei Läufe, zwei schnelle Schüsse – brutal aus nächster Nähe. Nur 1.000 Coins!' },
+  // Schwere Waffen (9–12)
+  { name:'Minigun', short:'MINI', dmg:9, head:1.5, rate:0.04, mag:200, reload:5.0, spread:0.045, move:0.02, pellets:1, auto:true, kick:0.004, zoom:62, snd:[1300,0.05], price:25000,
+    spin:0.6, heavy:0.7, desc:'6 rotierende Läufe, 200 Schuss Dauerfeuer – braucht kurz Anlauf und macht dich langsam.' },
+  { name:'Raketenwerfer', short:'RPG', dmg:0, head:1, rate:1.0, mag:1, reload:2.8, spread:0.004, move:0.02, pellets:1, auto:false, kick:0.1, zoom:50, snd:[260,0.45], price:30000,
+    rocket:true, heavy:0.85, noShell:true, desc:'Rakete mit großer Explosion (8 m) – nach jedem Schuss nachladen.' },
+  { name:'Granatwerfer', short:'GL', dmg:0, head:1, rate:0.65, mag:6, reload:3.2, spread:0.01, move:0.03, pellets:1, auto:false, kick:0.06, zoom:55, snd:[420,0.25], price:20000,
+    gl:true, noShell:true, desc:'Verschießt 6 Granaten im Bogen, die beim Aufprall explodieren.' },
+  { name:'Flammenwerfer', short:'FLAM', dmg:2, head:1, rate:0.06, mag:120, reload:3.5, spread:0.09, move:0.02, pellets:3, auto:true, kick:0.002, zoom:62, snd:[180,0.09], price:15000,
+    flame:true, range:10, noShell:true, desc:'Feuerstrahl auf bis zu 10 m – trifft alles im Strahl.' },
 ];
 const BASE_WEAPONS = 4;   // 0–3 gibt es für alle, ab 4 kann man kaufen
 
@@ -91,7 +100,7 @@ function renderShop() {
     else if (eq) btn = `<button class="sec" data-unequip="${i}">✓ Ausgerüstet</button>`;
     else btn = `<button data-equip="${i}">Ausrüsten</button>`;
     html += `<div class="shopItem ${eq ? 'eq' : ''}"><div class="info"><div class="nm">${w.name}</div><div class="ds">${w.desc}</div>
-      ${bar('Schaden', w.dmg * w.pellets / 60)}${bar('Feuerrate', 0.065 / w.rate)}${bar('Magazin', w.mag / 80)}</div>${btn}</div>`;
+      ${bar('Schaden', (w.rocket ? 150 : w.gl ? 110 : w.dmg * w.pellets) / 60)}${bar('Feuerrate', 0.065 / w.rate)}${bar('Magazin', w.mag / 80)}</div>${btn}</div>`;
   }
   $('shopList').innerHTML = html;
 }
@@ -144,9 +153,20 @@ function redeemVoucher() {
 $('voucherBtn').onclick = redeemVoucher;
 $('voucherIn').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') redeemVoucher(); });
 $('voucherIn').addEventListener('keyup', e => e.stopPropagation());
-const openShop = () => { renderShop(); $('voucherMsg').textContent = ''; $('shop').classList.remove('hidden'); };
-$('btnShop1').onclick = openShop; $('btnShop2').onclick = openShop;
-$('shopClose').onclick = () => $('shop').classList.add('hidden');
+let shopAtStore = false;   // im Waffenladen auf der Karte: zusätzlich Munition und Granaten
+const openShop = (store) => {
+  shopAtStore = store === true; $('shopStore').classList.toggle('hidden', !shopAtStore);
+  renderShop(); $('voucherMsg').textContent = ''; $('shop').classList.remove('hidden');
+};
+$('btnShop1').onclick = () => openShop(); $('btnShop2').onclick = () => openShop();
+$('shopClose').onclick = () => { $('shop').classList.add('hidden'); if (shopAtStore && running && !TOUCH) lockPointer(); shopAtStore = false; };
+const storeBuy = (cost, fn, msg) => {
+  if (shopState.coins < cost) { sndBeep(220, 0.15, 0.1, 'square'); return; }
+  shopState.coins -= cost; saveShop(); fn(); updateCoins(true); renderShop(); showMsg(msg);
+  initAudio(); sndBeep(660, 0.1, 0.12, 'triangle');
+};
+$('buyAmmo').onclick = () => storeBuy(100, () => { me.ammo = WEAPONS.map(w => w.mag); me.reloading = 0; }, '📦 Munition aufgefüllt');
+$('buyNades').onclick = () => storeBuy(150, () => { me.nades = MAX_NADES; }, '💣 Granaten aufgefüllt');
 updateCoins();
 
 /* ======================= Einstellungen ======================= */

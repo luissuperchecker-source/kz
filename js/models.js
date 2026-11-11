@@ -255,7 +255,17 @@ const GUN_MATS = {
   shell: new THREE.MeshStandardMaterial({ color: 0xa3201a, roughness: 0.5 }),
   brass: new THREE.MeshStandardMaterial({ color: 0xc09a40, roughness: 0.3, metalness: 0.9 }),
   glove: new THREE.MeshStandardMaterial({ color: 0x2c2b26, roughness: 0.9 }),
+  flame: new THREE.MeshStandardMaterial({ color: 0xff8a20, emissive: 0xff6a10, emissiveIntensity: 2 }),
 };
+// Rakete (Raketenwerfer): Spitze zeigt nach +z, damit lookAt sie in Flugrichtung dreht
+function makeRocketMesh() {
+  const g = new THREE.Group(), m = GUN_MATS;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.5, 10), m.tan); body.rotation.x = Math.PI / 2; g.add(body);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 10), m.red); tip.rotation.x = Math.PI / 2; tip.position.z = 0.36; g.add(tip);
+  for (let k = 0; k < 4; k++) { const f = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.12, 0.1), m.metal); f.position.set(0, 0, -0.22); f.rotation.z = k * Math.PI / 2; f.translateY(0.06); g.add(f); }
+  const fire = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), m.flame); fire.position.z = -0.3; fire.scale.z = 1.8; g.add(fire);
+  return g;
+}
 /* --- Bausteine: Teile werden gesammelt und pro Material zu einem Objekt verschmolzen (flüssiger) --- */
 const _V = (a) => new THREE.Vector3(a[0], a[1], a[2]);
 // Kästchen mit abgerundeten Kanten (Radius ~30 % der kleinsten Seite, max. 9 cm)
@@ -416,6 +426,33 @@ function makeGun(w) {
       B(0.006, 0.012, 0.06, metal, 0, -0.04, 0.05), B(0.004, 0.025, 0.006, steel, 0, -0.025, 0.04),
       B(0.004, 0.025, 0.006, steel, 0, -0.025, 0.065), B(0.012, 0.018, 0.02, steel, 0, 0.055, 0.07));
     info = { len: 0.64, muzzleY: 0.03, grip: [0, -0.07, 0.09], fore: [0, -0.03, -0.25], foreNear: [0, -0.03, -0.2], sight: 0.06 };
+  } else if (w === 9) { // Minigun: 6 drehende Läufe (Achse bei y = 0), Motorgehäuse, Tragegriff oben, Munitionskasten
+    const SP = pt => (pt.spin = true, pt);
+    for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; P.push(SP(C(0.011, 0.011, 0.62, steel, Math.cos(a) * 0.032, Math.sin(a) * 0.032, -0.43))); }
+    P.push(SP(C(0.05, 0.05, 0.025, metal, 0, 0, -0.3)), SP(C(0.05, 0.05, 0.025, metal, 0, 0, -0.68)), SP(C(0.016, 0.016, 0.64, metal, 0, 0, -0.43)),
+      C(0.055, 0.055, 0.2, metal, 0, 0, -0.03), B(0.1, 0.1, 0.16, metal, 0, 0, 0.14), C(0.04, 0.04, 0.06, poly, 0, 0, 0.25),
+      B(0.022, 0.022, 0.24, metal, 0, 0.1, 0.02), B(0.02, 0.05, 0.02, metal, 0, 0.07, -0.08), B(0.02, 0.05, 0.02, metal, 0, 0.07, 0.12),   // Tragegriff
+      B(0.035, 0.1, 0.045, poly, 0, -0.09, 0.2, -0.3), B(0.004, 0.025, 0.006, steel, 0, -0.05, 0.16),
+      M(B(0.13, 0.13, 0.15, tan, 0.02, -0.15, 0.06)), B(0.035, 0.09, 0.035, metal, 0.05, -0.06, -0.04));
+    info = { len: 0.74, muzzleY: 0, grip: [0, -0.07, 0.2], fore: [0, 0.1, 0.02], foreNear: [0, 0.1, 0.02], sight: 0.13 };
+  } else if (w === 10) { // Raketenwerfer: Rohr mit Trichter, Rakete vorne (verschwindet beim Nachladen), Visier, Griffe
+    P.push(C(0.055, 0.055, 1.0, tan, 0, 0, -0.2), C(0.075, 0.055, 0.08, metal, 0, 0, 0.33), C(0.062, 0.062, 0.05, metal, 0, 0, -0.66),
+      M(C(0.045, 0.045, 0.1, tan, 0, 0, -0.74)), M({ geo: new THREE.ConeGeometry(0.045, 0.22, 12), mat: red, p: [0, 0, -0.89], r: [-Math.PI / 2, 0, 0] }),
+      B(0.035, 0.1, 0.045, poly, 0, -0.09, 0.02, -0.3), B(0.032, 0.09, 0.04, poly, 0, -0.085, -0.28, -0.2), B(0.004, 0.025, 0.006, steel, 0, -0.05, -0.02),
+      B(0.03, 0.05, 0.08, metal, 0.065, 0.05, -0.12), C(0.016, 0.016, 0.05, glass, 0.065, 0.075, -0.12), B(0.06, 0.03, 0.12, rubber, 0, 0.06, 0.15));
+    info = { len: 0.8, muzzleY: 0, grip: [0, -0.08, 0.02], fore: [0, -0.08, -0.28], foreNear: [0, -0.08, -0.28], sight: 0.1 };
+  } else if (w === 11) { // Granatwerfer: Trommel, kurzer dicker Lauf, Klappschaft
+    P.push(M(C(0.072, 0.072, 0.13, metal, 0, -0.01, -0.06, 6)), C(0.03, 0.03, 0.06, steel, 0, -0.01, 0.03),
+      C(0.032, 0.032, 0.3, steel, 0, 0.02, -0.3), C(0.038, 0.038, 0.04, metal, 0, 0.02, -0.44), B(0.05, 0.04, 0.32, metal, 0, 0.065, -0.2),
+      B(0.035, 0.1, 0.045, poly, 0, -0.1, 0.09, -0.3), B(0.03, 0.08, 0.04, poly, 0, -0.08, -0.25), B(0.004, 0.025, 0.006, steel, 0, -0.06, 0.06),
+      B(0.03, 0.03, 0.22, metal, 0, 0.0, 0.22), B(0.05, 0.09, 0.02, rubber, 0, -0.02, 0.33), B(0.02, 0.05, 0.02, metal, 0, 0.1, -0.1));
+    info = { len: 0.46, muzzleY: 0.02, grip: [0, -0.09, 0.09], fore: [0, -0.08, -0.25], foreNear: [0, -0.08, -0.25], sight: 0.1 };
+  } else if (w === 12) { // Flammenwerfer: zwei Tanks, lange Düse mit Hitzeschild, Zündflamme
+    P.push(M(C(0.035, 0.035, 0.3, red, 0.04, -0.09, 0.03)), M(C(0.035, 0.035, 0.3, red, -0.04, -0.09, 0.03)), B(0.1, 0.02, 0.05, metal, 0, -0.05, 0.03),
+      C(0.018, 0.022, 0.55, steel, 0, 0.02, -0.33), C(0.034, 0.034, 0.22, metal, 0, 0.02, -0.2), C(0.026, 0.02, 0.05, metal, 0, 0.02, -0.62),
+      B(0.05, 0.06, 0.2, metal, 0, 0.02, 0.05), B(0.035, 0.1, 0.045, poly, 0, -0.07, 0.12, -0.3), B(0.032, 0.09, 0.04, poly, 0, -0.06, -0.22),
+      B(0.004, 0.025, 0.006, steel, 0, -0.03, 0.09), SPH(0.012, GUN_MATS.flame || red, 0, -0.005, -0.64));
+    info = { len: 0.64, muzzleY: 0.02, grip: [0, -0.07, 0.12], fore: [0, -0.06, -0.22], foreNear: [0, -0.06, -0.22], sight: 0.07 };
   } else { // Pistole: Schlitten mit Griffrillen vorne/hinten, Laufhaube, Unterschiene, Abzugsbügel, Kimme mit Kerbe
     P.push(B(0.03, 0.034, 0.19, metal, 0, 0.034, -0.035));
     for (let i = 0; i < 6; i++) P.push(B(0.032, 0.024, 0.003, poly, 0, 0.034, 0.03 + i * 0.008));
@@ -445,7 +482,7 @@ function buildViewGun(w) {
   while (viewGun.children.length) viewGun.remove(viewGun.children[0]);
   gunInfo = makeGun(w);
   const all = gunInfo.parts, gr = gunInfo.grip, fo = gunInfo.fore;
-  const main = all.filter(p => !p.mag && !p.pump && !p.bolt), left = [];
+  const main = all.filter(p => !p.mag && !p.pump && !p.bolt && !p.spin), left = [];
   main.push(B(0.055, 0.08, 0.1, GUN_MATS.glove, gr[0] + 0.005, gr[1] - 0.005, gr[2] + 0.01, -0.3),
     limbPart([gr[0] + 0.01, gr[1] - 0.02, gr[2] + 0.06], [0.16, -0.3, 0.5], 0.05, 0.065, TAC.fabric));
   if (w === 3 || w === 5) {   // Pistole/Revolver: beide Hände am Griff
@@ -459,6 +496,7 @@ function buildViewGun(w) {
   vm.mag = partsToGroup(all.filter(p => p.mag)); viewGun.add(vm.mag);
   vm.pump = partsToGroup(all.filter(p => p.pump)); viewGun.add(vm.pump);
   vm.bolt = partsToGroup(all.filter(p => p.bolt)); viewGun.add(vm.bolt);
+  const sp = all.filter(p => p.spin); vm.spin = sp.length ? partsToGroup(sp) : null; if (vm.spin) viewGun.add(vm.spin);
   vm.left = partsToGroup(left); viewGun.add(vm.left);
   muzzle.position.set(0, gunInfo.muzzleY, -gunInfo.len);
   viewGun.add(muzzle);
