@@ -518,6 +518,13 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
     }
   }, undefined, () => {});
 })();
+// Fahrzeuge, die unsichtbar (weit weg) sind oder stillstehen, werden bei der Lage-Berechnung übersprungen (spart viel Rechenzeit)
+{ const UMW = THREE.Object3D.prototype.updateMatrixWorld;
+  for (const v of vehicles) v.mesh.root.updateMatrixWorld = function (force) {
+    if (!this.visible) return;
+    if (!force && (this.userData.still || 0) > 2) return;
+    UMW.call(this, force);
+  }; }
 const RIDER_BACK = 0.42, RIDER_UP = 0.1;   // Sitzposition des Fahrers relativ zum Moped
 const RIDE_GRAV = 15;   // etwas weniger Schwerkraft fürs Moped = schönere Sprünge
 // Fahrzeug-Eigenschaften: Sitz, Größe, Tempo, Lenkung, Kamera, Ein-/Ausstieg
@@ -1139,6 +1146,10 @@ function updateVehicles(dt) {
     const landDip = v.i === ride.v ? -(ride.land || 0) * 0.07 : 0;
     m.root.position.set(x + Math.cos(yaw) * wf, y + wu + vib + landDip, z - Math.sin(yaw) * wf);
     m.root.rotation.set(parked && !isCar ? 0.12 : lean, yaw, pitch + wh);
+    // steht das Fahrzeug still (gleiche Lage wie im letzten Bild)? → Positionen der ~40 Einzelteile nicht neu berechnen
+    const sig = m.root.position.x + m.root.position.y * 7 + m.root.position.z * 13 + yaw * 17 + lean * 19 + pitch * 23 + wh * 29 + st * 31 + v.spin * 37 + (v.rot || 0) * 41;
+    m.root.userData.still = Math.abs(sig - (m.root.userData.sig === undefined ? NaN : m.root.userData.sig)) < 1e-7 ? (m.root.userData.still || 0) + 1 : 0;
+    m.root.userData.sig = sig;
     if (rider && isCar) rider.g.visible = false;   // im Auto sitzt man drinnen
     else if (rider) {   // fremder Fahrer kippt mit, Fuß runter im Stand, Hände am Lenker
       const [sf] = wheelieShift(wh, 0.6 - RIDER_BACK, RIDER_UP);

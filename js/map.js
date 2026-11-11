@@ -2700,6 +2700,15 @@ window.setTreeLOD = lo => { for (const fg of FAR_GROUPS) if (fg.geoLo) fg.o.geom
 // danach nicht mehr in jedem Bild (spart Rechenzeit)
 for (const m of mapMeshes) { m.updateMatrix(); m.updateMatrixWorld(true); m.matrixAutoUpdate = false; }
 for (const g of FAR_GROUPS) { g.o.updateMatrix(); g.o.updateMatrixWorld(true); g.o.matrixAutoUpdate = false; }
+// Aufräumen nach dem Zusammenfassen: leere Hüllen (Gruppen ohne Inhalt) entfernen – sie würden sonst jedes Bild mitgerechnet
+{ const hasMesh = o => o.isMesh || o.isLight || o.isSprite || o.isLine || o.isPoints || o.children.some(hasMesh);
+  const empty = []; for (const c of scene.children) if (c.type === 'Group' && !hasMesh(c)) empty.push(c);
+  for (const c of empty) scene.remove(c); }
+// Alles, was die Karte bis hierher gebaut hat, bewegt sich nie (außer Windrad-Flügel): Lage einfrieren
+{ const DYN = new Set([camera, sun, sun.target, skyMesh, ...(window.WINDMILLS || []).map(w => w.o)]);
+  const freeze = o => { if (DYN.has(o)) return; o.updateMatrix(); o.matrixAutoUpdate = false; for (const c of o.children) freeze(c); };
+  for (const c of scene.children) if (!c.isLight) freeze(c);
+  scene.updateMatrixWorld(true); }
 window.cullChunks = dt => {
   for (const w of window.WINDMILLS || []) w.o.rotation[w.axis] += w.s * dt;   // Windräder / Windmühle
   if (gfx === 'potato') potatoTick(dt);
@@ -2762,6 +2771,9 @@ function applyGfx(v) {
   renderer.setPixelRatio(v === 'high' ? Math.min(dpr, 1.5) : v === 'medium' ? 1 : v === 'perf' ? 0.9 : v === 'low' ? 0.7 : 0.5);
   // „Leistung“: Schattenbild nicht in jedem Bild neu zeichnen (ui.js stößt es ~10× pro Sekunde an)
   renderer.shadowMap.autoUpdate = v !== 'perf'; renderer.shadowMap.needsUpdate = true;
+  // „Leistung“: einfachere Schattenkanten (PCF statt weich gefiltert) – braucht neu übersetzte Shader
+  const shType = v === 'perf' ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  if (renderer.shadowMap.type !== shType) { renderer.shadowMap.type = shType; scene.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.needsUpdate = true; }); }
   if (window.setTreeLOD) window.setTreeLOD(v === 'perf' || v === 'low' || v === 'potato');   // einfachere Baumformen
   sun.castShadow = !gfxLow();
   if (window.grassI) window.grassI.visible = !gfxLow();
