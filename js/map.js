@@ -90,7 +90,8 @@ function hillH(x, z) {
   return 0;
 }
 function hillRegionH(H, x, z) {
-  let m = _sst(0, H.edge || 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
+  if (H.fn) return H.fn(x, z);   // Berge am Kartenrand: Höhe = sichtbares Außengelände
+  let m =_sst(0, H.edge || 22, Math.min(x - H.x0, H.x1 - x, z - H.z0, H.z1 - z));
   for (const [cx, cz, r] of H.flatC) { const d = Math.hypot(x - cx, z - cz); if (d < r + 14) m *= _sst(r, r + 14, d); }
   for (const [ax, v] of H.flatL) m *= _sst(5, 18, Math.abs((ax === 'x' ? x : z) - v));
   if (H.track && m > 0) { const d = trackDist(x, z); if (d < TRK_CELL) m *= _sst(9, TRK_CELL, d); }   // Drift-Strecke: flacher Korridor, Hügel steigen daneben an
@@ -2037,6 +2038,163 @@ function hillMeshRect(x0, x1, z0, z1, mat, tile, S = 2) {
   g.setIndex(idx); g.computeVertexNormals();
   const m = new THREE.Mesh(withUv2(g), mat); m.receiveShadow = true; scene.add(m);
 }
+/* ======================= Erweiterung der Karte „Welt“: Ring 300–380 m + Berge 380–440 m =======================
+   Ringstraße (345 m), Industriegebiet (Norden), Windpark (Osten), Weiler mit Kapelle (Süden), Campingplatz am Teich (Westen),
+   Wälder und Wiesen dazwischen; in den Bergen Wald und Almhütten. */
+window.WINDMILLS = [];   // drehende Teile (Windräder, Windmühle) – werden in cullChunks gedreht
+const noMergeDeep = o => o.traverse(c => { if (c.isMesh) c.userData.noMerge = true; });
+// Almhütte am Hang: Steinsockel bis in den Boden, Holzwände, Satteldach, Schornstein, Bank
+function almHut(x, z, rot = 0) {
+  const y = hillH(x, z), w = 7, d = 5.5, ax = Math.abs(Math.sin(rot)) > 0.5;
+  const W = ax ? d : w, D = ax ? w : d;
+  addBox(x, y - 3, z, W + 0.4, 3.6, D + 0.4, TKM.stone, 2, { round: 0 });
+  addBox(x, y + 0.6, z, W, 2.8, D, TKM.wood, 2, { round: 0 });
+  const rise = 2.2, roof = MAT.roof;
+  for (const s of [1, -1]) {
+    const run = (ax ? W : D) / 2 + 0.6, slope = Math.hypot(run, rise), ang = Math.atan2(rise, run);
+    const r = new THREE.Mesh(boxGeo(ax ? slope : W + 0.8, 0.18, ax ? D + 0.8 : slope, 2.5), roof);
+    if (ax) { r.position.set(x + s * run / 2, y + 3.4 + rise / 2, z); r.rotation.z = -s * ang; } else { r.position.set(x, y + 3.4 + rise / 2, z + s * run / 2); r.rotation.x = s * ang; }
+    r.castShadow = true; scene.add(r);
+  }
+  addBox(x + (ax ? 0 : W / 4), y + 3.4, z + (ax ? D / 4 : 0), 0.6, 2.4, 0.6, TKM.stone, 1, { decor: true, round: 0 });
+  // Fenster/Tür als dunkle Flächen auf der Vorderseite
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 2.1), MAT.door);
+  if (ax) { front.position.set(x + W / 2 + 0.01, y + 1.65, z); front.rotation.y = Math.PI / 2; } else { front.position.set(x, y + 1.65, z + D / 2 + 0.01); }
+  scene.add(front);
+}
+// Windrad: Turm, Gondel, Nabe, 3 Flügel (drehen sich)
+function windTurbine(x, z, face) {
+  const white = TKM.white, h = 44;
+  const tower = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.9, 1.5, h, 16)), white); tower.position.set(x, h / 2, z); tower.castShadow = true; scene.add(tower);
+  collider(x, 0, z, 2.6, h, 2.6);
+  addBox(x, h - 0.6, z, 5, 2.4, 2.4, white, 1, { decor: true, round: 0.3, rotY: face });
+  const rotor = new THREE.Group(); rotor.position.set(x + Math.cos(face) * 2.8, h + 0.6, z - Math.sin(face) * 2.8); rotor.rotation.y = face; scene.add(rotor);
+  const spin = new THREE.Group(); rotor.add(spin);
+  const hub = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 8), white); hub.scale.x = 1.3; spin.add(hub);
+  for (let k = 0; k < 3; k++) { const b = new THREE.Mesh(boxGeo(0.25, 19, 1.0, 0), white); b.position.y = 9.6; const arm = new THREE.Group(); arm.rotation.x = k * Math.PI * 2 / 3; arm.add(b); spin.add(arm); }
+  noMergeDeep(rotor); window.WINDMILLS.push({ o: spin, axis: 'x', s: 0.9 + srand() * 0.4 });
+}
+// Zelt (Satteldachform) und Wohnwagen
+function tent(x, z, col, rot = 0) {
+  const g = new THREE.Shape(); g.moveTo(-1.3, 0); g.lineTo(1.3, 0); g.lineTo(0, 1.6); g.closePath();
+  const geo = new THREE.ExtrudeGeometry(g, { depth: 2.8, bevelEnabled: false }); geo.translate(0, 0, -1.4);
+  const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col, roughness: 0.8, side: THREE.DoubleSide })); m.position.set(x, 0, z); m.rotation.y = rot; m.castShadow = true; scene.add(m);
+  collider(x, 0, z, 2.8, 1.5, 2.8);
+}
+function caravan(x, z) {
+  addBox(x, 0.5, z, 6, 2.4, 2.3, TKM.white, 2, { round: 0.25 });
+  addBox(x, 1.6, z + 1.16, 3.5, 0.7, 0.04, MAT.dark, 1, { decor: true, round: 0 });
+  addBox(x - 1.5, 2.2, z, 2.5, 0.08, 2.3, MAT.ctrOrange, 1, { decor: true, round: 0 });
+  for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.25, 14), TIRE); w.rotation.x = Math.PI / 2; w.position.set(x + 0.5, 0.35, z + s * 1.15); scene.add(w); }
+}
+// Industriehalle mit Rolltoren und Firmenschild
+function hall(x, z, w, d, h, name, doorSide) {
+  addBox(x, 0, z, w, h, d, MAT.hallMetal, 2.6, { round: 0 });
+  addBox(x, h, z, w + 0.6, 0.5, d + 0.6, MAT.dark, 1, { decor: true, round: 0 });
+  const fz = z + doorSide * (d / 2 + 0.02);
+  for (let k = 0; k < 3; k++) { const door = new THREE.Mesh(new THREE.PlaneGeometry(4, 4.5), MAT.dark); door.position.set(x - w / 3 + k * w / 3, 2.25, fz); door.rotation.y = doorSide > 0 ? 0 : Math.PI; scene.add(door); }
+  tkSign(x, h - 1.2, fz + doorSide * 0.02, Math.min(w - 4, 14), 1.4, doorSide > 0 ? 0 : Math.PI, tkSignMat(name, '#1f3b5c', '#ffffff', false));
+}
+function weltRing(road, S) {
+  const R = 345, O = 378;   // Ringstraße, Beginn der Berge
+  for (const [x0, z0, x1, z1] of [[-R, -R, R, -R], [-R, R, R, R], [-R, -R, -R, R], [R, -R, R, R]]) road(x0, z0, x1, z1, 9);
+  window.MAP_STREETS.push([-R - 4.5, -R - 4.5, R + 4.5, -R + 4.5], [-R - 4.5, R - 4.5, R + 4.5, R + 4.5], [-R - 4.5, -R - 4.5, -R + 4.5, R + 4.5], [R - 4.5, -R - 4.5, R + 4.5, R + 4.5], [-6.5, -S, 6.5, S], [-S, -6.5, S, 6.5]);
+  const busy = [];   // belegte Flächen (keine Bäume)
+  const reserve = (x0, z0, x1, z1) => busy.push([x0, z0, x1, z1]);
+  const isBusy = (x, z, pad = 0) => busy.some(([a, b, c, d]) => x > a - pad && x < c + pad && z > b - pad && z < d + pad);
+  // Straßen und Ringstraße frei halten
+  reserve(-8, -S, 8, S); reserve(-S, -8, S, 8);
+  for (const s of [-1, 1]) { reserve(-R - 7, s * R - 7, R + 7, s * R + 7); reserve(s * R - 7, -R - 7, s * R + 7, R + 7); }
+
+  /* --- Industriegebiet (Norden über der Stadt): Hallen, Container, Lkw --- */
+  const names = ['LOGISTIK NORD', 'SPEDITION KRAUSE', 'METALLBAU', 'GETRÄNKE-GROSSHANDEL', 'BAUSTOFFE', 'KÜHLHAUS', 'RECYCLING', 'AUTOTEILE'];
+  let ni = 0;
+  for (const x of [70, 125, 180, 235, 290]) { hall(x, -365, 40, 22, 9, names[ni++ % names.length], 1); reserve(x - 22, -378, x + 22, -352); }
+  for (const x of [85, 150, 215, 275]) { hall(x, -322, 34, 24, 8, names[ni++ % names.length], -1); reserve(x - 19, -336, x + 19, -306); }
+  const ctr = [MAT.ctrRed, MAT.ctrBlue, MAT.ctrGreen, MAT.ctrOrange];
+  for (const [x, z] of [[110, -322], [175, -322], [240, -322], [93, -365], [148, -365], [203, -365], [258, -365]]) {   // Containerstapel in den Lücken zwischen den Hallen
+    for (let k = 0; k < 3; k++) addBox(x + k * 2.6, 0, z, 2.4, 2.6, 6, ctr[(k + x) % 4], 2.6, { round: 0.05 });
+    addBox(x + 2.6, 2.6, z, 2.4, 2.6, 6, ctr[(x + 1) % 4], 2.6, { round: 0.05 });
+  }
+  truck(152, -340.8, false); truck(262, -349.2, false);
+
+  /* --- Windpark (Osten) --- */
+  for (const z of [-250, -160, -70, 70, 160, 250]) { windTurbine(364, z, Math.PI); reserve(356, z - 6, 372, z + 6); }
+
+  /* --- Weiler mit Kapelle (Süden) --- */
+  const mats = [MAT.plaster, MAT.plaster2, MAT.brick];
+  for (let x = -235; x <= 235; x += 34) {
+    if (Math.abs(x) < 22) continue;
+    house(x, 330, 10, 8, 4, mats[Math.floor(srand() * 3)]); reserve(x - 8, 322, x + 8, 340);
+    hedge(x, 338, 9, 0.8); leafTree(x + 7, 324, 0.8);
+  }
+  { const cx = 60, cz = 366;   // Kapelle
+    addBox(cx, 0, cz, 7, 6, 12, MAT.plaster, 2.7); addBox(cx, 0, cz - 7.5, 3.4, 13, 3.4, MAT.plaster, 2.7);
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(2.6, 5, 4), TKM.roofTile); sp.position.set(cx, 15.5, cz - 7.5); sp.rotation.y = Math.PI / 4; scene.add(sp);
+    for (const s of [1, -1]) { const r = new THREE.Mesh(boxGeo(0.15, 4.6, 12.6, 2.5), MAT.roof); r.position.set(cx + s * 1.9, 7.2, cz); r.rotation.z = s * 0.95; scene.add(r); }
+    reserve(cx - 6, cz - 11, cx + 6, cz + 8); }
+  const field = hex => pbr('grass', 4, { map: tintedTex('grass', hex), mat: { color: new THREE.Color(1, 1, 1) } });
+  const crops = [field(0xcfae55), field(0xd9cf3a), field(0x7aa645)];
+  for (const [x0, x1] of [[-240, -130], [-110, -20], [90, 200], [215, 300]]) {
+    decalT((x0 + x1) / 2, 364, x1 - x0, 24, crops[Math.floor(srand() * 3)], 4, 0, 0.007); reserve(x0, 352, x1, 377);
+    railFence(x0, 351, x1, 351);
+  }
+
+  /* --- Campingplatz am Teich (Westen) --- */
+  { const px = -362, pz = -130, pr = 14;
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(pr, 40), TKM.water); pond.rotation.x = -Math.PI / 2; pond.position.set(px, 0.03, pz); pond.userData.noMerge = true; scene.add(pond);
+    for (let gx = -pr + 4; gx < pr; gx += 7) for (let gz = -pr + 4; gz < pr; gz += 7) if (Math.hypot(gx, gz) < pr - 4) collider(px + gx, 0, pz + gz, 7.5, 3, 7.5);
+    reserve(px - pr - 3, pz - pr - 3, px + pr + 3, pz + pr + 3);
+    const cols = [0xd8432a, 0x2e7dd6, 0x3fa34d, 0xf2b81f, 0x8e44ad];
+    let k = 0;
+    for (let z = -80; z <= 80; z += 16) { if (Math.abs(z) < 12) continue; tent(-326, z, cols[k++ % 5], srand() * 6); }
+    for (const z of [-100, 100]) caravan(-320, z);
+    reserve(-340, -110, -306, 110);
+    tkSign(-341.1, 2.2, -14, 5, 1, -Math.PI / 2, tkSignMat('⛺ CAMPING', '#2e6b3a', '#ffffff', false));
+    addBox(-341, 0, -14, 0.15, 2.4, 0.15, TKM.wood, 1, { round: 0 }); }
+
+  /* --- Wälder im Ring und in den Bergen (instanziert, mit Stamm-Kollision) --- */
+  const TN = 1100, td = new THREE.Object3D();
+  const leafM = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.72, 0.84, 0.66), emissive: new THREE.Color(0.07, 0.12, 0.05), emissiveMap: TEX.needles });
+  // vier Streifen (Nord/Süd/West/Ost) → weit entfernte Streifen werden ausgeblendet (cullChunks)
+  const stripOf = (x, z) => Math.abs(z) >= Math.abs(x) ? (z < 0 ? 0 : 1) : (x < 0 ? 2 : 3);
+  const strips = [0, 1, 2, 3].map(() => ({ t: new THREE.InstancedMesh(trunkGeo, treeTrunkMat, TN), l: layerGeos.map(g => new THREE.InstancedMesh(g, leafM, TN)), n: 0 }));
+  let placed = 0, tries = 0;
+  while (placed < TN && tries++ < 30000) {
+    const x = srnd(-S + 4, S - 4), z = srnd(-S + 4, S - 4), m = Math.max(Math.abs(x), Math.abs(z));
+    if (m < 304 || isBusy(x, z, 2)) continue;
+    const y = hillH(x, z); if (y > 45) continue;
+    // im flachen Ring lichter (Wiesen bleiben), in den Bergen dichter
+    if (m < O && srand() < 0.45) continue;
+    const s = srnd(0.85, 1.4), st = strips[stripOf(x, z)];
+    td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
+    st.t.setMatrixAt(st.n, td.matrix); for (const l of st.l) l.setMatrixAt(st.n, td.matrix);
+    st.n++; collider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s); placed++;
+  }
+  for (const st of strips) { st.t.count = st.n; scene.add(st.t); for (const l of st.l) { l.count = st.n; scene.add(l); } }   // ohne eigenen Schatten (spart viel Grafikleistung)
+
+  /* --- Gras: Büschel auf Wiesen, im Wald, auf den Hügeln (nicht auf Straßen, in Stadt/Dorf, Strecken, See) --- */
+  { const bg = (() => {
+      const g1 = new THREE.PlaneGeometry(0.8, 0.5); g1.translate(0, 0.25, 0);
+      const g2 = g1.clone(); g2.rotateY(Math.PI / 2);
+      return THREE.BufferGeometryUtils.mergeBufferGeometries([g1, g2]);
+    })();
+    const NG = 7000, gi = window.grassI = new THREE.InstancedMesh(bg, new THREE.MeshLambertMaterial({ map: TEX.blades, alphaTest: 0.45, side: THREE.DoubleSide, color: new THREE.Color(0.75, 0.95, 0.55), emissive: new THREE.Color(0.16, 0.26, 0.07), emissiveMap: TEX.blades }), NG);   // leicht selbstleuchtend: Rückseiten sonst schwarz
+    const blocked = (x, z) => Math.abs(x) < 8 || Math.abs(z) < 8 || (x > 26 && x < 294 && z > -294 && z < -26) || (x < -26 && x > -294 && z > 26 && z < 294)
+      || (x > 153 && x < 294 && z > 50 && z < 147) || (x > 6 && x < 48 && z > 6 && z < 48) || Math.hypot(x + 205, z + 95) < 30 || trackDist(x, z) < 8 || isBusy(x, z, 1)
+      || (x > 188 && x < 276 && z > 182 && z < 242);
+    let n = 0, tries = 0;
+    while (n < NG && tries++ < 40000) {
+      const x = srnd(-400, 400), z = srnd(-400, 400); if (blocked(x, z)) continue;
+      const y = hillH(x, z); if (y > 40) continue;
+      const s = srnd(1.0, 1.9);
+      td.position.set(x, y - 0.03, z); td.scale.set(s, s * srnd(0.8, 1.3), s); td.rotation.set(0, srand() * 6, 0); td.updateMatrix(); gi.setMatrixAt(n++, td.matrix);
+    }
+    gi.count = n; gi.receiveShadow = true; scene.add(gi); }   // Sichtbarkeit je nach Grafikstufe: applyGfx
+
+  /* --- Almhütten in den Bergen (bebaut) --- */
+  for (const [x, z, r] of [[-250, -400, 0], [120, -405, 0], [405, -230, Math.PI / 2], [410, 120, Math.PI / 2], [230, 402, 0], [-160, 404, 0], [-404, 210, Math.PI / 2], [-408, -90, Math.PI / 2]]) almHut(x, z, r);
+}
 // Waffen zum Aufsammeln auf der Karte „Welt“ (vorab festgelegt, damit dort keine Häuser gebaut werden)
 const WELT_PICKS = [
   { w: 0, x: 10, y: 0, z: -14 }, { w: 1, x: -14, y: 0, z: 10 }, { w: 0, x: 70, y: 0, z: -50 }, { w: 2, x: 130, y: 0, z: -150 }, { w: 1, x: 190, y: 0, z: -130 },
@@ -2045,7 +2203,10 @@ const WELT_PICKS = [
   { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 }, { w: 2, x: -226, y: 0, z: -232 },
 ];
 function buildWeltMap() {
-  const S = 300;
+  const S = 440;   // Spielfläche ±440 m: innen das alte Gebiet (±300), dann ein flacher Ring, außen Berge (ab ~380 m)
+  // Berge am Rand (begehbar): vier Streifen, Höhe = sichtbares Außengelände (core.js terrainHeight)
+  const outerH = (x, z) => Math.max(Math.abs(x), Math.abs(z)) < 378 ? 0 : Math.max(0, window.terrainHeight(x, z));
+  for (const [x0, x1, z0, z1] of [[-S, S, -S, -376], [-S, S, 376, S], [-S, -376, -376, 376], [376, S, -376, 376]]) addHillRegion({ x0, x1, z0, z1, fn: outerH });
   /* --- Hügel: Wald (Berg), Felder beim Bauernhof --- */
   const LX0 = -205, LZ0 = -95, LR0 = 26;   // Waldsee (gleiche Werte wie unten)
   // Drift-Strecken zwischen den Hügeln (Verlauf zuerst, damit die Hügel entlang der Strecke flach werden)
@@ -2071,7 +2232,7 @@ function buildWeltMap() {
   /* --- Rand: Hecke + unsichtbare Wand --- */
   for (const s of [-1, 1]) {
     addBox(0, 0, s * (S + 1), 2 * S + 4, 1.6, 1.2, HEDGE_MAT, 1, { decor: true, round: 0.4 }); addBox(s * (S + 1), 0, 0, 1.2, 1.6, 2 * S + 4, HEDGE_MAT, 1, { decor: true, round: 0.4 });
-    collider(0, 0, s * (S + 1.5), 2 * S + 6, 14, 2); collider(s * (S + 1.5), 0, 0, 2, 14, 2 * S + 6);
+    collider(0, 0, s * (S + 1.5), 2 * S + 6, 160, 2); collider(s * (S + 1.5), 0, 0, 2, 160, 2 * S + 6);
   }
 
   /* --- Straßen-Werkzeug: Asphalt + Mittellinie + Randlinien (achsparallel) --- */
@@ -2085,8 +2246,8 @@ function buildWeltMap() {
   };
   // Bundesstraßen durch die ganze Karte (Leitplanken an den Landstücken)
   road(-S, 0, S, 0, 13, 'solid'); road(0, -S, 0, S, 13, 'solid');
-  for (let t = -290; t < 290; t += 4) {
-    if (Math.abs(t) < 14) continue;
+  for (let t = -376; t < 376; t += 4) {
+    if (Math.abs(t) < 14 || Math.abs(Math.abs(t) - 345) < 8) continue;   // Kreuzungen (Mitte, Ringstraße) frei
     const rural = (x, z) => !(x > 25 && z < -25) && !(x < -25 && z > 25);   // nicht in Stadt/Dorf
     if (rural(t, -7.5)) { addBox(t, 0.5, -7.3, 4, 0.3, 0.15, MAT.metal, 1, { decor: true, round: 0 }); }
     if (rural(t, 7.5)) { addBox(t, 0.5, 7.3, 4, 0.3, 0.15, MAT.metal, 1, { decor: true, round: 0 }); }
@@ -2319,6 +2480,25 @@ function buildWeltMap() {
   { const hs = tkSignMat('HOF HUBER', '#ffffff', '#7a1e12', false); tkSign(155.9, 2.05, 190, 3.4, 0.7, -Math.PI / 2, hs); tkSign(156.1, 2.05, 190, 3.4, 0.7, Math.PI / 2, hs); }
   addBox(156, 1.6, 190, 0.2, 0.2, 7.2, TKM.wood, 1, { decor: true, round: 0 });
   farmExtras();
+  // Windmühle auf dem großen Feldhügel, Kapelle auf dem Hügel im Hügel-Ring
+  { const wx = 58, wz = 95, y = hillH(wx, wz);
+    const tw = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(2.3, 3.3, 11, 12)), MAT.plaster); tw.position.set(wx, y + 5.3, wz); tw.castShadow = true; scene.add(tw);
+    collider(wx, y - 1, wz, 6, 12, 6);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(2.8, 3.2, 12), MAT.roof); cap.position.set(wx, y + 12.3, wz); scene.add(cap);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 2.3), MAT.door); door.position.set(wx, y + 1.15, wz - 3.12); door.rotation.y = Math.PI; scene.add(door);
+    const sails = new THREE.Group(); sails.position.set(wx, y + 10.3, wz - 3.2); scene.add(sails);
+    for (let k = 0; k < 4; k++) {
+      const arm = new THREE.Group(); arm.rotation.z = k * Math.PI / 2; sails.add(arm);
+      const spar = new THREE.Mesh(boxGeo(0.25, 7.5, 0.2, 0), TKM.wood); spar.position.y = 3.9; arm.add(spar);
+      const sail = new THREE.Mesh(boxGeo(1.4, 6, 0.05, 0), TKM.white); sail.position.set(0.8, 4.4, 0); arm.add(sail);
+    }
+    noMergeDeep(sails); window.WINDMILLS.push({ o: sails, axis: 'z', s: 0.6 }); }
+  { const cx = 46, cz = 214, y = hillH(cx, cz);
+    addBox(cx, y - 1.5, cz, 6, 6.3, 9, MAT.plaster, 2.7);
+    for (const s of [1, -1]) { const r = new THREE.Mesh(boxGeo(0.15, 4.2, 9.6, 2.5), MAT.roof); r.position.set(cx + s * 1.6, y + 5.7, cz); r.rotation.z = s * 0.95; scene.add(r); }
+    addBox(cx, y - 1.5, cz - 5.4, 2.6, 10, 2.6, MAT.plaster, 2.7);
+    const sp = new THREE.Mesh(new THREE.ConeGeometry(2, 4, 4), TKM.roofTile); sp.position.set(cx, y + 10.5, cz - 5.4); sp.rotation.y = Math.PI / 4; scene.add(sp);
+    const door = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.2), MAT.door); door.position.set(cx, y + 1.1, cz - 6.72); door.rotation.y = Math.PI; scene.add(door); }
   const hay = new THREE.MeshStandardMaterial({ color: 0xc9a54e, roughness: 1, bumpMap: TEX.blades, bumpScale: 0.02 });
   for (const [x, z] of [[230, 230], [232, 232], [250, 240], [195, 215], [197, 217]]) { const m = new THREE.Mesh(withUv2(new THREE.CylinderGeometry(0.75, 0.75, 1.3, 16)), hay); m.rotation.z = Math.PI / 2; m.position.set(x, 0.75, z); m.castShadow = true; scene.add(m); collider(x, 0, z, 1.3, 1.5, 1.5); }
   carSpot(222, 196, Math.PI); car(200, 200, true);
@@ -2347,6 +2527,7 @@ function buildWeltMap() {
     // Gipfelkreuz
     const top = hillH(-228, -228);
     addBox(-228, top, -228, 0.25, 4.2, 0.25, TKM.wood, 1, { round: 0 }); addBox(-228, top + 2.9, -228, 0.2, 0.22, 1.8, TKM.wood, 1, { decor: true, round: 0 });
+    almHut(-214, -214, 0);   // Berghütte knapp unter dem Gipfel
   }
   const lake = new THREE.Mesh(new THREE.CircleGeometry(LR, 48), TKM.water); lake.rotation.x = -Math.PI / 2; lake.position.set(LX, 0.03, LZ); lake.userData.noMerge = true; scene.add(lake);
   for (let gx = -LR + 4; gx < LR; gx += 8) for (let gz = -LR + 4; gz < LR; gz += 8) if (Math.hypot(gx, gz) < LR - 5) collider(LX + gx, 0, LZ + gz, 8.5, 3, 8.5);
@@ -2369,7 +2550,7 @@ function buildWeltMap() {
     if (trackDist(x, z) < 11) continue;   // Drift-Strecke frei
     if (WELT_PICKS.some(p => Math.hypot(p.x - x, p.z - z) < 3)) continue;
     const s = srnd(0.8, 1.35), y = hillH(x, z);
-    if (y > 24 || Math.hypot(x + 228, z + 228) < 16) continue;   // Gipfel bleibt kahl
+    if (Math.hypot(x + 228, z + 228) < 11 || Math.hypot(x + 214, z + 214) < 8) continue;   // bis zum Gipfel bewaldet, nur Gipfelfelsen und Berghütte frei
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
     trunksI.setMatrixAt(placed, td.matrix); for (const l of layersI) l.setMatrixAt(placed, td.matrix);
     collider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s);
@@ -2387,10 +2568,11 @@ function buildWeltMap() {
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ map: TEX.bark }), N);
   const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
   for (let i = 0; i < N; i++) {
-    let x, z; do { x = rnd(-560, 560); z = rnd(-560, 560); } while (window.mapEdge(x, z) < 74);
-    const s = rnd(1.3, 2.3);
-    dummy.position.set(x, window.terrainHeight(x, z) - 0.2, z); dummy.scale.set(s, s * rnd(0.9, 1.3), s); dummy.rotation.y = Math.random() * 6;
+    let x, z; do { x = srnd(-560, 560); z = srnd(-560, 560); } while (window.mapEdge(x, z) < 74);   // fester Zufall: bei allen Spielern gleich
+    const s = srnd(1.3, 2.3), y = window.terrainHeight(x, z);
+    dummy.position.set(x, y - 0.2, z); dummy.scale.set(s, s * srnd(0.9, 1.3), s); dummy.rotation.y = srand() * 6;
     dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
+    if (Math.abs(x) < S && Math.abs(z) < S) collider(x, y - 0.3, z, 0.6 * s, 5, 0.6 * s);   // jetzt erreichbar → fest
   }
   for (const l of layers) scene.add(l);
   scene.add(trunks);
@@ -2408,6 +2590,8 @@ function buildWeltMap() {
       MAP_VEHICLES.push({ x, z, yaw: Math.PI / 2, kind: 'heli' });
     }
   }
+  weltRing(road, S);
+
   /* --- Mopeds --- */
   for (const [x, z, ax] of [[-6, -20, false], [6, 40, false], [-60, 8, true], [70, -6, true], [-55, 70, false], [-110, 62, false], [120, -35, true], [230, -100, true], [-150, -20, false], [160, 140, true]]) car(x, z, ax);
 
@@ -2465,11 +2649,28 @@ let CULL_DIST = 250;
 })();
 // Weit entfernte Stücke ausblenden (liegen im Nebel)
 let cullT = 0;
+// Große instanzierte Gruppen (Wälder, Büsche, Gras): Bereich aus den Positionen bestimmen → weit weg (im Nebel) ausblenden
+const FAR_GROUPS = [];
+if (CHUNK) {
+  const m4 = new THREE.Matrix4(), p = new THREE.Vector3();
+  scene.traverse(o => {
+    if (!o.isInstancedMesh || o.count < 30) return;
+    let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9;
+    for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, m4); p.setFromMatrixPosition(m4); x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
+    o.frustumCulled = false;   // three.js r128 kennt die Lage der Instanzen nicht → selbst per Entfernung ausblenden
+    FAR_GROUPS.push({ o, r: [x0, z0, x1, z1] });
+  });
+}
 window.cullChunks = dt => {
+  for (const w of window.WINDMILLS || []) w.o.rotation[w.axis] += w.s * dt;   // Windräder / Windmühle
   if (gfx === 'potato') potatoTick(dt);
   if (!CHUNK) return;
   cullT -= dt; if (cullT > 0) return; cullT = 0.2;
   const c = camera.position;
+  for (const g of FAR_GROUPS) {
+    const dx = Math.max(g.r[0] - c.x, 0, c.x - g.r[2]), dz = Math.max(g.r[1] - c.z, 0, c.z - g.r[3]);
+    g.o.visible = Math.hypot(dx, dz) < CULL_DIST + 70 && (g.o !== window.grassI || !gfxLow());
+  }
   for (const m of mapMeshes) { const s = m.userData.cull; if (s) m.visible = c.distanceTo(s.center) - s.radius < CULL_DIST; }
 };
 
@@ -2524,7 +2725,7 @@ function applyGfx(v) {
   const P = v === 'potato';
   scene.fog.near = P ? FOG0.near * 0.45 : FOG0.near; scene.fog.far = P ? FOG0.far * 0.55 : FOG0.far;
   camera.far = P ? scene.fog.far + 10 : FOG0.cam; camera.updateProjectionMatrix();
-  CULL_DIST = P ? 150 : FOG0.cull;
+  CULL_DIST = P ? 150 : v === 'low' ? 200 : FOG0.cull;
   if (P) swapMats(true); else if (wasPotato) swapMats(false);
   const size = v === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== size) {

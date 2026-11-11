@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261111-165637 durch eine Versionsnummer ersetzt */
-const BUILD = '20261111-165637';
+/* Update-Prüfung: beim Veröffentlichen wird 20261111-170806 durch eine Versionsnummer ersetzt */
+const BUILD = '20261111-170806';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -574,9 +574,11 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
 }
 (function ground() {
   // Asphalt über die ganze Spielfläche (Tokio: x/z -101 … 101; Hafenviertel: x -62 … 56, z -62 … 62)
-  const hafen = MAP_ID === 'hafen', welt = MAP_ID === 'welt', FW = hafen ? 118 : welt ? 610 : 203, FD = hafen ? 124 : welt ? 610 : 203;
+  const hafen = MAP_ID === 'hafen', welt = MAP_ID === 'welt', FW = hafen ? 118 : welt ? 780 : 203, FD = hafen ? 124 : welt ? 780 : 203;
   // Welt: Wiese als Boden (Straßen kommen als Asphaltstreifen darauf), sonst Asphalt
-  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(FW, FD)), welt ? pbr('grass', 2, {}, FW / 5, FD / 5) : pbr('asphalt', 3, {}, FW / 3, FD / 3));
+  // Welt: saftig grüne Wiese (eingefärbtes Gras-Foto, 5-m-Kacheln)
+  const wiese = welt ? tintedTex('grass', 0x587a34) : null; if (wiese) wiese.repeat.set(FW / 5, FD / 5);
+  const floor = new THREE.Mesh(withUv2(new THREE.PlaneGeometry(FW, FD)), welt ? pbr('grass', 2, { map: wiese }, FW / 5, FD / 5) : pbr('asphalt', 3, {}, FW / 3, FD / 3));
   floor.rotation.x = -Math.PI / 2; floor.position.x = hafen ? -3 : 0; floor.receiveShadow = true;
   scene.add(floor); mapMeshes.push(floor);
   // Hügel per Rauschfunktion
@@ -592,20 +594,23 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
   // Hügel rund um die (quadratische) Karte, im Osten Hafenbecken
   // Abstand zum Rand: Stadt + Skyline reichen bis ~225 m, erst dahinter beginnen die Hügel
   const mapEdge = hafen ? (x, z) => Math.max(Math.abs(x + 3), z > 0 ? Math.max(0, z - 70) : -z)
-    : welt ? (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 232 : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
+    : welt ? (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 312 : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
   window.mapEdge = mapEdge;
+  // Welt: Berge ab ~380 m (begehbar bis 440 m), die Hauptstraßen laufen in Tälern hindurch; ohne feines Rauschen,
+  // damit das sichtbare Gelände und die Kollision (hillH) übereinstimmen
   const heightAt = (x, z) => {
     const edge = mapEdge(x, z);
-    const hills = sstep(68, 200, edge) * (fbm(x * 0.008 + 3, z * 0.008) * 70 + 4) + sstep(63, 85, edge) * fbm(x * 0.06, z * 0.06) * 2;
+    let hills = sstep(68, welt ? 140 : 200, edge) * (fbm(x * 0.008 + 3, z * 0.008) * 70 + 4) + (welt ? 0 : sstep(63, 85, edge) * fbm(x * 0.06, z * 0.06) * 2);
+    if (welt) hills *= sstep(8, 30, Math.abs(x)) * sstep(8, 30, Math.abs(z));
     const sea = welt ? 0 : hafen ? sstep(54, 62, x) : sstep(101, 108, x);
     return hills * (1 - sea) - 6 * sea - 0.06;
   };
-  const geo = new THREE.PlaneGeometry(1000, 1000, 120, 120); geo.rotateX(-Math.PI / 2);
+  const geo = new THREE.PlaneGeometry(1000, 1000, welt ? 200 : 120, welt ? 200 : 120); geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
   geo.computeVertexNormals(); withUv2(geo);
   // Einfacheres Material für die weite Landschaft (schneller)
-  const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: ptex('grass_diff.jpg', true, 250, 250), color: new THREE.Color(0.62, 0.85, 0.45) }));
+  const terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: ptex('grass_diff.jpg', true, 250, 250), color: welt ? new THREE.Color(0.42, 0.68, 0.32) : new THREE.Color(0.62, 0.85, 0.45) }));
   scene.add(terrain);
   window.terrainHeight = heightAt;
 })();

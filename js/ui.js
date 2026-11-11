@@ -98,7 +98,7 @@ function updateHUD(dt) {
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : MAP_ID === 'welt' ? { img: null, x0: -304, z0: -304, w: 608, h: 608, ppm: 2, t: 0 }
+const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : MAP_ID === 'welt' ? { img: null, x0: -444, z0: -444, w: 888, h: 888, ppm: 2, t: 0 }
   : { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
