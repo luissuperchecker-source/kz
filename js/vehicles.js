@@ -1135,7 +1135,7 @@ function updateVehicles(dt) {
     const parked = !v.d && v.i !== ride.v;
     m.stand.visible = parked;
     // Weit entfernte Mopeds nicht zeichnen (sie sind sehr detailliert, aus 70 m sieht man sie kaum)
-    const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > K.farDraw && v.i !== ride.v;
+    const dCam = Math.hypot(x - camera.position.x, z - camera.position.z), far = dCam > K.farDraw * (gfxClean() ? 0.6 : 1) && v.i !== ride.v;   // „Klar & schnell“: Fahrzeuge früher ausblenden
     m.root.visible = !far;
     const shadow = dCam < 32 || v.i === ride.v;   // Schatten nur bei nahen Mopeds
     if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh && !o.userData.noShadow) o.castShadow = shadow; }); }

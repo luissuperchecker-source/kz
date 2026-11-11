@@ -19,6 +19,9 @@ function boxGeo(w, h, d, tile, round = 0) {
   return withUv2(g);
 }
 function collider(x, y, z, w, h, d) { boxes.push({ min: { x: x - w / 2, y, z: z - d / 2 }, max: { x: x + w / 2, y: y + h, z: z + d / 2 } }); }
+// Baumstämme merken: in der Grafikstufe „Klar & schnell“ sind Bäume samt Kollision weg
+const TREE_BOXES = [];
+function treeCollider(x, y, z, w, h, d) { collider(x, y, z, w, h, d); TREE_BOXES.push(boxes[boxes.length - 1]); }
 // Wie stark Kanten je nach Material abgerundet werden (Meter)
 function defaultRound(mat) {
   if (mat === MAT.sandbag) return 0.24;
@@ -211,6 +214,7 @@ const LAMP_MAT = new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xf
 /* Nadelbäume aus Ästen mit Nadel-Textur */
 const treeLeafMat = new THREE.MeshStandardMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.95, color: new THREE.Color(0.75, 0.85, 0.7) });
 const treeTrunkMat = new THREE.MeshStandardMaterial({ map: TEX.bark, roughness: 1 });
+const LOG_MAT = treeTrunkMat.clone();   // umgestürzte Stämme / Brennholz (bleiben auch in „Klar & schnell“ sichtbar)
 const TREE_LAYERS = [[2.4, 2.6, 2.0], [2.0, 2.4, 3.2], [1.6, 2.2, 4.3], [1.2, 2.0, 5.3], [0.75, 1.7, 6.2]];
 const trunkGeo = new THREE.CylinderGeometry(0.12, 0.26, 6.5, 12); trunkGeo.translate(0, 3.25, 0);
 const layerGeos = TREE_LAYERS.map(([r, h, y]) => { const g = new THREE.ConeGeometry(r, h, 18, 1, true); g.translate(0, y, 0); return g; });
@@ -219,7 +223,7 @@ function tree(x, z, s = 1, solid = true) {
   const tr = new THREE.Mesh(trunkGeo, treeTrunkMat); tr.castShadow = true; g.add(tr);
   for (const lg of layerGeos) { const c = new THREE.Mesh(lg, treeLeafMat); c.castShadow = true; c.receiveShadow = true; g.add(c); }
   scene.add(g);
-  if (solid) collider(x, 0, z, 0.5 * s, 3 * s, 0.5 * s);
+  if (solid) treeCollider(x, 0, z, 0.5 * s, 3 * s, 0.5 * s);
 }
 // Laubbaum (rundere Krone) für den Park
 const leafMat2 = new THREE.MeshStandardMaterial({ map: TEX.needles, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.95, color: new THREE.Color(0.9, 1.0, 0.7) });
@@ -232,7 +236,7 @@ function leafTree(x, z, s = 1) {
     c.position.set(srnd(-1, 1), srnd(3.8, 5.4), srnd(-1, 1)); c.castShadow = true; g.add(c);
   }
   scene.add(g);
-  collider(x, 0, z, 0.55 * s, 3.5 * s, 0.55 * s);
+  treeCollider(x, 0, z, 0.55 * s, 3.5 * s, 0.55 * s);
 }
 // Haus mit Satteldach (geschlossen)
 function house(x, z, w, d, h, wallMat = MAT.brick) {
@@ -706,7 +710,7 @@ function tkSakura(x, z, s = 1) {
     const c = new THREE.Mesh(new THREE.SphereGeometry(srnd(1.1, 1.7), 11, 8), TKM.sakura);
     c.position.set(srnd(-1.3, 1.3), srnd(3.0, 4.4), srnd(-1.3, 1.3)); c.scale.y = 0.75; c.castShadow = true; g.add(c);
   }
-  scene.add(g); collider(x, 0, z, 0.5 * s, 3 * s, 0.5 * s);
+  scene.add(g); treeCollider(x, 0, z, 0.5 * s, 3 * s, 0.5 * s);
 }
 function tkTrainCar(cx, z, mat = TKM.silver) {
   addBox(cx, 0.55, z, 17, 3.2, 2.9, mat, 2, { round: 0.25 });
@@ -1822,6 +1826,7 @@ function forestExtras(LX, LZ, LR) {
     g.fillStyle = '#e8e5dc'; g.fillRect(0, 0, 64, 256); g.fillStyle = '#26221e';
     for (let i = 0; i < 26; i++) g.fillRect(Math.random() * 54, Math.random() * 256, 4 + Math.random() * 14, 2 + Math.random() * 4);
     const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })() });
+  barkB.userData.trunk = true;   // Birkenstämme: in „Klar & schnell“ ausblenden
   // Kronen: mehrere massive Blätter-Kugeln (Blätter-Textur als Relief, keine Löcher)
   const leafy = c => new THREE.MeshStandardMaterial({ map: TEX.needles, bumpMap: TEX.needles, bumpScale: 0.06, roughness: 1, color: c, flatShading: true });
   const crownMat = leafy(new THREE.Color(0.36, 0.55, 0.24)), crownMat2 = leafy(new THREE.Color(0.5, 0.68, 0.28));
@@ -1837,7 +1842,7 @@ function forestExtras(LX, LZ, LR) {
       const x = srnd(-288, -18), z = srnd(-288, -18); if (!free(x, z, 3)) continue;
       const s = srnd(0.8, 1.25), y = hillH(x, z) - 0.15, ry = srand() * 6;
       place(T, n, x, y, z, s, s * srnd(0.9, 1.2), s, ry); place(C, n, x, y, z, s * srnd(0.9, 1.15), s * srnd(0.9, 1.2), s * srnd(0.9, 1.15), ry);
-      collider(x, y - 0.3, z, 0.6 * s, 4.5, 0.6 * s); n++;
+      treeCollider(x, y - 0.3, z, 0.6 * s, 4.5, 0.6 * s); n++;
     }
     T.count = C.count = n; T.castShadow = C.castShadow = true; C.receiveShadow = true; scene.add(T); scene.add(C);
   }
@@ -1856,7 +1861,7 @@ function forestExtras(LX, LZ, LR) {
       if (s > 0.75) collider(x, y - 0.3, z, s * 1.6, s * 0.9, s * 1.6); }
     R.count = n; R.castShadow = true; R.receiveShadow = true; scene.add(R); }
   // umgefallene Baumstämme (fest), nur auf flachem Boden
-  { const N = 34, L = 6, G = new THREE.CylinderGeometry(0.34, 0.4, L, 10), LG = new THREE.InstancedMesh(G, treeTrunkMat, N);
+  { const N = 34, L = 6, G = new THREE.CylinderGeometry(0.34, 0.4, L, 10), LG = new THREE.InstancedMesh(G, LOG_MAT, N);
     let n = 0, tries = 0;
     while (n < N && tries++ < 3000) { const x = srnd(-286, -20), z = srnd(-286, -20), ax = srand() < 0.5;
       if (!free(x, z, 3) || !free(x + (ax ? 3.5 : 0), z + (ax ? 0 : 3.5), 1) || !free(x - (ax ? 3.5 : 0), z - (ax ? 0 : 3.5), 1)) continue;
@@ -1888,9 +1893,9 @@ function forestExtras(LX, LZ, LR) {
   { const fx = hx + 9, fz = hz - 7, stoneM = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95, flatShading: true });
     for (let k = 0; k < 9; k++) { const a = k / 9 * Math.PI * 2, st = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), stoneM); st.position.set(fx + Math.cos(a) * 0.9, 0.12, fz + Math.sin(a) * 0.9); st.scale.y = 0.7; scene.add(st); }
     decalT(fx, fz, 1.3, 1.3, FARM.black, 0, 0, 0.02);
-    for (let k = 0; k < 3; k++) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6), treeTrunkMat); lg.rotation.z = Math.PI / 2; lg.rotation.y = k; lg.position.set(fx, 0.1, fz); scene.add(lg); }
+    for (let k = 0; k < 3; k++) { const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6), LOG_MAT); lg.rotation.z = Math.PI / 2; lg.rotation.y = k; lg.position.set(fx, 0.1, fz); scene.add(lg); }
     for (const [dx, dz, ax] of [[0, 3, true], [3, 0, false]]) {
-      const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 2.4, 10), treeTrunkMat); lg.rotation.z = ax ? Math.PI / 2 : 0; lg.rotation.x = ax ? 0 : Math.PI / 2;
+      const lg = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.3, 2.4, 10), LOG_MAT); lg.rotation.z = ax ? Math.PI / 2 : 0; lg.rotation.x = ax ? 0 : Math.PI / 2;
       lg.position.set(fx + dx, 0.3, fz + dz); lg.castShadow = true; scene.add(lg); collider(fx + dx, 0, fz + dz, ax ? 2.4 : 0.6, 0.55, ax ? 0.6 : 2.4); } }
   { const px = hx + 8.5, pz = hz + 4.5, W = { round: 0 };
     addBox(px, 0.72, pz, 2.2, 0.08, 0.9, TKM.wood, 1, W);
@@ -2191,7 +2196,7 @@ function weltRing(road, S) {
     const s = srnd(0.85, 1.4), st = strips[stripOf(x, z)];
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
     st.t.setMatrixAt(st.n, td.matrix); for (const l of st.l) l.setMatrixAt(st.n, td.matrix);
-    st.n++; collider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s); placed++;
+    st.n++; treeCollider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s); placed++;
   }
   for (const st of strips) { st.t.count = st.n; scene.add(st.t); for (const l of st.l) { l.count = st.n; scene.add(l); } }   // ohne eigenen Schatten (spart viel Grafikleistung)
 
@@ -2575,7 +2580,7 @@ function buildWeltMap() {
     if (Math.hypot(x + 228, z + 228) < 11 || Math.hypot(x + 214, z + 214) < 8) continue;   // bis zum Gipfel bewaldet, nur Gipfelfelsen und Berghütte frei
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
     trunksI.setMatrixAt(placed, td.matrix); for (const l of layersI) l.setMatrixAt(placed, td.matrix);
-    collider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s);
+    treeCollider(x, y - 0.3, z, 0.6 * s, 4.3, 0.6 * s);
     placed++;
   }
   trunksI.count = placed; for (const l of layersI) { l.count = placed; l.castShadow = true; scene.add(l); }
@@ -2594,7 +2599,7 @@ function buildWeltMap() {
     const s = srnd(1.3, 2.3), y = window.terrainHeight(x, z);
     dummy.position.set(x, y - 0.2, z); dummy.scale.set(s, s * srnd(0.9, 1.3), s); dummy.rotation.y = srand() * 6;
     dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
-    if (Math.abs(x) < S && Math.abs(z) < S) collider(x, y - 0.3, z, 0.6 * s, 5, 0.6 * s);   // jetzt erreichbar → fest
+    if (Math.abs(x) < S && Math.abs(z) < S) treeCollider(x, y - 0.3, z, 0.6 * s, 5, 0.6 * s);   // jetzt erreichbar → fest
   }
   for (const l of layers) scene.add(l);
   scene.add(trunks);
@@ -2770,13 +2775,27 @@ let FOLIAGE = null;
 function foliageList() {
   if (FOLIAGE) return FOLIAGE;
   FOLIAGE = [];
-  const leafy = m => m && m !== HEDGE_MAT && (m === leafMat2 || m === treeLeafMat || m.map === TEX.needles || m.map === TEX.blades);
+  // Laub, Nadeln, Gras, Baumstämme (normal, Birke, Kulisse), Kirschblüten, Fensterscheiben – nicht: Hecken, umgestürzte Stämme
+  const leafy = m => {
+    if (!m) return false; const o = (m.userData && m.userData.orig) || m;
+    if (o === HEDGE_MAT || o === LOG_MAT) return false;
+    return o === leafMat2 || o === treeLeafMat || o === treeTrunkMat || o.userData.trunk || o === TKM.sakura || o === FURN.glass
+      || o.map === TEX.needles || o.map === TEX.blades || o.map === TEX.bark;
+  };
   scene.traverse(o => {
     if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
     const p = o.geometry && o.geometry.parameters, reed = o.isInstancedMesh && o.geometry.type === 'ConeGeometry' && p && p.radius < 0.1;
     if (leafy(o.material) || reed) { o.userData.foliage = true; FOLIAGE.push(o); }
   });
   return FOLIAGE;
+}
+// Baum-Kollision an/aus (nur bei dir; in „Klar & schnell“ läuft und schießt man durch die – unsichtbaren – Bäume)
+let TREE_ON = true;
+function setTreeBoxes(on) {
+  if (on === TREE_ON) return; TREE_ON = on;
+  if (on) boxes.push(...TREE_BOXES);
+  else { const s = new Set(TREE_BOXES), keep = boxes.filter(b => !s.has(b)); boxes.length = 0; boxes.push(...keep); }
+  if (window.GRID_READY) gridIndex();
 }
 let RELIEF = null;
 function setRelief(off) {
@@ -2801,7 +2820,7 @@ function applyGfx(v) {
   // „Leistung“/„Klar & schnell“: Schattenbild nicht in jedem Bild neu zeichnen (ui.js stößt es ~10× pro Sekunde an)
   renderer.shadowMap.autoUpdate = !thr; renderer.shadowMap.needsUpdate = true;
   // einfachere Schattenkanten (PCF statt weich gefiltert) – braucht neu übersetzte Shader
-  const shType = thr ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  const shType = C ? THREE.BasicShadowMap : thr ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // „Klar & schnell“: harte Schatten (1 Messpunkt pro Pixel)
   if (renderer.shadowMap.type !== shType) { renderer.shadowMap.type = shType; scene.traverse(o => { if (o.material) for (const mt of [].concat(o.material)) mt.needsUpdate = true; }); }
   if (window.setTreeLOD) window.setTreeLOD(thr || v === 'low' || v === 'potato');   // einfachere Baumformen
   sun.castShadow = !gfxLow();
@@ -2809,9 +2828,9 @@ function applyGfx(v) {
   const P = v === 'potato';
   scene.fog.near = P ? FOG0.near * 0.45 : FOG0.near; scene.fog.far = P ? FOG0.far * 0.55 : FOG0.far;
   camera.far = P ? scene.fog.far + 10 : FOG0.cam; camera.updateProjectionMatrix();
-  CULL_DIST = P ? 150 : v === 'low' ? 200 : thr ? 215 : FOG0.cull;
+  CULL_DIST = P ? 150 : v === 'low' ? 200 : C ? 190 : thr ? 215 : FOG0.cull;
   if (P) swapMats(true); else if (wasPotato) swapMats(false);
-  if (C || wasClean) { for (const o of foliageList()) o.visible = !C; setRelief(C); }   // „Klar & schnell“ an/aus
+  if (C || wasClean) { for (const o of foliageList()) o.visible = !C; setRelief(C); setTreeBoxes(!C); }   // „Klar & schnell“ an/aus
   const size = v === 'high' ? 2048 : 1024;
   if (sun.shadow.mapSize.x !== size) {
     sun.shadow.mapSize.set(size, size);
@@ -2849,7 +2868,7 @@ function gridIndex() {
       }
   }
 }
-gridIndex();
+gridIndex(); window.GRID_READY = true;
 function nearBoxes(x, z, r) {
   gridStamp++;
   const out = [];
