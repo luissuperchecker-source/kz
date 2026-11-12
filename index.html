@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kampfzone">
+<meta name="theme-color" content="#0d120f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Kampfzone Arena</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
@@ -494,6 +499,7 @@
     <label for="gfxIn">Grafik</label>
     <select id="gfxIn"><option value="high">Hoch (schärfste Grafik)</option><option value="medium">Mittel (empfohlen)</option><option value="perf">Leistung (fast wie Mittel, mehr FPS)</option><option value="clean">Klar &amp; schnell (gute Grafik, ohne Bäume/Gras – viele FPS)</option><option value="low">Niedrig (keine Schatten, am flüssigsten)</option><option value="potato">Sehr niedrig (für schwache PCs)</option></select>
     <button id="btnFs" class="sec">⛶ Vollbild-Modus: AUS</button>
+    <div id="fsHint" class="hidden" style="font-size:12.5px;line-height:1.45;color:#ffe9a8;background:rgba(255,204,51,.1);border:1px solid #6a5a2a;border-radius:8px;padding:8px 10px;margin-top:6px"></div>
     <button id="btnFps" class="sec">📊 FPS-Anzeige: AN</button>
     <button id="btnKbCfg" class="sec pcOnly">⌨️ Tastatur &amp; Maus anpassen</button>
     <button id="btnPadCfg" class="sec">🎮 Controller anpassen</button>
@@ -593,18 +599,18 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261112-152533"></script>
-<script src="js/map.js?v=20261112-152533"></script>
-<script src="js/models.js?v=20261112-152533"></script>
-<script src="js/game.js?v=20261112-152533"></script>
-<script src="js/vehicles.js?v=20261112-152533"></script>
-<script src="js/net.js?v=20261112-152533"></script>
-<script src="js/ui.js?v=20261112-152533"></script>
-<script src="js/jobs.js?v=20261112-152533"></script>
-<script src="js/gamepad.js?v=20261112-152533"></script>
-<script src="js/keybinds.js?v=20261112-152533"></script>
-<script src="js/tuning.js?v=20261112-152533"></script>
-<script src="js/gunshop.js?v=20261112-152533"></script>
-<script src="js/boerse.js?v=20261112-152533"></script>
+<script src="js/core.js?v=20261112-152914"></script>
+<script src="js/map.js?v=20261112-152914"></script>
+<script src="js/models.js?v=20261112-152914"></script>
+<script src="js/game.js?v=20261112-152914"></script>
+<script src="js/vehicles.js?v=20261112-152914"></script>
+<script src="js/net.js?v=20261112-152914"></script>
+<script src="js/ui.js?v=20261112-152914"></script>
+<script src="js/jobs.js?v=20261112-152914"></script>
+<script src="js/gamepad.js?v=20261112-152914"></script>
+<script src="js/keybinds.js?v=20261112-152914"></script>
+<script src="js/tuning.js?v=20261112-152914"></script>
+<script src="js/gunshop.js?v=20261112-152914"></script>
+<script src="js/boerse.js?v=20261112-152914"></script>
 </body>
 </html>

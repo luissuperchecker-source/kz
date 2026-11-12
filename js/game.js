@@ -89,27 +89,48 @@ $('btnResume').onclick = () => lockPointer();
 if (TOUCH) $('btnResume').textContent = 'Weiterspielen (tippen)';
 function lockPointer() {
   initAudio();
-  if (TOUCH) {   // Handy: keine Maus-Sperre, stattdessen Vollbild + Querformat
-    try { const d = document.documentElement, f = d.requestFullscreen || d.webkitRequestFullscreen;
-      if (f && !document.fullscreenElement) { const r = f.call(d); if (r && r.then) r.then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {}); } } catch (e) {}
+  if (TOUCH) {   // Handy: keine Maus-Sperre, stattdessen Vollbild + Querformat (wenn eingeschaltet)
+    if (FS.on) fsEnter();
     setLocked(true); return;
   }
   if (FS.on) fsEnter();
   try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {}
 }
 // Vollbild-Modus (Optionen): an = Spiel läuft im Vollbild, auch nach dem Zurückkehren ins Spiel
-const FS = { on: false };
-try { FS.on = localStorage.getItem('kz_fs') === '1'; } catch (e) {}
+// Handy: standardmäßig an. iPhone kann im Browser kein Vollbild → Hinweis „Zum Home-Bildschirm“ (startet dann ohne Leisten)
+const FS = { on: TOUCH };
+try { const v = localStorage.getItem('kz_fs'); if (v !== null) FS.on = v === '1'; } catch (e) {}
+const FS_APP = matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches || navigator.standalone === true;   // vom Home-Bildschirm gestartet
+const fsEl = () => document.fullscreenElement || document.webkitFullscreenElement || null;
+const fsCan = () => { const d = document.documentElement; return !!(d.requestFullscreen || d.webkitRequestFullscreen) && document.fullscreenEnabled !== false && document.webkitFullscreenEnabled !== false; };
+const IOS = /iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && !fsCan());
+function fsLandscape() { try { if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} }
 function fsEnter() {
+  if (FS_APP || fsEl()) return true;
   const d = document.documentElement, f = d.requestFullscreen || d.webkitRequestFullscreen;
-  if (f && !document.fullscreenElement) { try { const r = f.call(d); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  if (!f || !fsCan()) return false;
+  try { const r = f.call(d, { navigationUI: 'hide' }); if (r && r.then) r.then(fsLandscape).catch(() => {}); else setTimeout(fsLandscape, 300); } catch (e) { return false; }
+  return true;
 }
-function fsLabel() { $('btnFs').textContent = '⛶ Vollbild-Modus: ' + (FS.on ? 'AN' : 'AUS'); }
+function fsExit() { if (!fsEl()) return; try { const x = document.exitFullscreen || document.webkitExitFullscreen; const r = x.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+function fsLabel() {
+  $('btnFs').textContent = '⛶ Vollbild-Modus: ' + (FS_APP ? 'AN (App)' : FS.on ? 'AN' : 'AUS');
+  const h = $('fsHint'); if (!h) return;
+  const show = !FS_APP && FS.on && !fsCan();
+  h.classList.toggle('hidden', !show);
+  if (show) h.innerHTML = IOS
+    ? '📱 Das iPhone erlaubt im Browser kein Vollbild. <b>So geht’s trotzdem:</b> unten auf <b>Teilen</b> (□↑) tippen → <b>„Zum Home-Bildschirm“</b> → Kampfzone über das neue Symbol starten. Dann läuft es ganz ohne Leisten.'
+    : '📱 Dein Browser erlaubt hier kein Vollbild. Tipp: im Browser-Menü <b>„Zum Startbildschirm hinzufügen“</b> und das Spiel darüber starten – dann läuft es ohne Leisten.';
+}
 $('btnFs').onclick = () => {
+  if (FS_APP) return;
   FS.on = !FS.on; try { localStorage.setItem('kz_fs', FS.on ? '1' : '0'); } catch (e) {}
-  if (FS.on) fsEnter(); else if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+  if (FS.on) fsEnter(); else fsExit();
   fsLabel();
 };
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { if (fsEl()) fsLandscape(); setTimeout(() => dispatchEvent(new Event('resize')), 200); });
+// Handy: beim ersten Tippen irgendwo ins Vollbild (Browser verlangen dafür eine Berührung)
+if (TOUCH) document.addEventListener('touchend', () => { if (FS.on && !fsEl()) fsEnter(); }, { passive: true });
 fsLabel();
 const touchIn = { mx: 0, my: 0, sprint: false };
 function setLocked(v) {
