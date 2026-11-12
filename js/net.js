@@ -155,6 +155,7 @@ function hostHandle(from, m) {
   } else if (m.t === 'enter') {
     const v = vehicles[m.v], p = P[from];
     if (!v || !p || !p.alive) return;
+    if (v.dead) return sendTo(from, { t: 'enterFail', r: 'wreck' });
     if (v.d && v.d !== from) return sendTo(from, { t: 'enterFail', r: 'busy' });
     // Abstand: Host kennt die Position ~50 ms verzögert, darum auch die mitgeschickte Position gelten lassen (wenn plausibel)
     let dist = Math.hypot(p.x - v.x, p.z - v.z);
@@ -188,7 +189,33 @@ function hostHandle(from, m) {
       const dir = c.clone().sub(o).normalize(), h = rayMap(o, dir, d);
       if (h && h.dist < d - 0.3) continue;
       applyDamage(id, Math.round(DM * Math.pow(1 - d / R, 1.1)), from, wq, false);
-    }  }
+    }
+    // Raketen (Raketenwerfer, Panzer, Heli) sprengen Fahrzeuge: Panzer nach 3 Treffern, alles andere sofort
+    if (wq === TANK_W || wq === HELI_W || (WEAPONS[wq] && WEAPONS[wq].rocket)) for (const v of vehicles) {
+      if (v.dead || v.d === from) continue;   // Wrack / eigenes Fahrzeug
+      const Hh = VEH_HIT[v.kind] || VEH_HIT.car;
+      if (o.distanceTo(new THREE.Vector3(v.x, v.y + Hh.h, v.z)) > Hh.r + 2.6) continue;
+      const drv = v.d && P[v.d];
+      if (drv && H.mode === 'tdm' && P[from] && P[from].team === drv.team) continue;   // Team: kein Eigenbeschuss
+      v.hits = (v.hits || 0) + 1;
+      if (v.hits < (VEH_HP[v.kind] || 1)) broadcast({ t: 'vhit', v: v.i, h: v.hits });
+      else destroyVehicle(v, from, wq);
+    }
+  }
+}
+// Fahrzeug explodiert: Insassen sterben, Wrack brennt, nach 30 s neues Fahrzeug am Startplatz
+function destroyVehicle(v, by, w) {
+  const drv = v.d;
+  v.dead = performance.now(); v.hits = 0;
+  if (v.kind === 'heli' || v.kind === 'plane') v.y = groundH(v.x, v.z, v.y);   // Wrack stürzt ab
+  broadcast({ t: 'vboom', v: v.i, o: [v.x, v.y, v.z], by, d: drv || 0 });
+  if (drv) applyDamage(drv, 999, by, w, false);
+  v.d = 0; v.lean = 0;
+  setTimeout(() => {
+    const s = MAP_VEHICLES[v.i]; if (!s) return;
+    v.x = s.x; v.z = s.z; v.y = groundH(s.x, s.z); v.yaw = s.yaw; v.lean = 0; v.d = 0; v.dead = 0; v.hits = 0;
+    broadcast({ t: 'vspawn', v: v.i, s: [v.x, v.y, v.z, v.yaw] });
+  }, WRECK_TIME);
 }
 function hostDrop(id) {
   delete H.conns[id];
@@ -374,6 +401,7 @@ function clientHandle(m) {
     if (m.vh) m.vh.forEach((s, i) => {
       const v = vehicles[i]; if (!v || i === ride.v) return;
       v.x = s[0]; v.y = s[1]; v.z = s[2]; v.yaw = s[3]; v.d = s[4] || 0; v.lean = s[5]; v.wh = s[6] || 0; v.st = s[7] || 0;
+      if (s[8] !== undefined) { setWreck(v, s[8] === -1); v.hitsN = Math.max(0, s[8]); }   // Wrack / angeschossen (auch für später Beigetretene)
     });
     if (m.m) world.mode = m.m;
     if (m.tl !== undefined) world.timeLeft = m.tl;
@@ -402,7 +430,20 @@ function clientHandle(m) {
   } else if (m.t === 'nade') {
     if (m.id !== myId) startNade(m.i, new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false, m.imp);
   } else if (m.t === 'rkt') {
-    if (m.id !== myId) fireRocket(new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false, m.w);
+    if (m.id !== myId) fireRocket(new THREE.Vector3(...m.o), new THREE.Vector3(...m.v), false, m.w, vehicles.findIndex(x => x.d === m.id));
+  } else if (m.t === 'vboom') {   // Fahrzeug explodiert
+    const v = vehicles[m.v]; if (!v) return;
+    if (ride.v === m.v) exitRide(true);
+    v.x = m.o[0]; v.y = m.o[1]; v.z = m.o[2]; v.d = 0; v.hitsN = 0;
+    vehicleBoomFx(m.o); setWreck(v, true);
+    if (m.by === myId) showMsg(`💥 ${VK[v.kind].name} zerstört!`);
+  } else if (m.t === 'vhit') {   // Panzer angeschossen (hält 3 Treffer aus)
+    const v = vehicles[m.v]; if (!v) return;
+    v.hitsN = m.h;
+    if (ride.v === m.v) { showMsg(`⚠ Panzer getroffen! Noch ${VEH_HP[v.kind] - m.h} Treffer bis zur Explosion`); me.shake = Math.max(me.shake, 0.6); sndThud(0.9); }
+  } else if (m.t === 'vspawn') {   // neues Fahrzeug am Startplatz
+    const v = vehicles[m.v]; if (!v) return;
+    setWreck(v, false); v.x = m.s[0]; v.y = m.s[1]; v.z = m.s[2]; v.yaw = m.s[3]; v.lean = 0; v.d = 0; v.hitsN = 0;
   } else if (m.t === 'kill') {
     const head = m.head ? ' ◎' : '';
     feed(`<span style="color:${m.kc}">${esc(m.kn)}</span> <b class="fw">${weaponShort(m.w || 0)}${head}</b> <span style="color:${m.vc}">${esc(m.vn)}</span>`, m.k === myId || m.v === myId, true);
@@ -479,6 +520,6 @@ setInterval(() => {
   world.timeLeft = tl;
   const r2 = n => Math.round(n * 100) / 100;
   const snap = { t: 'snap', p: H.players, k: pickActive.map(v => v ? 1 : 0), m: H.mode, tl,
-    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean), v.d ? r2(v.wh || 0) : 0, v.d ? r2(v.st || 0) : 0]) };
+    vh: vehicles.map(v => [r2(v.x), r2(v.y), r2(v.z), r2(v.yaw), v.d || 0, r2(v.lean), v.d ? r2(v.wh || 0) : 0, v.d ? r2(v.st || 0) : 0, v.dead ? -1 : (v.hits || 0)]) };   // letzter Wert: -1 = Wrack, sonst Treffer
   for (const id in H.conns) if (H.conns[id].open) H.conns[id].send(snap);
 }, 50);

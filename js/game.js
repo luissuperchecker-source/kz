@@ -527,9 +527,10 @@ function blast(pos, mine, w, r = 7, dmg = 130) {
 }
 /* ---------- Raketen (Raketenwerfer): fliegen gerade, Rauchspur, Explosion beim Aufprall ---------- */
 const rockets = [];
-function fireRocket(o, v, mine, w) {
+function fireRocket(o, v, mine, w, skip) {   // skip = Fahrzeug des Schützen (wird nicht getroffen)
   const m = makeRocketMesh(); m.position.copy(o); m.lookAt(o.clone().add(v)); scene.add(m);
-  rockets.push({ m, pos: o.clone(), vel: v.clone(), t: 0, mine, w, smoke: 0 });
+  if (skip === undefined) skip = mine && typeof ride !== 'undefined' ? ride.v : -1;
+  rockets.push({ m, pos: o.clone(), vel: v.clone(), t: 0, mine, w, smoke: 0, skip });
   if (mine) net.send({ t: 'rkt', o: [o.x, o.y, o.z], v: [v.x, v.y, v.z], w });
 }
 function updateRockets(dt) {
@@ -538,12 +539,16 @@ function updateRockets(dt) {
     const step = r.vel.clone().multiplyScalar(dt), len = step.length(), dir = step.clone().normalize();
     let hitP = null;
     const mh = rayMap(r.pos, dir, len);
-    if (mh) hitP = mh.point;
+    let hitD = len;
+    if (mh) { hitP = mh.point; hitD = mh.dist; }
     if (r.mine) {   // Gegner direkt getroffen?
-      const parts = avatarParts(); ray.set(r.pos, dir); ray.far = mh ? mh.dist : len;
+      const parts = avatarParts(); ray.set(r.pos, dir); ray.far = hitD;
       const ah = parts.length ? ray.intersectObjects(parts, false)[0] : null;
-      if (ah) hitP = ah.point;
+      if (ah) { hitP = ah.point; hitD = ah.distance; }
     }
+    // Fahrzeug getroffen (Auto, Moped, Panzer, Heli, Flugzeug)? → Einschlag dort
+    const vt = typeof rocketVehicleHit === 'function' ? rocketVehicleHit(r.pos, dir, hitD, r.skip) : null;
+    if (vt !== null) hitP = r.pos.clone().addScaledVector(dir, vt);
     const nx = r.pos.clone().add(step);
     if (!hitP && nx.y < groundH(nx.x, nx.z, nx.y) + 0.05) hitP = nx;
     if (hitP || r.t > 3) {

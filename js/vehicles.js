@@ -635,7 +635,7 @@ const freeForMe = v => !v.d || v.d === myId && ride.v !== v.i || (rideLeft.v ===
 function nearestFreeVehicle() {
   let best = -1, bd = 1e9;
   for (const v of vehicles) {
-    if (!freeForMe(v)) continue;
+    if (!freeForMe(v) || v.wreck) continue;
     const d = Math.hypot(v.x - me.pos.x, v.z - me.pos.z);
     if (d < VK[v.kind].enter && d < bd && Math.abs(v.y - me.pos.y) < 2.2) { bd = d; best = v.i; }
   }
@@ -661,7 +661,45 @@ function toggleRide() {
 // Antwort vom Host, wenn das Aufsteigen nicht geklappt hat
 function enterFailed(reason) {
   enterPending = 0;
-  showMsg(reason === 'busy' ? 'Das ist schon besetzt' : 'Zu weit weg – näher rangehen');
+  showMsg(reason === 'busy' ? 'Das ist schon besetzt' : reason === 'wreck' ? '💥 Das Fahrzeug ist zerstört' : 'Zu weit weg – näher rangehen');
+}
+/* ---------- Fahrzeuge zerstören: Raketen (Raketenwerfer, Panzer, Heli) sprengen Fahrzeuge ----------
+   Panzer halten 3 Treffer aus, alles andere explodiert beim ersten. Wer drinsitzt, stirbt. Das Wrack brennt,
+   nach 30 s steht ein neues Fahrzeug am Startplatz. Der Host entscheidet (net.js), alle sehen dasselbe. */
+const VEH_HP = { tank: 3, heli: 1, plane: 1, car: 1, moped: 1 }, WRECK_TIME = 30000;
+const VEH_HIT = { moped: { r: 1.1, h: 0.8 }, car: { r: 2.1, h: 0.8 }, tank: { r: 2.9, h: 1.3 }, heli: { r: 3.0, h: 1.8 }, plane: { r: 3.6, h: 1.4 } };   // Trefferkugel: Radius, Höhe der Mitte
+const WRECK_MAT = new THREE.MeshStandardMaterial({ color: 0x1c1b1a, roughness: 0.95, metalness: 0.25 });
+function setWreck(v, on) {
+  if (!!v.wreck === on) return;
+  v.wreck = on;
+  v.mesh.root.traverse(o => {
+    if (!o.isMesh) return;
+    if (o === v.mesh.neon) { if (on) { o.userData.vis0 = o.visible; o.visible = false; } else o.visible = !!o.userData.vis0; return; }
+    if (on) { if (!o.userData.mat0) o.userData.mat0 = o.material; o.material = WRECK_MAT; }   // verkohlt
+    else if (o.userData.mat0) { o.material = o.userData.mat0; delete o.userData.mat0; }
+  });
+  v.mesh.root.userData.still = 0;
+}
+function vehicleBoomFx(o) {
+  const p = new THREE.Vector3(o[0], o[1] + 1, o[2]);
+  for (let k = 0; k < 3; k++) setTimeout(() => explosionFx(p.clone().add(new THREE.Vector3(rnd(-1.5, 1.5), rnd(0, 1.5), rnd(-1.5, 1.5)))), k * 150);
+  for (let k = 0; k < 10; k++) puff(p.clone(), 0x222222, rnd(0.25, 0.45), rnd(0.8, 1.4), new THREE.Vector3(rnd(-7, 7), rnd(4, 10), rnd(-7, 7)), { opacity: 0.9, grow: 1.2 });   // Trümmer
+  sndBoom(p); setTimeout(() => sndBoom(p), 160);
+  me.shake = Math.max(me.shake, Math.max(0, 1.3 - p.distanceTo(me.pos) / 30));
+}
+// Rakete fliegt in ein Fahrzeug? → Abstand bis zum Einschlag (oder null). skip = Fahrzeug des Schützen
+function rocketVehicleHit(p, dir, maxD, skip) {
+  let best = null;
+  for (const v of vehicles) {
+    if (v.i === skip || v.wreck || !v.mesh.root.visible) continue;
+    const H = VEH_HIT[v.kind] || VEH_HIT.car, c = v.mesh.root.position, R = H.r;
+    const ox = c.x - p.x, oy = c.y + H.h - p.y, oz = c.z - p.z, t = ox * dir.x + oy * dir.y + oz * dir.z;
+    if (t < -R || t > maxD + R) continue;
+    const d2 = ox * ox + oy * oy + oz * oz - t * t; if (d2 > R * R) continue;
+    const th = Math.max(0, t - Math.sqrt(R * R - d2));
+    if (th <= maxD && (best === null || th < best)) best = th;
+  }
+  return best;
 }
 function startRide(i) {
   const v = vehicles[i]; if (!v || ride.v === i || !me.alive) return;
@@ -1324,12 +1362,13 @@ function updateVehicles(dt) {
     const shadow = dCam < 32 || v.i === ride.v;   // Schatten nur bei nahen Mopeds
     if (m.shadow !== shadow) { m.shadow = shadow; m.root.traverse(o => { if (o.isMesh && !o.userData.noShadow) o.castShadow = shadow; }); }
     // Wheelie: um den Hinterrad-Aufstandspunkt nach hinten kippen
+    if (v.wreck) { lean = v.kind === 'moped' ? 1.35 : v.i % 2 ? 0.16 : -0.16; pitch = 0.05; wh = 0; y -= v.kind === 'moped' ? 0 : 0.15; }   // Wrack: schief, abgesackt
     const [wf, wu] = wheelieShift(wh, 0.6, 0);
     // Motor läuft: leichtes Zittern (Zweitakter)
     const vib = !parked && !far ? Math.sin(performance.now() * 0.09 + v.i) * (isCar ? 0.0008 : 0.0025) : 0;
     const landDip = v.i === ride.v ? -(ride.land || 0) * 0.07 : 0;
     m.root.position.set(x + Math.cos(yaw) * wf, y + wu + vib + landDip, z - Math.sin(yaw) * wf);
-    m.root.rotation.set(parked && !isCar ? 0.12 : lean, yaw, pitch + wh);
+    m.root.rotation.set(parked && !isCar && !v.wreck ? 0.12 : lean, yaw, pitch + wh);
     // steht das Fahrzeug still (gleiche Lage wie im letzten Bild)? → Positionen der ~40 Einzelteile nicht neu berechnen
     const sig = m.root.position.x + m.root.position.y * 7 + m.root.position.z * 13 + yaw * 17 + lean * 19 + pitch * 23 + wh * 29 + st * 31 + v.spin * 37 + (v.rot || 0) * 41;
     m.root.userData.still = Math.abs(sig - (m.root.userData.sig === undefined ? NaN : m.root.userData.sig)) < 1e-7 ? (m.root.userData.still || 0) + 1 : 0;
@@ -1340,6 +1379,16 @@ function updateVehicles(dt) {
       rider.g.rotation.order = 'YXZ'; rider.g.rotation.x = wh * 0.9;
       rider.g.position.x += Math.cos(yaw) * sf; rider.g.position.z -= Math.sin(yaw) * sf;
       rider.footDown = moved / Math.max(dt, 1e-3) < 0.6; rider.steerVis = st;
+    }
+    // Wrack brennt, angeschossener Panzer qualmt
+    if ((v.wreck || v.hitsN > 0) && dCam < 90) {
+      v.fireT = (v.fireT || 0) - dt;
+      if (v.fireT <= 0) {
+        v.fireT = v.wreck ? 0.045 : 0.22;
+        const bp = new THREE.Vector3(x + rnd(-1, 1), y + (VEH_HIT[v.kind] || VEH_HIT.car).h + rnd(0, 0.5), z + rnd(-1, 1));
+        if (v.wreck && Math.random() < 0.6) puff(bp, [0xff6a10, 0xff9a1a, 0xffc040][Math.floor(Math.random() * 3)], rnd(0.8, 1.3), rnd(0.5, 0.8), new THREE.Vector3(rnd(-0.3, 0.3), rnd(2, 3.2), rnd(-0.3, 0.3)), { opacity: 0.95, grow: 1.6 });
+        else puff(bp, 0x2a2826, rnd(1.1, 1.6), 2.8, new THREE.Vector3(rnd(-0.4, 0.4), rnd(2, 3), rnd(-0.4, 0.4)), { opacity: 0.6, grow: 3 });
+      }
     }
     // Abgaswolken aus dem Auspuff (nur in der Nähe)
     if (!parked && dCam < 30 && !isHeli) {
