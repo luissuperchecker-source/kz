@@ -79,6 +79,7 @@ function updateHUD(dt) {
   drawRadar(dt);
   // Handy: Fahrzeug-Knöpfe ein-/ausblenden (nur bei Wechsel)
   const vk = ride.v >= 0 ? ride.kind : '';
+  { const aimV = ride.v >= 0 && riderAiming(); if (document.body.classList.contains('vAim') !== aimV) document.body.classList.toggle('vAim', aimV); }   // schießt gerade aus dem Fahrzeug
   if (document.body.dataset.vk !== vk) {
     document.body.dataset.vk = vk; const cl = document.body.classList;
     cl.toggle('inVeh', !!vk); cl.toggle('vCar', vk === 'car'); cl.toggle('vHeli', vk === 'heli' || vk === 'plane'); cl.toggle('vTank', vk === 'tank');

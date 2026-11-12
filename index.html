@@ -333,6 +333,11 @@
   body.touch #hpBox { left: 14px; bottom: auto; top: 84px; width: 150px; }
   body.touch #hpText { font-size: 24px; }
   body.touch #ammoBox { right: auto; left: 50%; bottom: 8px; transform: translateX(-50%); text-align: center; }
+  /* Handy beim Fahren (Auto/Moped …): Mitte frei – Waffen-Leiste + Fadenkreuz nur beim Schießen, kein Hinweis-Text,
+     Meldungen kleiner und oben statt mitten im Bild */
+  body.touch.inVeh:not(.vAim) #ammoBox, body.touch.inVeh:not(.vAim) #cross { display: none; }
+  body.touch.inVeh:not(.vHeli):not(.vTank) #rideHint { display: none !important; }
+  body.touch.inVeh #killMsg { top: 17%; font-size: 15px; }
   body.touch #ammoText { font-size: 28px; }
   body.touch #feed { right: 116px; top: 14px; width: 230px; font-size: 12px; }
   body.touch #topScore { font-size: 13px; top: 60px; }
@@ -611,18 +616,18 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261112-194004"></script>
-<script src="js/map.js?v=20261112-194004"></script>
-<script src="js/models.js?v=20261112-194004"></script>
-<script src="js/game.js?v=20261112-194004"></script>
-<script src="js/vehicles.js?v=20261112-194004"></script>
-<script src="js/net.js?v=20261112-194004"></script>
-<script src="js/ui.js?v=20261112-194004"></script>
-<script src="js/jobs.js?v=20261112-194004"></script>
-<script src="js/gamepad.js?v=20261112-194004"></script>
-<script src="js/keybinds.js?v=20261112-194004"></script>
-<script src="js/tuning.js?v=20261112-194004"></script>
-<script src="js/gunshop.js?v=20261112-194004"></script>
-<script src="js/boerse.js?v=20261112-194004"></script>
+<script src="js/core.js?v=20261112-194333"></script>
+<script src="js/map.js?v=20261112-194333"></script>
+<script src="js/models.js?v=20261112-194333"></script>
+<script src="js/game.js?v=20261112-194333"></script>
+<script src="js/vehicles.js?v=20261112-194333"></script>
+<script src="js/net.js?v=20261112-194333"></script>
+<script src="js/ui.js?v=20261112-194333"></script>
+<script src="js/jobs.js?v=20261112-194333"></script>
+<script src="js/gamepad.js?v=20261112-194333"></script>
+<script src="js/keybinds.js?v=20261112-194333"></script>
+<script src="js/tuning.js?v=20261112-194333"></script>
+<script src="js/gunshop.js?v=20261112-194333"></script>
+<script src="js/boerse.js?v=20261112-194333"></script>
 </body>
 </html>

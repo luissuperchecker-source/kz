@@ -734,11 +734,11 @@ function startRide(i) {
     ride.ctype = v.ctype || 'drift'; ride.carK = carParams(ride.ctype);
     applyLook(v, ride.ctype); ride.nitroT = 0; ride.nitroCd = 0;
     const ct = CAR_TYPES[ride.ctype];
-    showMsg(`${ct.name}: ${ct.info}  ·  ${TOUCH ? '🔧' : kbK('tune')} = Tuning`);
+    showMsg(TOUCH ? ct.name : `${ct.name}: ${ct.info}  ·  ${kbK('tune')} = Tuning`);   // Handy: kurz halten
   } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
   else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; ride.bombs = PLANE_BOMBS; ride.bombReload = 0; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
   else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
-  else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
+  else showMsg(TOUCH ? 'Moped – WHEELIE antippen!' : 'Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
 }
 function exitRide(silent) {
   if (ride.v < 0) return;
