@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-191925 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-191925';
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-192834 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-192834';
 // Im Menü wird eine neue Version automatisch geladen; mitten im Spiel erscheint der gelbe Balken.
 // Neu laden immer mit neuer Adresse (?u=…), damit der Browser nicht die zwischengespeicherte alte Seite nimmt.
 const UPD = { newer: null };
@@ -233,7 +233,7 @@ function initAudio() {
    Klacken der Mechanik (Verschluss/Schlitten), Metall-Nachklang (Revolver), Fauchen (Rakete), Knistern (Flammen).
    Dazu: Hall der Umgebung, ferne Schüsse dumpfer und mit Schall-Verzögerung (343 m/s). */
 let revIn = null;
-const GS = [
+const SHOT_SND = [
   /* 0 Sturmgewehr   */ { lvl: 1.5, len: .45, blast: 1, bd: .045, c1: 9000, c0: 500, cd: .03, crack: .9, body: .55, bf0: 180, bf1: 70, bb: .06, drive: 2.6, mech: [[.04, 3200, .22], [.075, 2400, .16]] },
   /* 1 Pumpgun       */ { lvl: 1.7, len: .7, blast: 1.2, bd: .08, c1: 6000, c0: 300, cd: .06, crack: .7, body: .9, bf0: 120, bf1: 45, bb: .12, drive: 3.2 },
   /* 2 Scharfschütze */ { lvl: 1.8, len: 1.0, blast: 1.3, bd: .09, c1: 8000, c0: 250, cd: .07, crack: 1.1, body: 1, bf0: 110, bf1: 40, bb: .16, drive: 3.5 },
@@ -248,7 +248,7 @@ const GS = [
   /* 11 Granatwerfer */ { lvl: 1.1, len: .4, blast: .35, bd: .03, c1: 1800, c0: 250, cd: .03, crack: .1, body: 1, bf0: 220, bf1: 70, bb: .05, drive: 2, mech: [[.02, 1500, .2]] },
   /* 12 Flammenwerfer */ { lvl: .55, len: .3, blast: .5, bd: .18, c1: 1200, c0: 400, cd: .2, crack: 0, body: .1, bf0: 80, bf1: 60, bb: .1, drive: 1.3, atk: .04, crackle: .3 },
 ];
-const GSB = [];   // fertige Klänge je Waffe
+const SHOT_BUF = [];   // fertige Klänge je Waffe
 function synthShot(P, sr, seed) {
   const n = Math.ceil(P.len * sr), out = new Float32Array(n);
   let s = (seed >>> 0) || 1; const r1 = () => ((s = (s * 16807) % 2147483647) / 2147483647) * 2 - 1;
@@ -286,13 +286,13 @@ function synthShot(P, sr, seed) {
   for (let i = 0; i < n; i++) out[i] *= k * (i > n - fo ? (n - i) / fo : 1);
   return out;
 }
-const GS_PEND = [];
+const SHOT_PEND = [];
 function genShotBuffers() {
   if (!actx) return;
-  const w = GSB.length; if (w >= GS.length) return;
-  const sr = actx.sampleRate, v = GS_PEND.length;
-  const d = synthShot(GS[w], sr, 1234 + w * 97 + v * 7919), b = actx.createBuffer(1, d.length, sr); b.getChannelData(0).set(d); GS_PEND.push(b);
-  if (GS_PEND.length === 3) GSB.push(GS_PEND.splice(0));   // Waffe fertig (3 Varianten)
+  const w = SHOT_BUF.length; if (w >= SHOT_SND.length) return;
+  const sr = actx.sampleRate, v = SHOT_PEND.length;
+  const d = synthShot(SHOT_SND[w], sr, 1234 + w * 97 + v * 7919), b = actx.createBuffer(1, d.length, sr); b.getChannelData(0).set(d); SHOT_PEND.push(b);
+  if (SHOT_PEND.length === 3) SHOT_BUF.push(SHOT_PEND.splice(0));   // Waffe fertig (3 Varianten)
   if (window.requestIdleCallback) requestIdleCallback(genShotBuffers, { timeout: 400 }); else setTimeout(genShotBuffers, 25);   // ein Klang pro Schritt, in Ruhepausen → kein Ruckeln
 }
 // Hall-Antwort: dichter Nachhall (wird dunkler) + einzelne frühe Echos von Wänden
@@ -330,7 +330,7 @@ function spatialOut(pos, maxD = 80) {
 function noiseSrc() { const s = actx.createBufferSource(); s.buffer = noiseBuf; return s; }
 function sndShot(w, vol = 0.5, pos) {
   if (!actx) return;
-  const set = GSB[w], P = GS[w];
+  const set = SHOT_BUF[w], P = SHOT_SND[w];
   if (!set || !P) return sndShotOld(w, vol, pos);   // Klänge noch nicht fertig berechnet
   const o = spatialOut(pos, 180); if (o.g <= 0.005) return;
   const d = o.d || 0, far = Math.min(1, d / 110);
