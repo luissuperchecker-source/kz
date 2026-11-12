@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-152914 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-152914';
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-154712 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-154712';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -601,8 +601,8 @@ function roundedBoxGeo(w, h, d, r, m = 2, tile = 0) {
   // Hügel rund um die (quadratische) Karte, im Osten Hafenbecken
   // Abstand zum Rand: Stadt + Skyline reichen bis ~225 m, erst dahinter beginnen die Hügel
   const mapEdge = hafen ? (x, z) => Math.max(Math.abs(x + 3), z > 0 ? Math.max(0, z - 70) : -z)
-    : welt ? (x, z) => x <= 440 ? Math.max(Math.abs(x), Math.abs(z)) - 312   // Osten: schmaler Bergrücken (380–500), dahinter flaches Land bis 1040, dann wieder Berge
-      : Math.max(Math.abs(z) - 312, 128 - (x - 440) * 1.1, x - 972) : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
+    : welt ? (x, z) => x <= 0 ? Math.max(-x, Math.abs(z)) - 312   // Osten: durchgehend flach bis x 1040 (Ringstadt, F1-Ring, Flughafen), dann Berge
+      : Math.max(Math.abs(z) - 312, x - 972) : (x, z) => Math.max(Math.abs(x), Math.abs(z)) - 160;
   window.mapEdge = mapEdge;
   // Welt: Berge ab ~380 m (begehbar bis 440 m), die Hauptstraßen laufen in Tälern hindurch; ohne feines Rauschen,
   // damit das sichtbare Gelände und die Kollision (hillH) übereinstimmen
