@@ -736,7 +736,7 @@ function startRide(i) {
     const ct = CAR_TYPES[ride.ctype];
     showMsg(TOUCH ? ct.name : `${ct.name}: ${ct.info}  ·  ${kbK('tune')} = Tuning`);   // Handy: kurz halten
   } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
-  else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; ride.bombs = PLANE_BOMBS; ride.bombReload = 0; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
+  else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; ride.bombs = PLANE_BOMBS; ride.bombReload = 0; ride.rkts = PLANE_RKTS; ride.rktReload = 0; ride.bombHeld = false; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
   else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
   else showMsg(TOUCH ? 'Moped – WHEELIE antippen!' : 'Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
 }
@@ -996,27 +996,50 @@ const BOMB_AIM = (() => {
 function planeHint() {
   const v = ride.planeV || 0, alt = ride.pos.y - groundH(ride.pos.x, ride.pos.z, ride.pos.y), nowS = performance.now() / 1000;
   const warn = alt > 2 && v < PLANE.stall + 3 ? ' <span style="color:#ff6b6b">⚠ ZU LANGSAM – Nase runter, Gas!</span>' : alt < 2 && v > PLANE.rot ? ` <span style="color:#7dff7a">✈ Jetzt ${TOUCH ? '▲ZIEHEN' : kbK('jump')} – abheben!</span>` : '';
-  const rl = ride.bombReload > nowS ? ride.bombReload - nowS : 0;
-  const bombs = `💣 <b>${TOUCH ? 'FEUER' : 'Linksklick'}</b> Bombe ${rl > 0 ? `<span style="color:#ff9a3a">(lädt … ${rl.toFixed(1)} s)</span>` : `(${ride.bombs === undefined ? PLANE_BOMBS : ride.bombs}/${PLANE_BOMBS})`}`;
-  return `✈ <b>Flugzeug</b> · Gas ${Math.round((ride.thrl || 0) * 100)} % (<b>${kbK('forward')}/${kbK('back')}</b>) · <b>${kbK('jump')}</b> hochziehen · <b>${kbK('crouch')}</b> Nase runter · <b>${kbK('left')}/${kbK('right')}</b> Kurve · ${bombs} · <b>${kbK('ride')}</b> aussteigen${warn}`;
+  const rr = ride.rktReload > nowS ? ride.rktReload - nowS : 0, rl = ride.bombReload > nowS ? ride.bombReload - nowS : 0;
+  const rkt = `🚀 <b>${TOUCH ? 'FEUER' : 'Linksklick'}</b> Raketen ${rr > 0 ? `<span style="color:#ff9a3a">(lädt … ${rr.toFixed(1)} s)</span>` : `(${ride.rkts === undefined ? PLANE_RKTS : ride.rkts}/${PLANE_RKTS})`}`;
+  const bombs = TOUCH ? '' : ` · 💣 <b>Rechtsklick</b> Bombe ${rl > 0 ? `<span style="color:#ff9a3a">(lädt … ${rl.toFixed(1)} s)</span>` : `(${ride.bombs === undefined ? PLANE_BOMBS : ride.bombs}/${PLANE_BOMBS})`}`;
+  return `✈ <b>Flugzeug</b> · Gas ${Math.round((ride.thrl || 0) * 100)} % (<b>${kbK('forward')}/${kbK('back')}</b>) · <b>${kbK('jump')}</b> hochziehen · <b>${kbK('crouch')}</b> Nase runter · <b>${kbK('left')}/${kbK('right')}</b> Kurve · ${rkt}${bombs} · <b>${kbK('ride')}</b> aussteigen${warn}`;
+}
+// Raketen wie beim Heli: abwechselnd aus beiden Flügeln, dorthin, wo man hinschaut; 16 Stück, dann 4 s nachladen
+const PLANE_RKTS = 16, PLANE_RKT_RELOAD = 4;
+function planeRockets(now) {
+  if (ride.rkts === undefined) ride.rkts = PLANE_RKTS;
+  if (ride.rktReload && now >= ride.rktReload) { ride.rktReload = 0; ride.rkts = PLANE_RKTS; }
+  if (!me.trigger || ride.rktReload || ride.rkts <= 0 || now - (ride.rktShot || -9) < 0.28) return;
+  ride.rktShot = now; ride.rktSide = -(ride.rktSide || 1);
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), rx = Math.sin(ride.yaw), rz = Math.cos(ride.yaw);
+  const cp = Math.cos(me.pitch), dir = new THREE.Vector3(-Math.sin(me.yaw) * cp, Math.sin(me.pitch), -Math.cos(me.yaw) * cp);
+  const pod = new THREE.Vector3(ride.pos.x + fx * 1.2 + rx * ride.rktSide * 2.4, ride.pos.y + 1.9, ride.pos.z + fz * 1.2 + rz * ride.rktSide * 2.4);
+  fireRocket(pod, dir.multiplyScalar(85 + Math.max(0, ride.vel.dot(dir))), true, PLANE_W);   // + Fluggeschwindigkeit (nur Tempo, Richtung bleibt exakt)
+  sndShot(10, 0.45); me.shake = Math.max(me.shake, 0.12);
+  if (--ride.rkts <= 0) ride.rktReload = now + PLANE_RKT_RELOAD;
 }
 // Bomben abwerfen + Einschlagstelle anzeigen (gleiche Flugbahn wie in updateRockets)
 function planeBombs(onG) {
   const now = performance.now() / 1000;
   if (ride.bombs === undefined) ride.bombs = PLANE_BOMBS;
   if (ride.bombReload && now >= ride.bombReload) { ride.bombReload = 0; ride.bombs = PLANE_BOMBS; }
-  if (onG && (ride.planeV || 0) < 3 && ride.bombs < PLANE_BOMBS) { ride.bombs = PLANE_BOMBS; ride.bombReload = 0; }   // gelandet: neu beladen
+  if (onG && (ride.planeV || 0) < 3 && (ride.bombs < PLANE_BOMBS || ride.rkts < PLANE_RKTS)) { ride.bombs = PLANE_BOMBS; ride.bombReload = 0; ride.rkts = PLANE_RKTS; ride.rktReload = 0; }   // gelandet: neu beladen
+  if (!onG) planeRockets(now);   // Linksklick / FEUER: Raketen wie beim Heli
   const o = new THREE.Vector3(ride.pos.x, ride.pos.y + 0.45, ride.pos.z), v = ride.vel.clone().add(new THREE.Vector3(0, -1.5, 0));
-  if (!onG) {   // Zielhilfe: Flugbahn vorausrechnen
-    const p = o.clone(), q = v.clone(); let hit = false;
-    for (let t = 0; t < 15; t += 0.05) { q.y -= 9.81 * 0.05; q.multiplyScalar(1 - 0.001); p.addScaledVector(q, 0.05); const gh = groundH(p.x, p.z, p.y); if (p.y <= gh) { p.y = gh; hit = true; break; } }
+  const bombKey = me.scoped && !TOUCH;   // Bomben: Rechtsklick halten (Zielkreis), loslassen = Abwurf
+  if (!onG && bombKey) {   // Zielhilfe: Flugbahn vorausrechnen
+    const p = o.clone(), q = v.clone(), d = new THREE.Vector3(); let hit = false;
+    for (let t = 0; t < 15; t += 0.1) {
+      q.y -= 9.81 * 0.1; q.multiplyScalar(1 - 0.002);
+      const len = q.length() * 0.1; d.copy(q).normalize();
+      const h = rayMap(p, d, len); if (h) { p.copy(h.point); hit = true; break; }   // Dach/Wand im Weg → dort schlägt sie ein
+      p.addScaledVector(q, 0.1); const gh = groundH(p.x, p.z, p.y); if (p.y <= gh) { p.y = gh; hit = true; break; }
+    }
     BOMB_AIM.visible = hit; if (hit) { BOMB_AIM.position.set(p.x, p.y + 0.12, p.z); BOMB_AIM.rotation.y += 0.02; }
   } else BOMB_AIM.visible = false;
-  if (me.trigger && !onG && !ride.bombReload && ride.bombs > 0 && now - (ride.bombShot || -9) > 0.35) {
+  if (ride.bombHeld && !bombKey && !onG && !ride.bombReload && ride.bombs > 0 && now - (ride.bombShot || -9) > 0.35) {   // Rechtsklick losgelassen → Bombe fällt
     ride.bombShot = now;
     fireRocket(o, v, true, BOMB_W);
     if (--ride.bombs <= 0) ride.bombReload = now + BOMB_RELOAD;
   }
+  ride.bombHeld = bombKey;
 }
 function planeRide(dt) {
   const K = VK.plane, P = PLANE;

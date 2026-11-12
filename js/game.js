@@ -7,8 +7,8 @@ const me = { pos: new THREE.Vector3(0, 0, 0), vel: new THREE.Vector3(), yaw: 0, 
   crouch: false, crouchT: 0, slideT: 0, slideDir: new THREE.Vector3(), sneak: false, h: PH, nades: 2,
   knifeT: 0, throwT: 0, drawT: 0, inspectT: 0, pumpT: 0, boltT: 0, recoilP: 0, recoilY: 0, swayX: 0, swayY: 0, landT: 0, shake: 0, airVy: 0 };
 const START_WEAPON = 3;  // Pistole – alles andere muss man finden
-const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21, CAR_W = 22, TANK_W = 23, HELI_W = 24, BOMB_W = 25;
-const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : w === CAR_W ? 'ÜBERFAHREN' : w === TANK_W ? 'PANZER' : w === HELI_W ? 'HELI' : w === BOMB_W ? 'BOMBE' : (WEAPONS[w] ? WEAPONS[w].short : '?');
+const MAX_NADES = 2, KNIFE_W = 20, NADE_W = 21, CAR_W = 22, TANK_W = 23, HELI_W = 24, BOMB_W = 25, PLANE_W = 26;
+const weaponShort = w => w === KNIFE_W ? 'MESSER' : w === NADE_W ? 'GRANATE' : w === CAR_W ? 'ÜBERFAHREN' : w === TANK_W ? 'PANZER' : w === HELI_W ? 'HELI' : w === BOMB_W ? 'BOMBE' : w === PLANE_W ? 'FLUGZEUG' : (WEAPONS[w] ? WEAPONS[w].short : '?');
 let lastWTap = 0;
 let myId = null, isHost = false, running = false, locked = false, roomCode = '';
 let world = { players: {}, mode: 'ffa' };
@@ -572,7 +572,8 @@ function updateRockets(dt) {
     if (!hitP && nx.y < groundH(nx.x, nx.z, nx.y) + 0.05) hitP = nx;
     if (hitP || r.t > (r.bomb ? 15 : 3)) {
       const bp = hitP || r.pos;
-      blast(bp, r.mine, r.w, r.bomb ? 12 : r.w === TANK_W ? 9 : r.w === HELI_W ? 6 : 8, r.bomb ? 200 : r.w === TANK_W ? 160 : r.w === HELI_W ? 110 : 150);
+      const small = r.w === HELI_W || r.w === PLANE_W;   // Heli-/Flugzeug-Raketen: kleiner als Raketenwerfer
+      blast(bp, r.mine, r.w, r.bomb ? 12 : r.w === TANK_W ? 9 : small ? 6 : 8, r.bomb ? 200 : r.w === TANK_W ? 160 : small ? 110 : 150);
       if (r.bomb) {   // große Explosion: mehrere Feuerbälle, Erdfontäne, Druckwelle
         for (let k = 0; k < 3; k++) setTimeout(() => explosionFx(bp.clone().add(new THREE.Vector3(rnd(-3, 3), rnd(0, 2), rnd(-3, 3)))), 60 + k * 110);
         for (let k = 0; k < 14; k++) puff(bp.clone(), 0x5a4a38, rnd(0.6, 1.2), rnd(1, 1.8), new THREE.Vector3(rnd(-6, 6), rnd(8, 16), rnd(-6, 6)), { opacity: 0.85, grow: 1.5 });

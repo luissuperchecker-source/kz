@@ -182,7 +182,7 @@ function hostHandle(from, m) {
     // Explosion (Granate, Rakete, Granatwerfer): Schaden im Umkreis, Wände schützen
     const o = new THREE.Vector3(m.o[0], m.o[1] + 0.3, m.o[2]);
     const isBomb = m.w === BOMB_W;   // Fliegerbombe: größerer Radius, mehr Schaden
-    const R = Math.min(isBomb ? 12 : 9, +m.r || 7), DM = Math.min(isBomb ? 200 : 160, +m.dmg || 130), wq = WEAPONS[m.w] && (WEAPONS[m.w].rocket || WEAPONS[m.w].gl) ? m.w : (m.w === TANK_W || m.w === HELI_W || isBomb ? m.w : NADE_W);
+    const R = Math.min(isBomb ? 12 : 9, +m.r || 7), DM = Math.min(isBomb ? 200 : 160, +m.dmg || 130), wq = WEAPONS[m.w] && (WEAPONS[m.w].rocket || WEAPONS[m.w].gl) ? m.w : (m.w === TANK_W || m.w === HELI_W || m.w === PLANE_W || isBomb ? m.w : NADE_W);
     for (const id in P) {
       const q = P[id]; if (!q.alive) continue;
       const c = new THREE.Vector3(q.x, q.y + 1.0, q.z), d = o.distanceTo(c);
@@ -192,7 +192,7 @@ function hostHandle(from, m) {
       applyDamage(id, Math.round(DM * Math.pow(1 - d / R, 1.1)), from, wq, false);
     }
     // Raketen (Raketenwerfer, Panzer, Heli) sprengen Fahrzeuge: Panzer nach 3 Treffern, alles andere sofort
-    if (wq === TANK_W || wq === HELI_W || isBomb || (WEAPONS[wq] && WEAPONS[wq].rocket)) for (const v of vehicles) {
+    if (wq === TANK_W || wq === HELI_W || wq === PLANE_W || isBomb || (WEAPONS[wq] && WEAPONS[wq].rocket)) for (const v of vehicles) {
       if (v.dead || v.d === from) continue;   // Wrack / eigenes Fahrzeug
       const Hh = VEH_HIT[v.kind] || VEH_HIT.car;
       if (o.distanceTo(new THREE.Vector3(v.x, v.y + Hh.h, v.z)) > Hh.r + (isBomb ? 5 : 2.6)) continue;
