@@ -562,7 +562,7 @@ function tkFacade(base, glass, frame, lit, style) {
     g.strokeStyle = frame; g.lineWidth = isGlass ? 3 : 4; g.strokeRect(x, y, w, h);
   }
   speckle(g, s, 4000, '0,0,0', 0.07, 2);
-  const t = new THREE.CanvasTexture(c), te = new THREE.CanvasTexture(e);
+  const t = new THREE.CanvasTexture(halfOnTouch(c)), te = new THREE.CanvasTexture(halfOnTouch(e));   // Handy: halbe Auflösung (Speicher)
   for (const q of [t, te]) { q.wrapS = q.wrapT = THREE.RepeatWrapping; q.anisotropy = MAX_ANISO; q.encoding = THREE.sRGBEncoding; }
   return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: te, emissiveIntensity: 0.5,
     roughness: isGlass ? 0.18 : 0.75, metalness: isGlass ? 0.55 : 0.1, envMapIntensity: isGlass ? 1.5 : 1 });
@@ -598,6 +598,11 @@ const TKM = {
   signalR: new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff3020, emissiveIntensity: 1.2 }),
 };
 // Leuchtschild (waagerecht oder senkrecht) mit japanischer Schrift
+// Handy: Bild auf halbe Größe verkleinern (Schilder, Fassaden) – spart Grafikspeicher, sonst stürzt der Browser-Tab ab
+function halfOnTouch(c) {
+  if (!TOUCH || c.width < 128) return c;
+  const h = document.createElement('canvas'); h.width = c.width / 2; h.height = c.height / 2; h.getContext('2d').drawImage(c, 0, 0, h.width, h.height); return h;
+}
 function tkSignMat(text, bg, fg, vertical, wpx = 512, hpx = 128) {
   const c = document.createElement('canvas'); c.width = vertical ? hpx : wpx; c.height = vertical ? wpx : hpx;
   const g = c.getContext('2d');
@@ -612,7 +617,7 @@ function tkSignMat(text, bg, fg, vertical, wpx = 512, hpx = 128) {
     while (g.measureText(text).width > c.width - 40 && fs > 10) { fs -= 4; g.font = `900 ${fs}px ${TK_FONT}`; }
     g.fillText(text, c.width / 2, c.height / 2 + 3);
   }
-  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  const t = new THREE.CanvasTexture(halfOnTouch(c)); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
   return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.7, roughness: 0.4 });
 }
 const TK_COLORS = [['#d41f3a', '#ffffff'], ['#ffd21f', '#c0141e'], ['#1b6fd8', '#ffffff'], ['#12a05a', '#ffffff'], ['#ff6a00', '#ffffff'], ['#6a2bd6', '#ffe14d'], ['#111111', '#ff3b7a'], ['#ffffff', '#d41f3a']];
@@ -1558,7 +1563,7 @@ function euFacade(base, frame, style) {
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x - 9, y + h + 9, w + 18, 5); g.fillStyle = frame; g.fillRect(x - 10, y + h + 5, w + 20, 6);   // Fensterbank
     }
   }
-  const t = new THREE.CanvasTexture(c), te = new THREE.CanvasTexture(e);
+  const t = new THREE.CanvasTexture(halfOnTouch(c)), te = new THREE.CanvasTexture(halfOnTouch(e));   // Handy: halbe Auflösung (Speicher)
   for (const q of [t, te]) { q.wrapS = q.wrapT = THREE.RepeatWrapping; q.anisotropy = MAX_ANISO; q.encoding = THREE.sRGBEncoding; }
   return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: te, emissiveIntensity: 0.45, roughness: 0.85 });
 }

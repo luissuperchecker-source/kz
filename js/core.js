@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-151946 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-151946';
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-152533 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-152533';
 if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
   const check = async () => {
     try {
@@ -416,35 +416,42 @@ function speckle(g, s, n, rgb, aMax, size = 2) {
   }
 }
 const texLoader = new THREE.TextureLoader(loadMgr);
+// Gleiches Foto mit gleicher Kachelung nur EINMAL laden/hochladen (sonst landet z. B. Asphalt 7× im Grafikspeicher → Handys stürzen ab)
+const PTEX_CACHE = new Map();
 function ptex(file, srgb, rx = 1, ry = rx) {
-  const t = texLoader.load('textures/' + file);
+  const key = file + '|' + !!srgb + '|' + rx + '|' + ry;
+  if (PTEX_CACHE.has(key)) return PTEX_CACHE.get(key);
+  const t = texLoader.load('textures/' + file); PTEX_CACHE.set(key, t);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = MAX_ANISO;
   if (srgb) t.encoding = THREE.sRGBEncoding;
   return t;
 }
 // Foto-Material: Farbe + Relief (Normal Map) + Rauheit/Metall/Schatten (ARM)
 function pbr(name, tile, opts = {}, rx = 1, ry = rx) {
-  const arm = ptex(name + '_arm.jpg', false, rx, ry);
+  // Handy: nur das Farbfoto (ohne Relief- und Rauheitskarte) – spart 2/3 des Grafikspeichers
+  const arm = TOUCH ? null : ptex(name + '_arm.jpg', false, rx, ry);
   const m = new THREE.MeshStandardMaterial(Object.assign({
     map: opts.map || ptex(name + '_diff.jpg', true, rx, ry),
-    normalMap: ptex(name + '_nor.jpg', false, rx, ry),
+    normalMap: TOUCH ? null : ptex(name + '_nor.jpg', false, rx, ry),
     roughnessMap: arm, metalnessMap: arm, aoMap: arm,
-    roughness: 1, metalness: 1, aoMapIntensity: 1,
+    roughness: TOUCH ? 0.85 : 1, metalness: TOUCH ? 0 : 1, aoMapIntensity: 1,
   }, opts.mat || {}));
   if (opts.normalScale) m.normalScale.set(opts.normalScale, opts.normalScale);
   m.userData.tile = tile;
   return m;
 }
 // Container-Foto in andere Farbe umfärben (Details bleiben erhalten)
+const TINT_CACHE = new Map();
 function tintedTex(name, hex) {
+  const ck = name + hex; if (TINT_CACHE.has(ck)) return TINT_CACHE.get(ck);
   const c = document.createElement('canvas'); c.width = c.height = 4;
-  const t = new THREE.CanvasTexture(c);
+  const t = new THREE.CanvasTexture(c); TINT_CACHE.set(ck, t);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; t.encoding = THREE.sRGBEncoding;
   loadMgr.itemStart('tint-' + hex);
   const img = new Image();
   img.onload = () => {
-    c.width = img.width; c.height = img.height;
-    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const sc = TOUCH ? 0.5 : 1; c.width = img.width * sc; c.height = img.height * sc;   // Handy: halbe Auflösung
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, c.width, c.height);
     const d = g.getImageData(0, 0, c.width, c.height), p = d.data;
     let sum = 0; for (let i = 0; i < p.length; i += 4) sum += p[i] * 0.3 + p[i + 1] * 0.59 + p[i + 2] * 0.11;
     const avg = sum / (p.length / 4);
