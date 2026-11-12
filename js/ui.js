@@ -88,7 +88,7 @@ function updateHUD(dt) {
   }
   // Moped: Hinweis zum Aufsteigen bzw. Tacho
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1, gshop = ride.v < 0 ? nearGunShop() : null;
-  if (gshop) { hudSet('rideHint', 'html', gunshopHint(gshop)); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
+  if (gshop) { hudSet('rideHint', 'html', gshop.boerse ? boHint() : gunshopHint(gshop)); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
   if (GS.aim) { GS.aim.scale.setScalar(GS.aim.userData.s0); GS.aim = null; }   // Laden verlassen: Hervorhebung weg
   if (ride.v >= 0 && (ride.kind === 'tank' || ride.kind === 'heli')) {
     const nowS = performance.now() / 1000;
@@ -111,7 +111,7 @@ function updateHUD(dt) {
 }
 
 /* ---------- Radar (Minikarte): Teamkameraden immer, Gegner nur wenn sie schießen ---------- */
-const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : MAP_ID === 'welt' ? { img: null, x0: -444, z0: -444, w: 888, h: 888, ppm: 2, t: 0 }
+const RADAR = MAP_ID === 'hafen' ? { img: null, x0: -62, z0: -62, w: 118, h: 194, ppm: 4, t: 0 } : MAP_ID === 'welt' ? { img: null, x0: -444, z0: -444, w: 1548, h: 888, ppm: 2, t: 0 }
   : { img: null, x0: -102, z0: -102, w: 204, h: 204, ppm: 3, t: 0 };
 (function buildRadarMap() {
   const c = document.createElement('canvas'); c.width = RADAR.w * RADAR.ppm; c.height = RADAR.h * RADAR.ppm;
@@ -176,6 +176,7 @@ function drawRadar(dt) {
   }
   // Firmen mit Jobs (gelb) und aktuelles Job-Ziel (blau, am Rand wenn weiter weg)
   for (const T of window.DRIFT_TRACKS || []) { const [x, y] = toR(...T.start); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🏁', x, y + 4); } }
+  for (const s of window.MAP_POIS || []) { const [x, y] = toR(s.x, s.z); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '13px sans-serif'; g.textAlign = 'center'; g.fillText(s.t, x, y + 4); } }
   for (const s of window.GUN_SHOPS || []) { const [x, y] = toR(s.x, s.z); if (Math.hypot(x - R, y - R) < R - 6) { g.font = '12px sans-serif'; g.textAlign = 'center'; g.fillText('🔫', x, y + 4); } }
   for (const c of window.MAP_JOBS || []) { const [x, y] = toR(c.x, c.z); if (Math.hypot(x - R, y - R) < R - 6) { g.fillStyle = '#ffcc33'; g.font = 'bold 11px sans-serif'; g.textAlign = 'center'; g.fillText('$', x, y + 4); } }
   if (window.JOB_TGT) {

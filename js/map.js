@@ -2125,12 +2125,12 @@ function hall(x, z, w, d, h, name, doorSide) {
 function weltRing(road, S) {
   const R = 345, O = 378;   // Ringstraße, Beginn der Berge
   for (const [x0, z0, x1, z1] of [[-R, -R, R, -R], [-R, R, R, R], [-R, -R, -R, R], [R, -R, R, R]]) road(x0, z0, x1, z1, 9);
-  window.MAP_STREETS.push([-R - 4.5, -R - 4.5, R + 4.5, -R + 4.5], [-R - 4.5, R - 4.5, R + 4.5, R + 4.5], [-R - 4.5, -R - 4.5, -R + 4.5, R + 4.5], [R - 4.5, -R - 4.5, R + 4.5, R + 4.5], [-6.5, -S, 6.5, S], [-S, -6.5, S, 6.5]);
+  window.MAP_STREETS.push([-R - 4.5, -R - 4.5, R + 4.5, -R + 4.5], [-R - 4.5, R - 4.5, R + 4.5, R + 4.5], [-R - 4.5, -R - 4.5, -R + 4.5, R + 4.5], [R - 4.5, -R - 4.5, R + 4.5, R + 4.5], [-6.5, -S, 6.5, S], [-S, -6.5, WELT_XE, 6.5]);
   const busy = [];   // belegte Flächen (keine Bäume)
   const reserve = (x0, z0, x1, z1) => busy.push([x0, z0, x1, z1]);
   const isBusy = (x, z, pad = 0) => busy.some(([a, b, c, d]) => x > a - pad && x < c + pad && z > b - pad && z < d + pad);
   // Straßen und Ringstraße frei halten
-  reserve(-8, -S, 8, S); reserve(-S, -8, S, 8);
+  reserve(-8, -S, 8, S); reserve(-S, -10, WELT_XE, 10);
   for (const s of [-1, 1]) { reserve(-R - 7, s * R - 7, R + 7, s * R + 7); reserve(s * R - 7, -R - 7, s * R + 7, R + 7); }
 
   /* --- Industriegebiet (Norden über der Stadt): Hallen, Container, Lkw --- */
@@ -2181,18 +2181,19 @@ function weltRing(road, S) {
     addBox(-341, 0, -14, 0.15, 2.4, 0.15, TKM.wood, 1, { round: 0 }); }
 
   /* --- Wälder im Ring und in den Bergen (instanziert, mit Stamm-Kollision) --- */
-  const TN = 1100, td = new THREE.Object3D();
+  const TN = 1500, td = new THREE.Object3D();
   const leafM = new THREE.MeshLambertMaterial({ map: TEX.needles, alphaTest: 0.5, side: THREE.DoubleSide, color: new THREE.Color(0.72, 0.84, 0.66), emissive: new THREE.Color(0.07, 0.12, 0.05), emissiveMap: TEX.needles });
   // vier Streifen (Nord/Süd/West/Ost) → weit entfernte Streifen werden ausgeblendet (cullChunks)
-  const stripOf = (x, z) => Math.abs(z) >= Math.abs(x) ? (z < 0 ? 0 : 1) : (x < 0 ? 2 : 3);
-  const strips = [0, 1, 2, 3].map(() => ({ t: new THREE.InstancedMesh(trunkGeo, treeTrunkMat, TN), l: layerGeos.map(g => new THREE.InstancedMesh(g, leafM, TN)), n: 0 }));
+  const stripOf = (x, z) => x > 520 ? 4 : Math.abs(z) >= Math.abs(x) ? (z < 0 ? 0 : 1) : (x < 0 ? 2 : 3);   // 4 = neues Gebiet im Osten
+  const strips = [0, 1, 2, 3, 4].map(() => ({ t: new THREE.InstancedMesh(trunkGeo, treeTrunkMat, TN), l: layerGeos.map(g => new THREE.InstancedMesh(g, leafM, TN)), n: 0 }));
   let placed = 0, tries = 0;
-  while (placed < TN && tries++ < 30000) {
-    const x = srnd(-S + 4, S - 4), z = srnd(-S + 4, S - 4), m = Math.max(Math.abs(x), Math.abs(z));
-    if (m < 304 || isBusy(x, z, 2)) continue;
+  while (placed < TN && tries++ < 40000) {
+    const x = srnd(-S + 4, WELT_XE - 4), z = srnd(-S + 4, S - 4), e = window.mapEdge(x, z);   // e: Abstand zum flachen Inneren (Ring ab -8, Berge ab 66)
+    if (e < -8 || isBusy(x, z, 2)) continue;
+    if (x > 500 && (e < 30 || trackDist(x, z) < 16)) continue;   // Osten: F1-Strecke und Flughafen frei lassen
     const y = hillH(x, z); if (y > 45) continue;
     // im flachen Ring lichter (Wiesen bleiben), in den Bergen dichter
-    if (m < O && srand() < 0.45) continue;
+    if (e < 66 && srand() < 0.45) continue;
     const s = srnd(0.85, 1.4), st = strips[stripOf(x, z)];
     td.position.set(x, y - 0.15, z); td.scale.set(s, s * srnd(0.9, 1.25), s); td.rotation.y = srand() * 6; td.updateMatrix();
     st.t.setMatrixAt(st.n, td.matrix); for (const l of st.l) l.setMatrixAt(st.n, td.matrix);
@@ -2229,11 +2230,182 @@ const WELT_PICKS = [
   { w: 2, x: -95, y: 4, z: -230 }, { w: 0, x: -170, y: 0, z: -95 }, { w: 1, x: -150, y: 0, z: -200 }, { w: 0, x: 205, y: 0, z: 180 }, { w: 1, x: 100, y: 0, z: 80 },
   { w: 2, x: 230, y: 0, z: 240 }, { w: 0, x: 24, y: 0, z: 24 }, { w: 1, x: -250, y: 0, z: 30 }, { w: 2, x: -226, y: 0, z: -232 },
 ];
+/* ======================= Osten der Karte „Welt“ (hinter dem Bergrücken, x 500 … 1040) =======================
+   Norden: großer Formel-1-Ring (~2,6 km) mit Boxengasse, Tribünen, Startampel, Kiesbetten und Reifenstapeln.
+   Süden: Flughafen mit Start- und Landebahn, Rollweg, Vorfeld, Terminal, Tower, Hangar und Flugzeugen. */
+const EAST_METAL = new THREE.MeshStandardMaterial({ color: 0xb4b9c0, roughness: 0.45, metalness: 0.55 });   // Dächer, Hangar, Fluggastbrücken (silbergrau)
+// Tribüne: Stufen aus Beton mit farbigen Sitzreihen, Dach auf Stützen; face = Blickrichtung (+1/-1), alongX = Länge entlang x
+function grandstand(x, z, len, alongX, face, rows = 9) {
+  const seats = [MAT.ctrRed, TKM.white, MAT.ctrBlue], D = rows * 0.9, H = rows * 0.5 + 3.6;
+  for (let r = 0; r < rows; r++) {
+    const off = -face * (r * 0.9 + 0.45), h = 0.5 + r * 0.5;
+    if (alongX) { addBox(x, 0, z + off, len, h, 0.9, MAT.concrete, 2, { round: 0 }); addBox(x, h, z + off + face * 0.15, len, 0.14, 0.4, seats[r % 3], 1, { decor: true, round: 0 }); }
+    else { addBox(x + off, 0, z, 0.9, h, len, MAT.concrete, 2, { round: 0 }); addBox(x + off + face * 0.15, h, z, 0.4, 0.14, len, seats[r % 3], 1, { decor: true, round: 0 }); }
+  }
+  const bx = alongX ? x : x - face * D, bz = alongX ? z - face * D : z;
+  if (alongX) addBox(x, H, z - face * D / 2, len + 1, 0.3, D + 2, EAST_METAL, 2, { decor: true, round: 0 });
+  else addBox(x - face * D / 2, H, z, D + 2, 0.3, len + 1, EAST_METAL, 2, { decor: true, round: 0 });
+  for (let t = -len / 2 + 2; t <= len / 2 - 2; t += 12) addBox(alongX ? x + t : bx, 0, alongX ? bz : z + t, 0.4, H, 0.4, MAT.metal, 1, { round: 0 });
+}
+function weltF1(road) {
+  // Streckenverlauf (im Uhrzeigersinn von oben gesehen): lange Start-Ziel-Gerade, schnelle Kurven im Osten,
+  // Gegengerade im Norden, Schikane, Haarnadel, schnelle Diagonale, kurvige Westseite
+  const T = driftLoop([[700, -75], [920, -75], [975, -90], [995, -140], [985, -200], [1000, -260], [990, -320], [950, -350], [880, -345], [800, -350],
+    [740, -330], [720, -290], [760, -250], [800, -230], [830, -200], [820, -160], [780, -150], [720, -190], [670, -240], [620, -300], [575, -340],
+    [535, -320], [525, -260], [545, -200], [530, -140], [540, -95], [565, -78], [610, -75]]);
+  addTrackPts(T.pts);
+  const { pts, N } = T, W = 14, { nrm, curv, band } = trackKit(T), { CURB, LINE, CHECK } = trackMats();
+  const GRAVEL = pbr('asphalt', 3, { map: tintedTex('asphalt', 0xc9b48a), mat: { color: new THREE.Color(1.08, 1.02, 0.92) }, normalScale: 1.5 });
+  const RUNOFF = pbr('asphalt', 3, { map: tintedTex('asphalt', 0x8a8c90), mat: { color: new THREE.Color(1.1, 1.1, 1.1) } });
+  band(-W / 2 - 3, W / 2 + 3, 0.016, RUNOFF, 3, 3);
+  band(-W / 2, W / 2, 0.02, MAT.road, 3, 3);
+  band(W / 2 - 0.6, W / 2 - 0.35, 0.026, LINE, 0, 0); band(-W / 2 + 0.35, -W / 2 + 0.6, 0.026, LINE, 0, 0);
+  const STANDS = [[655, -100, 865, -84], [1006, -215, 1030, -125], [770, -116, 830, -100]];   // Tribünen (dort keine Reifenstapel)
+  const turn = i => Math.abs(curv[i]) > 1 / 90;
+  band(W / 2, W / 2 + 1.6, 0.03, CURB, 2, 0, turn); band(-W / 2 - 1.6, -W / 2, 0.03, CURB, 2, 0, turn);
+  band(W / 2 + 3, W / 2 + 16, 0.014, GRAVEL, 4, 4, i => curv[i] < -1 / 70); band(-W / 2 - 16, -W / 2 - 3, 0.014, GRAVEL, 4, 4, i => curv[i] > 1 / 70);   // Kiesbett außen
+  // Reifenstapel (rot-weiß) hinter den Kiesbetten
+  let last = -99;
+  for (let i = 0; i < N; i++) {
+    if (Math.abs(curv[i]) < 1 / 70 || i - last < 4) continue;
+    const s = -Math.sign(curv[i]), o = W / 2 + 17, x = pts[i].x + nrm[i][0] * s * o, z = pts[i].z + nrm[i][1] * s * o;
+    let clear = z > -372 && z < -20 && x > 505 && x < 1030 && !STANDS.some(([a, b, c, d]) => x > a && x < c && z > b && z < d);
+    for (let k = 0; clear && k < N; k += 3) if (Math.hypot(pts[k].x - x, pts[k].z - z) < W / 2 + 6) clear = false;
+    if (!clear) continue;
+    addBox(x, 0, z, 1.3, 1.0, 4.4, (i >> 2) % 2 ? MAT.ctrRed : TKM.white, 1, { decor: true, round: 0.25, rotY: Math.atan2(nrm[i][1], -nrm[i][0]) });
+    collider(x, 0, z, 2.6, 1.0, 2.6); last = i;
+  }
+  // Start/Ziel, Startampel, Startaufstellung
+  const st = pts[0];
+  decalT(st.x, st.z, W, 1.6, CHECK, 0, -Math.PI / 2, 0.032);
+  for (const s of [-1, 1]) addBox(st.x, 0, st.z + s * (W / 2 + 2), 0.7, 7.5, 0.7, MAT.metal, 1, { round: 0.05 });
+  addBox(st.x, 7.0, st.z, 1.0, 1.4, W + 5, MAT.dark, 1, { decor: true, round: 0 });
+  const lamp = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff1a1a, emissiveIntensity: 1.6 });
+  for (let k = 0; k < 5; k++) for (const s of [-1, 1]) addBox(st.x + s * 0.52, 7.25, st.z - 2.4 + k * 1.2, 0.06, 0.7, 0.7, lamp, 0, { decor: true, round: 0 });
+  for (const s of [-1, 1]) tkSign(st.x + s * 0.53, 9.1, st.z, W + 4, 1.8, s * Math.PI / 2, tkSignMat('KAMPFZONE GRAND PRIX', '#111111', '#ffffff', false));
+  for (let k = 0; k < 10; k++) {   // Startplätze (weiße Winkel), versetzt
+    const gx = st.x - 12 - k * 8, gz = st.z + (k % 2 ? 3.2 : -3.2);
+    decalT(gx, gz, 0.3, 3.6, LINE, 0, 0, 0.03); decalT(gx - 0.9, gz, 1.8, 0.3, LINE, 0, 0, 0.03);
+  }
+  for (let k = 0; k < 4; k++) carSpot(st.x - 14 - k * 8, st.z + (k % 2 ? 3.2 : -3.2), 0, 'f1');
+  // Boxengasse (südlich der Geraden), Boxenmauer, Garagen mit Toren, Rennleitung
+  const PZ = -54;
+  decalT(760, PZ, 320, 10, MAT.road, 3, 0, 0.012);
+  for (const [x0, x1] of [[560, 600], [920, 960]]) decalT((x0 + x1) / 2, -63.5, x1 - x0, 10, MAT.road, 3, 0, 0.011);   // Ein- und Ausfahrt
+  decalT(760, PZ - 4.7, 320, 0.25, LINE, 0, 0, 0.02); decalT(760, PZ + 4.7, 320, 0.25, LINE, 0, 0, 0.02);
+  addBox(760, 0, -64, 300, 1.1, 0.6, MAT.concrete, 2, { round: 0 });
+  for (let x = 615; x <= 905; x += 10) addBox(x, 1.1, -64, 0.12, 2.4, 0.12, MAT.metal, 1, { decor: true, round: 0 });   // Zaun auf der Boxenmauer
+  addBox(760, 2.0, -64, 300, 0.06, 0.06, MAT.metal, 1, { decor: true, round: 0 }); addBox(760, 3.4, -64, 300, 0.06, 0.06, MAT.metal, 1, { decor: true, round: 0 });
+  decalT(760, -47, 320, 4, MAT.concreteFloor, 2.7, 0, 0.011);
+  addBox(760, 0, -37, 300, 8, 16, MAT.plaster2, 2.5, { round: 0 });
+  addBox(760, 8, -37, 302, 0.4, 18, MAT.dark, 1, { decor: true, round: 0 });
+  const TEAMC = ['#c8102e', '#1a2a6c', '#ff8000', '#00a19c', '#2b2b2b', '#f2f2f2', '#0a5c2b', '#ffd21f', '#6a1b9a', '#d81b60'];
+  for (let k = 0; k < 10; k++) {
+    const gx = 625 + k * 30, door = new THREE.Mesh(new THREE.PlaneGeometry(9, 5), MAT.dark); door.position.set(gx, 2.5, -44.97); door.rotation.y = Math.PI; scene.add(door);
+    tkSign(gx, 6.2, -44.95, 9, 1.4, Math.PI, tkSignMat('BOX ' + (k + 1), TEAMC[k], k === 5 || k === 7 ? '#111111' : '#ffffff', false));
+  }
+  tkSign(760, 10.5, -45.9, 40, 3, Math.PI, tkSignMat('🏁 FORMEL-1-RING', '#111111', '#ffd23f', false));
+  carSpot(745, PZ, 0, 'f1'); carSpot(835, PZ, 0, 'f1'); carSpot(790, PZ, 0, 'race');
+  road(580, 6.5, 580, -49, 9);   // Zufahrt von der Hauptstraße ins Fahrerlager
+  // Tribünen: gegenüber der Boxengasse, an der ersten Kurve, an der Haarnadel
+  grandstand(760, -88, 200, true, 1, 10);
+  grandstand(1018, -170, 80, false, -1, 8);
+  grandstand(800, -112, 50, true, -1, 7);
+  // Werbetafeln an der Geraden
+  const ads = [['TURBO', '#ffd21f', '#111'], ['APEX OIL', '#c8102e', '#fff'], ['GRIP', '#111', '#ffd21f'], ['NITRO', '#1a2a6c', '#fff']];
+  for (let k = 0; k < 8; k++) { const a = ads[k % 4]; tkSign(640 + k * 34, 0.7, -85.6, 20, 1.2, 0, tkSignMat(a[0], a[1], a[2], false)); }
+  const xs = pts.map(p => p.x), zs = pts.map(p => p.z);
+  (window.DRIFT_TRACKS = window.DRIFT_TRACKS || []).push({ pts: pts.map(p => [p.x, p.z]), W, name: 'Formel-1-Ring', key: 'f1', start: [st.x, st.z],
+    box: [Math.min(...xs) - 14, Math.min(...zs) - 14, Math.max(...xs) + 14, Math.max(...zs) + 14] });
+  window.MAP_STREETS.push([600, PZ - 5, 920, PZ + 5], [575.5, -49, 584.5, 6.5]);
+}
+// Verkehrsflugzeug (vorne = +x, ~37 m lang, 34 m Spannweite); s = Maßstab (Privatjet kleiner)
+function airliner(x, z, rot, col, s = 1) {
+  const g = new THREE.Group(), white = TKM.white, tail = new THREE.MeshStandardMaterial({ color: col, roughness: 0.4, metalness: 0.2 });
+  const add = (geo, mat, px, py, pz, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(px, py, pz); m.rotation.set(rx, ry, rz); m.castShadow = true; g.add(m); };
+  add(new THREE.CylinderGeometry(2, 2, 26, 20), white, 0, 3.4, 0, 0, 0, Math.PI / 2);
+  const nose = new THREE.SphereGeometry(2, 18, 12, 0, Math.PI * 2, 0, Math.PI / 2); add(nose, white, 13, 3.4, 0, 0, 0, -Math.PI / 2); g.children[1].scale.y = 2.0;
+  add(new THREE.ConeGeometry(2, 9, 20), white, -17.5, 3.8, 0, 0, 0, Math.PI / 2); g.children[2].scale.set(1, 1, 0.85);
+  add(new THREE.BoxGeometry(22, 0.5, 4.06), MAT.dark, 0.5, 4.3, 0); g.children[3].scale.y = 0.6;   // Fensterband
+  add(new THREE.BoxGeometry(1.2, 0.7, 2.6), MAT.dark, 13.6, 4.4, 0, 0, 0, 0.5);                   // Cockpitscheiben
+  add(new THREE.BoxGeometry(26, 0.3, 4.1), tail, 0.5, 2.6, 0);                                     // Zierstreifen
+  for (const sd of [-1, 1]) {
+    add(new THREE.BoxGeometry(7, 0.45, 16), white, -3, 2.3, sd * 9, 0, -sd * 0.5, 0);              // Flügel (gepfeilt)
+    add(new THREE.CylinderGeometry(1.1, 1.0, 4.4, 16), tail, 1.6, 1.3, sd * 6.5, 0, 0, Math.PI / 2);   // Triebwerk
+    add(new THREE.CylinderGeometry(0.75, 0.75, 0.1, 16), MAT.dark, 3.85, 1.3, sd * 6.5, 0, 0, Math.PI / 2);
+    add(new THREE.BoxGeometry(3.2, 0.25, 6), white, -16.5, 4.4, sd * 3.6, 0, -sd * 0.45, 0);       // Höhenleitwerk
+    add(new THREE.CylinderGeometry(0.55, 0.55, 0.5, 12), TIRE, -2, 0.55, sd * 2.6, Math.PI / 2, 0, 0);
+  }
+  add(new THREE.BoxGeometry(5.5, 7.5, 0.35), tail, -16.5, 8.2, 0, 0, 0, 0.42);                    // Seitenleitwerk
+  add(new THREE.CylinderGeometry(0.45, 0.45, 0.4, 12), TIRE, 10, 0.45, 0, Math.PI / 2, 0, 0);
+  add(new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8), MAT.metal, 10, 1.3, 0);
+  g.scale.setScalar(s); g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g);
+  const along = Math.abs(Math.sin(rot)) > 0.5;   // Rumpf entlang z?
+  collider(x, 0, z, along ? 4.2 * s : 36 * s, 5.6 * s, along ? 36 * s : 4.2 * s);
+  collider(x - (along ? 0 : 3 * s * Math.cos(rot)), 1.8 * s, z + (along ? 3 * s * Math.sin(rot) : 0), along ? 34 * s : 8 * s, 0.8 * s, along ? 8 * s : 34 * s);
+}
+function weltAirport(road) {
+  const YEL = new THREE.MeshStandardMaterial({ color: 0xe0b532, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 }), { LINE } = trackMats();
+  // Start- und Landebahn 09/27 (480 m × 45 m) mit Mittellinie, Randlinien, Schwellen-Streifen, Nummern, Befeuerung
+  const RZ = 300, RX0 = 530, RX1 = 1015, RW = 45, rcx = (RX0 + RX1) / 2, RL = RX1 - RX0;
+  decalT(rcx, RZ, RL, RW, MAT.road, 3, 0, 0.01);
+  for (let x = RX0 + 50; x < RX1 - 50; x += 30) decalT(x, RZ, 15, 0.9, LINE, 0, 0, 0.02);
+  for (const sd of [-1, 1]) decalT(rcx, RZ + sd * (RW / 2 - 1.2), RL - 4, 0.9, LINE, 0, 0, 0.02);
+  for (const tx of [RX0 + 14, RX1 - 14]) for (let k = 0; k < 6; k++) for (const sd of [-1, 1]) decalT(tx, RZ + sd * (3.5 + k * 3), 22, 1.8, LINE, 0, 0, 0.021);
+  const num = (txt, x, rot) => {
+    const c = document.createElement('canvas'); c.width = 256; c.height = 128; const g = c.getContext('2d');
+    g.fillStyle = '#ececec'; g.font = '900 112px Arial Black, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 128, 68);
+    const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+    decalT(x, RZ, 14, 28, new THREE.MeshStandardMaterial({ map: t, transparent: true, alphaTest: 0.4, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -3 }), 0, rot, 0.022);
+  };
+  num('09', RX0 + 42, -Math.PI / 2); num('27', RX1 - 42, Math.PI / 2);
+  const RL_MAT = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff2c0, emissiveIntensity: 1.2 });
+  for (let x = RX0 + 5; x <= RX1 - 5; x += 30) for (const sd of [-1, 1]) addBox(x, 0, RZ + sd * (RW / 2 + 1), 0.35, 0.3, 0.35, RL_MAT, 0, { decor: true, round: 0 });
+  // Rollweg mit gelber Mittellinie und drei Verbindungen zur Bahn
+  decalT(775, 240, 440, 20, MAT.road, 3, 0, 0.01); decalT(775, 240, 440, 0.4, YEL, 0, 0, 0.02);
+  for (const x of [575, 785, 990]) { decalT(x, 260, 20, 40, MAT.road, 3, 0, 0.009); decalT(x, 262, 0.4, 36, YEL, 0, 0, 0.02); }
+  // Vorfeld mit Standplätzen
+  decalT(780, 170, 360, 112, MAT.concreteFloor, 2.7, 0, 0.011);
+  for (const x of [680, 760, 840]) { decalT(x, 165, 0.4, 70, YEL, 0, 0, 0.02); decalT(x, 132, 8, 0.4, YEL, 0, 0, 0.02); }
+  // Terminal (Glasfront zum Vorfeld), Fluggastbrücken, Vorfahrt und Parkplatz an der Hauptstraße
+  addBox(770, 0, 90, 260, 12, 38, MAT.concrete, 2.6, { round: 0 });
+  addBox(770, 12, 90, 264, 0.6, 44, EAST_METAL, 2, { decor: true, round: 0 });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(250, 8.5), TKM.glassBlue); glass.position.set(770, 6, 109.05); scene.add(glass);
+  const glassN = new THREE.Mesh(new THREE.PlaneGeometry(250, 8.5), TKM.glassBlue); glassN.position.set(770, 6, 70.95); glassN.rotation.y = Math.PI; scene.add(glassN);
+  tkSign(770, 14.2, 109.4, 60, 3.6, 0, tkSignMat('✈ FLUGHAFEN KAMPFZONE', '#0d2b52', '#ffffff', false));
+  tkSign(770, 14.2, 70.6, 60, 3.6, Math.PI, tkSignMat('✈ FLUGHAFEN KAMPFZONE', '#0d2b52', '#ffffff', false));
+  for (const [i, d] of [['A', 70.6], ['B', 70.6]].entries()) { const door = new THREE.Mesh(new THREE.PlaneGeometry(10, 4), MAT.dark); door.position.set(700 + i * 140, 2, d[1] - 0.02); door.rotation.y = Math.PI; scene.add(door); }
+  for (const x of [680, 760, 840]) { addBox(x - 4.5, 3.2, 120.5, 3, 3, 21, EAST_METAL, 2, { decor: true, round: 0 }); addBox(x - 4.5, 0, 128, 0.6, 3.2, 0.6, MAT.metal, 1, { round: 0 }); }
+  road(640, 6.5, 640, 50, 9); road(900, 6.5, 900, 50, 9); road(635.5, 56, 904.5, 56, 12);   // Vorfahrt
+  for (let k = 0; k < 8; k++) { decalT(660 + k * 7, 30, 0.15, 5, LINE, 0, 0, 0.012); if (k % 3 === 0) carSpot(663.5 + k * 7, 30, Math.PI / 2); }
+  // Tower, Hangar, Windsack, Hubschrauber-Landeplatz
+  addBox(935, 0, 75, 5, 34, 5, MAT.concrete, 2.6, { round: 0 });
+  const cab = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 4.5, 4.5, 10), TKM.glassBlue); cab.position.set(935, 36.3, 75); scene.add(cab);
+  addBox(935, 38.5, 75, 11.5, 0.6, 11.5, MAT.dark, 1, { decor: true, round: 0 });
+  tkSign(935, 30, 77.6, 4.6, 1.2, 0, tkSignMat('TOWER', '#ffffff', '#0d2b52', false));
+  addBox(1000, 0, 175, 50, 9, 58, EAST_METAL, 2.6, { round: 0 });
+  { const rg = new THREE.CylinderGeometry(29, 29, 50, 20, 1, true, 0, Math.PI); rg.rotateZ(Math.PI / 2); rg.scale(1, 0.33, 1);
+    const roof = new THREE.Mesh(withUv2(rg), EAST_METAL); roof.position.set(1000, 9, 175); roof.castShadow = true; scene.add(roof); }
+  const hd = new THREE.Mesh(new THREE.PlaneGeometry(44, 8), MAT.dark); hd.position.set(974.97, 4, 175); hd.rotation.y = -Math.PI / 2; scene.add(hd);
+  tkSign(974.9, 11, 175, 24, 2.4, -Math.PI / 2, tkSignMat('HANGAR 1', '#ffffff', '#0d2b52', false));
+  addBox(1003, 0, 262, 0.2, 6, 0.2, MAT.metal, 1, { round: 0 });
+  { const sock = new THREE.Mesh(new THREE.ConeGeometry(0.5, 3, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xff6a00, roughness: 0.8, side: THREE.DoubleSide })); sock.rotation.z = Math.PI / 2 + 0.25; sock.position.set(1004.5, 5.6, 262); scene.add(sock); }
+  // Flugzeuge: drei an den Gates, eines auf dem Rollweg, eines an der Bahnschwelle, ein Privatjet vor dem Hangar
+  airliner(680, 147, Math.PI / 2, 0xc8102e); airliner(760, 147, Math.PI / 2, 0x0d2b52); airliner(840, 147, Math.PI / 2, 0xffb300);
+  airliner(700, 240, 0, 0x00897b); airliner(RX0 + 36, RZ, 0, 0x6a1b9a); airliner(945, 200, Math.PI, 0x2b2b2b, 0.45);
+  window.MAP_STREETS.push([RX0, RZ - RW / 2, RX1, RZ + RW / 2], [555, 230, 995, 250], [600, 114, 960, 226], [635.5, 6.5, 644.5, 56], [895.5, 6.5, 904.5, 56], [635.5, 50, 904.5, 62]);
+  (window.MAP_POIS = window.MAP_POIS || []).push({ x: 770, z: 90, t: '✈' }, { x: 935, z: 75, t: '🗼' });
+  // Wegweiser an der Hauptstraße vor dem Bergrücken
+  addBox(372, 0, 9, 0.15, 3.4, 0.15, MAT.metal, 1, { round: 0.05 });
+  tkSign(372, 3.0, 9.1, 5.5, 1.2, 0, tkSignMat('🏁 F1-RING  ✈ FLUGHAFEN →', '#0d5a2b', '#ffffff', false));
+}
+const WELT_XE = 1100;   // Ostrand der Karte Welt (x); Westrand bleibt -440
 function buildWeltMap() {
   const S = 440;   // Spielfläche ±440 m: innen das alte Gebiet (±300), dann ein flacher Ring, außen Berge (ab ~380 m)
   // Berge am Rand (begehbar): vier Streifen, Höhe = sichtbares Außengelände (core.js terrainHeight)
-  const outerH = (x, z) => Math.max(Math.abs(x), Math.abs(z)) < 378 ? 0 : Math.max(0, window.terrainHeight(x, z));
-  for (const [x0, x1, z0, z1] of [[-S, S, -S, -376], [-S, S, 376, S], [-S, -376, -376, 376], [376, S, -376, 376]]) addHillRegion({ x0, x1, z0, z1, fn: outerH });
+  const XE = WELT_XE;   // Ostrand: dort liegen hinter einem Bergrücken die Formel-1-Strecke und der Flughafen
+  const outerH = (x, z) => window.mapEdge(x, z) < 66 ? 0 : Math.max(0, window.terrainHeight(x, z));
+  for (const [x0, x1, z0, z1] of [[-S, XE, -S, -376], [-S, XE, 376, S], [-S, -376, -376, 376], [376, 500, -376, 376], [1036, XE, -376, 376]]) addHillRegion({ x0, x1, z0, z1, fn: outerH });
   /* --- Hügel: Wald (Berg), Felder beim Bauernhof --- */
   const LX0 = -205, LZ0 = -95, LR0 = 26;   // Waldsee (gleiche Werte wie unten)
   // Drift-Strecken zwischen den Hügeln (Verlauf zuerst, damit die Hügel entlang der Strecke flach werden)
@@ -2258,8 +2430,9 @@ function buildWeltMap() {
 
   /* --- Rand: Hecke + unsichtbare Wand --- */
   for (const s of [-1, 1]) {
-    addBox(0, 0, s * (S + 1), 2 * S + 4, 1.6, 1.2, HEDGE_MAT, 1, { decor: true, round: 0.4 }); addBox(s * (S + 1), 0, 0, 1.2, 1.6, 2 * S + 4, HEDGE_MAT, 1, { decor: true, round: 0.4 });
-    collider(0, 0, s * (S + 1.5), 2 * S + 6, 160, 2); collider(s * (S + 1.5), 0, 0, 2, 160, 2 * S + 6);
+    const ex = s < 0 ? -S : XE, mx = (XE - S) / 2, wx = XE + S;
+    addBox(mx, 0, s * (S + 1), wx + 4, 1.6, 1.2, HEDGE_MAT, 1, { decor: true, round: 0.4 }); addBox(ex + s, 0, 0, 1.2, 1.6, 2 * S + 4, HEDGE_MAT, 1, { decor: true, round: 0.4 });
+    collider(mx, 0, s * (S + 1.5), wx + 6, 160, 2); collider(ex + s * 1.5, 0, 0, 2, 160, 2 * S + 6);
   }
 
   /* --- Straßen-Werkzeug: Asphalt + Mittellinie + Randlinien (achsparallel) --- */
@@ -2272,7 +2445,8 @@ function buildWeltMap() {
     if (center === 'solid') alongX ? decalT(cx, cz, L, 0.2, yel, 0, 0, 0.013) : decalT(cx, cz, 0.2, L, yel, 0, 0, 0.013);
   };
   // Bundesstraßen durch die ganze Karte (Leitplanken an den Landstücken)
-  road(-S, 0, S, 0, 13, 'solid'); road(0, -S, 0, S, 13, 'solid');
+  road(-S, 0, XE, 0, 13, 'solid'); road(0, -S, 0, S, 13, 'solid');
+  for (let t = 380; t < 500; t += 4) for (const sd of [-1, 1]) addBox(t, 0.5, sd * 7.3, 4, 0.3, 0.15, MAT.metal, 1, { decor: true, round: 0 });   // Leitplanken im Tal durch den Ost-Bergrücken
   for (let t = -376; t < 376; t += 4) {
     if (Math.abs(t) < 14 || Math.abs(Math.abs(t) - 345) < 8) continue;   // Kreuzungen (Mitte, Ringstraße) frei
     const rural = (x, z) => !(x > 25 && z < -25) && !(x < -25 && z > 25);   // nicht in Stadt/Dorf
@@ -2322,6 +2496,19 @@ function buildWeltMap() {
       collider(cx, 0, cz + 12, 5.2, 0.7, 5.2); addBox(cx, 0.7, cz + 12, 0.6, 1.6, 0.6, MAT.concrete, 2);
       for (const sx of [-1, 1]) { bench(cx + sx * 8, cz + 12, false); leafTree(cx + sx * 16, cz + 16, 0.9); }
       gunKiosk(cx - 18, cz + 4, 1);   // Waffenladen am Rathausplatz
+      { // Börsen-Terminal: Säule mit Bildschirm (E = Börse öffnen)
+        const bx = cx + 16, bz = cz + 4;
+        addBox(bx, 0, bz, 3.4, 3.2, 0.7, MAT.dark, 1, { round: 0.08 });
+        const c = document.createElement('canvas'); c.width = 512; c.height = 448; const g = c.getContext('2d');
+        g.fillStyle = '#071a2e'; g.fillRect(0, 0, 512, 448); g.fillStyle = '#ffd23f'; g.font = '900 64px Arial Black, sans-serif'; g.textAlign = 'center'; g.fillText('📈 BÖRSE', 256, 80);
+        g.strokeStyle = '#2ee66b'; g.lineWidth = 6; g.beginPath();
+        for (let k = 0; k <= 24; k++) g.lineTo(40 + k * 18, 300 - k * 5 - Math.sin(k * 1.3) * 28 - (k % 4) * 6); g.stroke();
+        g.fillStyle = '#cfe3f5'; g.font = 'bold 30px Arial, sans-serif'; g.fillText('Aktien · Krypto · echte Kurse', 256, 380); g.fillStyle = '#ffd23f'; g.fillText('Taste E drücken', 256, 425);
+        const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+        const scr = new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.55, roughness: 0.3 });
+        tkSign(bx, 1.75, bz + 0.37, 2.9, 2.55, 0, scr); tkSign(bx, 1.75, bz - 0.37, 2.9, 2.55, Math.PI, scr);
+        window.BOERSE_POS = [bx, bz]; (window.MAP_POIS = window.MAP_POIS || []).push({ x: bx, z: bz, t: '📈' });
+      }
     } else if (key === '3,3') {   // Stadtpark
       decalT(cx, cz, x1 - x0 - 2, z1 - z0 - 2, MAT.grass, 2, 0, 0.01);
       decalT(cx, cz, 3, z1 - z0 - 2, MAT.concreteFloor, 2.7, 0, 0.012); decalT(cx, cz, x1 - x0 - 2, 3, MAT.concreteFloor, 2.7, 0, 0.012);
@@ -2595,7 +2782,7 @@ function buildWeltMap() {
   const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ map: TEX.bark }), N);
   const layers = layerGeos.map(g => new THREE.InstancedMesh(g, farLeafMat, N));
   for (let i = 0; i < N; i++) {
-    let x, z; do { x = srnd(-560, 560); z = srnd(-560, 560); } while (window.mapEdge(x, z) < 74);   // fester Zufall: bei allen Spielern gleich
+    let x, z; do { x = srnd(-560, 560); z = srnd(-560, 560); } while (window.mapEdge(x, z) < 74 || Math.abs(z) < 12);   // fester Zufall: bei allen Spielern gleich (Hauptstraße im Tal frei)
     const s = srnd(1.3, 2.3), y = window.terrainHeight(x, z);
     dummy.position.set(x, y - 0.2, z); dummy.scale.set(s, s * srnd(0.9, 1.3), s); dummy.rotation.y = srand() * 6;
     dummy.updateMatrix(); trunks.setMatrixAt(i, dummy.matrix); for (const l of layers) l.setMatrixAt(i, dummy.matrix);
@@ -2612,11 +2799,12 @@ function buildWeltMap() {
       g.lineWidth = 10; g.strokeStyle = '#f2d21b'; g.beginPath(); g.arc(128, 128, 112, 0, 7); g.stroke();
       g.fillStyle = '#f4f4f4'; g.fillRect(78, 64, 22, 128); g.fillRect(156, 64, 22, 128); g.fillRect(78, 117, 100, 22);
       const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; })(), transparent: true, alphaTest: 0.5, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
-    for (const [x, z] of [[129, 28], [-130, 21]]) {
+    for (const [x, z] of [[129, 28], [-130, 21], [985, 45]]) {   // dritter Platz: am Flughafen
       const pad = new THREE.Mesh(new THREE.PlaneGeometry(13, 13), hp); pad.rotation.x = -Math.PI / 2; pad.position.set(x, 0.02, z); scene.add(pad);
       MAP_VEHICLES.push({ x, z, yaw: Math.PI / 2, kind: 'heli' });
     }
   }
+  weltF1(road); weltAirport(road);   // vor dem Ring: Strecke frei halten (Bäume)
   weltRing(road, S);
 
   /* --- Mopeds --- */

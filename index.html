@@ -165,7 +165,24 @@
   .gcDesc { color: #d8cdb5; font-size: 13px; margin-bottom: 8px; }
   .gcWallet { margin-top: 10px; font-size: 12.5px; color: #c9b88f; }
   .gcBtns { display: flex; gap: 8px; margin-top: 12px; } .gcBtns button { flex: 1; margin: 0; } .gcBtns button:disabled { background: #444; color: #aaa; filter: none; cursor: default; }
-  #settings, #inv, #shop, #tune { position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  #boerse .panel { width: min(720px, calc(100vw - 20px)); max-height: calc(100vh - 20px); overflow-y: auto; }
+  #boerse .bTabs { display: flex; gap: 6px; margin: 10px 0 8px; } #boerse .bTabs button { flex: 1; margin: 0; padding: 8px 4px; font-size: 13.5px; } #boerse .bTabs button.on { outline: 2px solid #ffcc33; }
+  #boerse .bInfo { font-size: 12px; color: #a8c0a8; margin: 4px 0 8px; line-height: 1.45; }
+  #boerse .bRow { display: grid; grid-template-columns: 1fr 86px 100px 70px; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 9px; background: rgba(255,255,255,.04); border: 1px solid #34483a; margin-bottom: 6px; cursor: pointer; }
+  #boerse .bRow:hover, #boerse .bRow.sel { border-color: #ffcc33; }
+  #boerse .bRow .nm { font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } #boerse .bRow .nm small { display: block; font-weight: 400; color: #a8c0a8; font-size: 11.5px; }
+  #boerse .bRow .px { text-align: right; font-weight: 800; } #boerse .bRow .ch { text-align: right; font-weight: 700; font-size: 13px; }
+  #boerse .up { color: #6bff7a; } #boerse .dn { color: #ff6b6b; }
+  #boerse svg.spark { width: 100%; height: 30px; display: block; }
+  #boerse .bDet { border: 1px solid #ffcc33; border-radius: 10px; padding: 10px 12px; margin: 4px 0 10px; background: rgba(255,204,51,.06); }
+  #boerse .bDet h3 { margin: 0 0 2px; font-size: 18px; } #boerse .bDet svg { width: 100%; height: 110px; display: block; margin: 6px 0; }
+  #boerse .bBtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; } #boerse .bBtns button { flex: 1 1 80px; margin: 0; padding: 7px 4px; font-size: 13px; }
+  #boerse .bBtns button.sell { background: #b8433a; color: #fff; } #boerse .bBtns button:disabled { background: #444; color: #999; filter: none; cursor: default; }
+  #boerse .bSum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 6px 0 10px; }
+  #boerse .bSum div { background: rgba(255,204,51,.08); border: 1px solid #4a5a3a; border-radius: 8px; padding: 6px; text-align: center; } #boerse .bSum b { display: block; font-size: 17px; color: #ffcc33; } #boerse .bSum span { font-size: 11px; color: #a8c0a8; }
+  #boerse .bWait { text-align: center; color: #c9b88f; padding: 18px 8px; font-size: 13.5px; line-height: 1.5; }
+  @media (max-width: 560px) { #boerse .bRow { grid-template-columns: 1fr 74px 82px; } #boerse .bRow .sp { display: none; } }
+  #settings, #inv, #shop, #tune, #boerse { position: fixed; inset: 0; z-index: 25; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
   #inv { z-index: 9; background: rgba(0,0,0,.45); }
   .invPanel { width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto; }
   #invList { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
@@ -350,6 +367,7 @@
     </div>
     <div class="menuRow">
       <button id="btnShop1" class="sec">🛒 Laden · <span class="coin"></span> <span id="menuCoins">0</span></button>
+      <button id="btnBoerse1" class="sec">📈 Börse</button>
       <button id="btnInv1" class="sec">🎒 Inventar</button>
       <button id="btnSet1" class="sec">⚙ Optionen</button>
     </div>
@@ -368,6 +386,8 @@
   </div>
   <div id="menuNews">
     <h4>NEU</h4>
+    • 📈 <b>Börse</b>: echte Aktien (Apple, Tesla, SAP …) &amp; Krypto mit echten Kursen – im Menü oder am Rathausplatz<br>
+    • 🏁 <b>Formel-1-Ring</b> mit F1-Autos (330 km/h) &amp; ✈ <b>Flughafen</b> – Karte „Welt“ im Osten hinter den Bergen<br>
     • 🛡️ Panzer &amp; 🚁 Helikopter (Karte „Welt“) · Minigun, Raketenwerfer, Granatwerfer, Flammenwerfer<br>
     • 🚗 Drift-Auto, Rennwagen, Muscle-Car – mit 🔧 Tuning (Taste U im Auto)<br>
     • 🔫 Waffenläden auf der Karte · 🚒 Feuerwehr- &amp; 🗑️ Müll-Jobs<br>
@@ -446,6 +466,7 @@
     </div>
     <div class="menuRow">
       <button id="btnShop2" class="sec">🛒 Laden</button>
+      <button id="btnBoerse2" class="sec">📈 Börse</button>
       <button id="btnInv2" class="sec">🎒 Inventar</button>
       <button id="btnSet2" class="sec">⚙ Optionen</button>
     </div>
@@ -539,6 +560,15 @@
     <button id="tuneClose">Fertig – weiterfahren</button>
   </div>
 </div>
+<div id="boerse" class="hidden">
+  <div class="panel">
+    <div class="shopHead"><h2>📈 Börse</h2><div class="coinBig"><span class="coin"></span> <span id="boCoins">0</span> Coins</div></div>
+    <div class="bInfo">Echte Aktien &amp; Kryptowährungen mit echten Kursen. <b>1 Coin = 1 €</b> – du kannst auch Bruchteile kaufen. Gewinne und Verluste sind echt wie an der Börse!</div>
+    <div class="bTabs"><button data-bt="aktien" class="sec">🏢 Aktien</button><button data-bt="krypto" class="sec">🪙 Krypto</button><button data-bt="depot" class="sec">💼 Mein Depot</button></div>
+    <div id="boBody"></div>
+    <button id="boClose">Schließen</button>
+  </div>
+</div>
 <div id="shop" class="hidden">
   <div class="panel shopPanel">
     <div class="shopHead"><h2>🛒 Waffenladen</h2><div class="coinBig"><span class="coin"></span> <span id="shopCoins">0</span> Coins</div></div>
@@ -563,17 +593,18 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261111-184028"></script>
-<script src="js/map.js?v=20261111-184028"></script>
-<script src="js/models.js?v=20261111-184028"></script>
-<script src="js/game.js?v=20261111-184028"></script>
-<script src="js/vehicles.js?v=20261111-184028"></script>
-<script src="js/net.js?v=20261111-184028"></script>
-<script src="js/ui.js?v=20261111-184028"></script>
-<script src="js/jobs.js?v=20261111-184028"></script>
-<script src="js/gamepad.js?v=20261111-184028"></script>
-<script src="js/keybinds.js?v=20261111-184028"></script>
-<script src="js/tuning.js?v=20261111-184028"></script>
-<script src="js/gunshop.js?v=20261111-184028"></script>
+<script src="js/core.js?v=20261112-151946"></script>
+<script src="js/map.js?v=20261112-151946"></script>
+<script src="js/models.js?v=20261112-151946"></script>
+<script src="js/game.js?v=20261112-151946"></script>
+<script src="js/vehicles.js?v=20261112-151946"></script>
+<script src="js/net.js?v=20261112-151946"></script>
+<script src="js/ui.js?v=20261112-151946"></script>
+<script src="js/jobs.js?v=20261112-151946"></script>
+<script src="js/gamepad.js?v=20261112-151946"></script>
+<script src="js/keybinds.js?v=20261112-151946"></script>
+<script src="js/tuning.js?v=20261112-151946"></script>
+<script src="js/gunshop.js?v=20261112-151946"></script>
+<script src="js/boerse.js?v=20261112-151946"></script>
 </body>
 </html>

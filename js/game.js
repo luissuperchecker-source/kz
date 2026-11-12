@@ -316,8 +316,8 @@ document.addEventListener('wheel', e => {
 });
 
 // Waffenladen auf der Karte: drinnen stehen, Waffe anschauen und E drücken (gunshop.js)
-function nearGunShop() { return shopInside(); }
-function openGunShop() { gunshopInteract(); }
+function nearGunShop() { return shopInside() || (typeof boNear === 'function' && boNear()); }   // + Börsen-Terminal (boerse.js)
+function openGunShop() { const s = shopInside(); if (s) gunshopInteract(); else openBoerse(true); }
 function switchWeapon(n) {
   if (n === me.weapon || !me.owned[n]) return;
   me.weapon = n; me.reloading = 0; me.lastShot = performance.now() / 1000 - WEAPONS[n].rate + 0.3; me.scoped = false;

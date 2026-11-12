@@ -95,7 +95,7 @@ function renderTuning() {
     h += `</div><div class="tSec">NEON-UNTERBODEN ${T.neonOwn ? '' : `· einmalig ${coin(NEON_PRICE)}`}</div><div class="chips">`;
     h += `<button data-neon="-1" class="${T.neon < 0 ? 'on' : 'sec'}">Aus</button>` + NEON_COLS.map((c, i) => sw(c, T.neon === i, `data-neon="${i}" ${!T.neonOwn && shopState.coins < NEON_PRICE ? 'disabled' : ''}`)).join('');
     h += '</div>';
-    if (type !== 'muscle') h += `<div class="tSec">HECKFLÜGEL</div><div class="chips"><button data-wing="1" class="${T.wing !== false ? 'on' : 'sec'}">Mit Flügel</button><button data-wing="0" class="${T.wing === false ? 'on' : 'sec'}">Ohne Flügel</button></div>`;
+    if (type !== 'muscle' && type !== 'f1') h += `<div class="tSec">HECKFLÜGEL</div><div class="chips"><button data-wing="1" class="${T.wing !== false ? 'on' : 'sec'}">Mit Flügel</button><button data-wing="0" class="${T.wing === false ? 'on' : 'sec'}">Ohne Flügel</button></div>`;
     h += '<div class="tNote">Tieferlegung: über das Sportfahrwerk (Reiter „Leistung“). Die Optik siehst nur du.</div>';
   }
   $('tuneBody').innerHTML = h;

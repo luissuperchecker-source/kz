@@ -338,7 +338,7 @@ function setCarPaint(v, mat) {
   const m = v.mesh; if (!m.car || !mat || m.paint === mat) return;
   const old = m.paint; m.root.traverse(o => { if (o.isMesh && o.material === old) o.material = mat; }); m.paint = mat;
 }
-function paintFor(type, liv) { return type === 'race' ? RACE_PAINTS[liv % 4] : type === 'muscle' ? MUSCLE_PAINTS[liv % 4] : CAR_PAINTS[liv % CAR_PAINTS.length]; }
+function paintFor(type, liv) { return type === 'f1' ? F1_PAINTS[liv % 4] : type === 'race' ? RACE_PAINTS[liv % 4] : type === 'muscle' ? MUSCLE_PAINTS[liv % 4] : CAR_PAINTS[liv % CAR_PAINTS.length]; }
 /* ---------- Drift-Look: bunte Folierung (Livery), Neon-Felgen, großer Heckflügel ----------
    Die Folierung wird von der Seite auf die Karosserie projiziert (braucht keine Textur-Koordinaten des Modells),
    auf Dach/Motorhaube bleibt die Grundfarbe. Auf beiden Seiten ist die Schrift lesbar. */
@@ -439,12 +439,69 @@ const LIV_CFG = { long: [1, 0, 0, 1 / 4.7], lat: [0, 0, 1, -0.26], up: [0, 1, 0,
 const RACE_PAINTS = [0, 1, 2, 3].map(i => liveryMat(raceTex(i), [0xf4f4f4, 0xd81e2c, 0x0f3d91, 0xffd21f][i], LIV_CFG));
 const MUSCLE_PAINTS = [0, 1, 2, 3].map(i => liveryMat(muscleTex(i), [0x151515, 0x7a0e12, 0x1f4a2a, 0xd06a12][i], LIV_CFG));
 const SILVER_RIM = new THREE.MeshStandardMaterial({ color: 0xc8ccd2, roughness: 0.25, metalness: 0.9 });
+/* ---------- Formel 1: offener Monoposto (vorne = +x, ~6 m lang), Frontflügel, Halo, großer Heckflügel ---------- */
+const F1_BASE = [0xc8102e, 0x1a2a6c, 0xff8000, 0x00a19c], F1_ACC = ['#ffd21f', '#e8002d', '#1b1b1b', '#c8ccd2'];
+function f1Tex(i) {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const g = c.getContext('2d'), base = '#' + F1_BASE[i].toString(16).padStart(6, '0');
+  g.fillStyle = base; g.fillRect(0, 0, 1024, 256);
+  g.fillStyle = F1_ACC[i]; g.beginPath(); g.moveTo(0, 150); g.lineTo(1024, 90); g.lineTo(1024, 130); g.lineTo(0, 200); g.fill();
+  g.fillStyle = 'rgba(10,10,14,0.9)'; g.fillRect(0, 210, 1024, 46);
+  g.fillStyle = '#fff'; g.font = 'italic 900 110px Arial Black, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 10; g.strokeStyle = '#111'; const nr = String([16, 4, 81, 1][i]); g.strokeText(nr, 420, 110); g.fillText(nr, 420, 110);
+  g.font = 'italic 900 42px Impact, Arial Black, sans-serif'; g.fillStyle = F1_ACC[i] === '#1b1b1b' ? '#fff' : F1_ACC[i]; g.fillText('KAMPFZONE GP', 690, 175);
+  const t = new THREE.CanvasTexture(c); t.anisotropy = MAX_ANISO; t.wrapS = THREE.ClampToEdgeWrapping; return t;
+}
+const F1_PAINTS = [0, 1, 2, 3].map(i => liveryMat(f1Tex(i), F1_BASE[i], { long: [1, 0, 0, 1 / 5.6], lat: [0, 0, 1, -0.1], up: [0, 1, 0, 1.6] }));
+const F1_HELMET = new THREE.MeshStandardMaterial({ color: 0xffd21f, roughness: 0.3, metalness: 0.2 });
+function makeF1(paint) {
+  const root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const R = CAR_WHEEL_R, body = [
+    B(4.3, 0.05, 1.45, CARBON, -0.15, 0.07, 0),                                   // Unterboden
+    B(1.5, 0.15, 0.3, paint, 2.3, 0.3, 0, 0, 0, -0.07), B(0.25, 0.1, 0.22, paint, 3.05, 0.22, 0),   // Nase
+    B(0.42, 0.035, 1.95, paint, 3.08, 0.11, 0), B(0.3, 0.03, 1.9, CARBON, 2.96, 0.19, 0, 0, 0, 0.3),  // Frontflügel
+    B(1.55, 0.42, 0.74, paint, 0.85, 0.42, 0),                                    // Cockpit
+    B(1.8, 0.5, 0.5, paint, -0.95, 0.55, 0), B(1.25, 0.3, 0.03, paint, -1.45, 0.88, 0),           // Motorabdeckung, Finne
+    B(0.5, 0.36, 0.3, paint, -0.05, 0.92, 0), B(0.06, 0.2, 0.2, CAR_BLACK, 0.21, 0.98, 0),        // Airbox
+    B(0.34, 0.035, 1.0, paint, -2.35, 0.95, 0, 0, 0, 0.16), B(0.24, 0.03, 1.0, CARBON, -2.45, 1.07, 0, 0, 0, 0.45),   // Heckflügel
+    B(0.1, 0.42, 0.05, CARBON, -2.22, 0.62, 0), B(0.5, 0.2, 1.1, CARBON, -2.3, 0.17, 0),          // Pylon, Diffusor
+    B(0.03, 0.08, 0.12, TAILLIGHT, -2.62, 0.36, 0),
+    B(0.07, 0.24, 0.06, CARBON, 1.08, 0.76, 0, 0, 0, 0.35),                       // Halo-Mittelstrebe
+    { geo: new THREE.SphereGeometry(0.15, 14, 10), mat: F1_HELMET, p: [0.5, 0.84, 0], r: [0, 0, 0] },
+    B(0.05, 0.05, 0.22, CAR_BLACK, 0.62, 0.86, 0),                                // Visier
+  ];
+  for (const s of [-1, 1]) body.push(
+    B(0.55, 0.24, 0.03, CARBON, 3.0, 0.18, s * 0.97),                            // Frontflügel-Endplatten
+    B(1.6, 0.4, 0.44, paint, -0.3, 0.36, s * 0.56), B(0.04, 0.28, 0.34, CAR_BLACK, 0.52, 0.38, s * 0.56),   // Seitenkästen + Kühler-Einlass
+    B(0.6, 0.48, 0.03, CARBON, -2.35, 0.86, s * 0.51),                            // Heckflügel-Endplatten
+    B(0.62, 0.04, 0.04, CARBON, 0.74, 0.9, s * 0.22, 0, s * 0.42, 0),             // Halo-Bügel
+    B(0.05, 0.03, 0.72, CARBON, 1.92, 0.42, s * 0.42, 0.12 * s, 0, 0), B(0.05, 0.03, 0.72, CARBON, 1.78, 0.3, s * 0.42, -0.08 * s, 0, 0),   // Querlenker vorne
+    B(0.05, 0.03, 0.62, CARBON, -1.78, 0.42, s * 0.5, 0.12 * s, 0, 0), B(0.05, 0.03, 0.62, CARBON, -1.7, 0.3, s * 0.5, -0.08 * s, 0, 0));  // hinten
+  const bodyG = partsToGroup(body, true); root.add(bodyG);
+  const spinners = [], fronts = [];
+  for (const [wx, wd] of [[1.85, 0.36], [-1.75, 0.45]]) for (const s of [-1, 1]) {
+    const pivot = new THREE.Group(); pivot.position.set(wx, R, s * 0.84); root.add(pivot);
+    const spin = new THREE.Group(); pivot.add(spin);
+    spin.add(partsToGroup([
+      { geo: new THREE.CylinderGeometry(R, R, wd, 24), mat: TIRE, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(R * 0.66, R * 0.66, wd + 0.01, 20), mat: CAR_BLACK, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },
+      { geo: new THREE.CylinderGeometry(R * 0.82, R * 0.82, wd + 0.006, 24, 1, true), mat: F1_HELMET, p: [0, 0, 0], r: [Math.PI / 2, 0, 0] },   // farbiger Reifenstreifen
+      B(0.5, 0.05, 0.02, CAR_BLACK, 0, 0, s * (wd / 2 + 0.01)),
+    ], true));
+    spinners.push(spin); if (wx > 0) fronts.push(pivot);
+  }
+  scene.add(root);
+  const dummy = new THREE.Group();
+  return { root, spinners, fronts, steer: dummy, stand: dummy, wf: dummy, wr: dummy, car: true, f1: true, paint, rim: CAR_BLACK, bodyG, wing: null, baseY: 0 };
+}
 const CAR_TYPES = {
   drift: { name: 'Drift-Auto', info: 'Heck bricht leicht aus, großer Lenkeinschlag', p: {} },
   race: { name: 'Rennwagen', info: 'viel Grip und Tempo, starke Bremsen – schwer zu driften',
     p: { m: 1150, Iz: 1950, muF: 1.32, muR: 1.45, BF: 9, BR: 11.5, P: 265000, Fmax: 9300, drag: 0.92, brake: 1.35, maxSteer: 0.5, h: 0.42, tc: 0.75 } },
   muscle: { name: 'Muscle-Car', info: 'viel Kraft, Burnouts – bei Vollgas kommt das Heck',
     p: { m: 1600, Iz: 2950, muF: 0.98, muR: 1.06, P: 290000, Fmax: 10800, drag: 1.25, brake: 0.95, maxSteer: 0.58, steerFade: 9, h: 0.55 } },
+  f1: { name: 'Formel 1', info: 'über 330 km/h, riesiger Abtrieb – je schneller, desto mehr Grip. Früh bremsen!',
+    p: { m: 800, a: 1.95, b: 1.65, h: 0.3, Iz: 1100, muF: 1.6, muR: 1.8, BF: 11, BR: 12.5, P: 640000, Fmax: 10500, drag: 0.8, roll: 120, brake: 2.6,
+      maxSteer: 0.36, steerFade: 22, tc: 0.8, rev: 96, mw: 40, aero: 2.6 } },
 };
 // Tuning (im Browser gespeichert, pro Autotyp): Motor, Reifen, Fahrwerk, Lenkeinschlag, Bremse, Folierung
 const TIRES = [{ n: 'Drift-Reifen', muR: 0.86, muF: 0.97, price: 300 }, { n: 'Serienreifen', muR: 1, muF: 1, price: 0 }, { n: 'Sportreifen', muR: 1.1, muF: 1.07, price: 500 }, { n: 'Rennreifen (Slicks)', muR: 1.22, muF: 1.16, price: 1200 }];
@@ -472,6 +529,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   // Autotyp: an Drift-Strecken Drift-Autos, sonst abwechselnd Drift / Rennwagen / Muscle-Car (für alle Spieler gleich)
   const ctype = kind === 'car' ? (v.ctype || ['drift', 'race', 'muscle'][i % 3]) : null;
   const m = kind === 'tank' ? makeTank() : kind === 'heli' ? makeHeli() : kind !== 'car' ? makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length])
+    : ctype === 'f1' ? makeF1(F1_PAINTS[i % 4])
     : ctype === 'race' ? makeCar(RACE_PAINTS[i % 4], SILVER_RIM, 'race')
     : ctype === 'muscle' ? makeCar(MUSCLE_PAINTS[i % 4], CAR_BLACK, 'muscle')
     : makeCar(CAR_PAINTS[(i + 5) % CAR_PAINTS.length], CAR_RIMS[(i + 5) % CAR_RIMS.length], 'drift');
@@ -857,6 +915,7 @@ function carOnRoad(x, z) {
   if (MAP_ID !== 'welt') return true;   // Tokio/Hafen: überall Asphalt
   if (x > 28 && x < 292 && z > -292 && z < -28) return true;   // Großstadt
   if (x > 8 && x < 46 && z > 8 && z < 46) return true;          // Tankstelle
+  if (typeof trackDist === 'function' && trackDist(x, z) < 8) return true;   // Rennstrecken
   for (const [x0, z0, x1, z1] of window.MAP_STREETS || []) if (x > x0 - 1 && x < x1 + 1 && z > z0 - 1 && z < z1 + 1) return true;
   return false;
 }
@@ -899,7 +958,8 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     const align = Math.min(1, Math.abs(u) / 6) * (analog ? 0.5 : 0.8);
     const delta = Math.max(-K.maxSteer, Math.min(K.maxSteer, ride.steerS * K.maxSteer * sens + free * align));
     // Radlasten mit Gewichtsverlagerung
-    const W = K.m * g, FzF = Math.max(800, W * K.b / L - K.m * ax * K.h / L), FzR = Math.max(800, W * K.a / L + K.m * ax * K.h / L);
+    const W = K.m * g, Wa = W + (K.aero || 0) * u * u;   // Abtrieb (Formel 1): drückt mit dem Tempo² auf die Reifen
+    const FzF = Math.max(800, Wa * K.b / L - K.m * ax * K.h / L), FzR = Math.max(800, Wa * K.a / L + K.m * ax * K.h / L);
     // Längskräfte: Antrieb hinten, Bremse 65/35, Handbremse blockiert hinten, rückwärts fahren
     let FxF = 0, drive = 0, brakeR = 0;
     const capR = K.muR * FzR;

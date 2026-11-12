@@ -288,14 +288,14 @@ renderPadCfg();
 
 /* ---------- Menüs mit dem Controller bedienen ---------- */
 function padLayer() {
-  for (const id of ['gunCard', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
+  for (const id of ['gunCard', 'boerse', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv', 'pause', 'menu']) {
     const el = document.getElementById(id);
     if (el && !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none') return el;
   }
   return null;
 }
 function padItems(layer) {
-  return [...layer.querySelectorAll('button, select, input[type=range]')].filter(e => !e.disabled && e.offsetWidth > 0 && e.offsetHeight > 0);
+  return [...layer.querySelectorAll('button, select, input[type=range], .bRow[data-k]')].filter(e => !e.disabled && e.offsetWidth > 0 && e.offsetHeight > 0);
 }
 function padSetFocus(el) {
   if (PAD.focus) PAD.focus.classList.remove('padFocus');
@@ -350,7 +350,7 @@ function padMenu(gp, pressed, dt) {
     else if (PAD.focus.type !== 'range') PAD.focus.click();
   }
   if (pressed(1)) {   // B = zurück
-    const close = { tune: 'tuneClose', kbCfg: 'kbClose', padCfg: 'padClose', shop: 'shopClose', settings: 'setClose', inv: 'invClose' }[layer.id];
+    const close = { boerse: 'boClose', tune: 'tuneClose', kbCfg: 'kbClose', padCfg: 'padClose', shop: 'shopClose', settings: 'setClose', inv: 'invClose' }[layer.id];
     if (layer.id === 'gunCard') gcClose();
     else if (close) $(close).click();
     else if (layer.id === 'pause') padResume();
@@ -451,7 +451,7 @@ function pollGamepad(dt) {
     }
     PAD.prev = cur; return;
   }
-  const overlay = ['gunCard', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
+  const overlay = ['gunCard', 'boerse', 'tune', 'kbCfg', 'padCfg', 'shop', 'settings', 'inv'].some(id => !$(id).classList.contains('hidden'));
   if (running && locked && !overlay) {
     if (PAD.focus) padSetFocus(null);
     padGame(gp, pressed, released, dt);
