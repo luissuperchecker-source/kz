@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-190949 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-190949';
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-191925 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-191925';
 // Im Menü wird eine neue Version automatisch geladen; mitten im Spiel erscheint der gelbe Balken.
 // Neu laden immer mit neuer Adresse (?u=…), damit der Browser nicht die zwischengespeicherte alte Seite nimmt.
 const UPD = { newer: null };
@@ -220,7 +220,97 @@ function initAudio() {
     master = actx.createGain(); master.gain.value = volume;
     const comp = actx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
     master.connect(comp); comp.connect(actx.destination);
+    // Hall der Umgebung (Hauswände, Boden, Weite): für Schüsse – nah wenig, fern viel
+    try {
+      revIn = actx.createGain(); const conv = actx.createConvolver(); conv.buffer = makeIR(actx.sampleRate);
+      const revOut = actx.createGain(); revOut.gain.value = 0.7; revIn.connect(conv); conv.connect(revOut); revOut.connect(master);
+    } catch (e) { revIn = null; }
+    setTimeout(genShotBuffers, 30);   // Schussklänge im Hintergrund vorberechnen
   } catch (e) { actx = null; }
+}
+/* ---------- Realistische Schüsse: pro Waffe vorberechnete Klänge (3 Varianten) ----------
+   Bestandteile: Mündungsknall (Rauschen, dessen Höhen schnell verschwinden), Anfangsknacken, tiefer „Wumms“,
+   Klacken der Mechanik (Verschluss/Schlitten), Metall-Nachklang (Revolver), Fauchen (Rakete), Knistern (Flammen).
+   Dazu: Hall der Umgebung, ferne Schüsse dumpfer und mit Schall-Verzögerung (343 m/s). */
+let revIn = null;
+const GS = [
+  /* 0 Sturmgewehr   */ { lvl: 1.5, len: .45, blast: 1, bd: .045, c1: 9000, c0: 500, cd: .03, crack: .9, body: .55, bf0: 180, bf1: 70, bb: .06, drive: 2.6, mech: [[.04, 3200, .22], [.075, 2400, .16]] },
+  /* 1 Pumpgun       */ { lvl: 1.7, len: .7, blast: 1.2, bd: .08, c1: 6000, c0: 300, cd: .06, crack: .7, body: .9, bf0: 120, bf1: 45, bb: .12, drive: 3.2 },
+  /* 2 Scharfschütze */ { lvl: 1.8, len: 1.0, blast: 1.3, bd: .09, c1: 8000, c0: 250, cd: .07, crack: 1.1, body: 1, bf0: 110, bf1: 40, bb: .16, drive: 3.5 },
+  /* 3 Pistole       */ { lvl: 1.3, len: .32, blast: .9, bd: .03, c1: 10000, c0: 700, cd: .02, crack: 1, body: .45, bf0: 220, bf1: 90, bb: .045, drive: 2.4, mech: [[.025, 3800, .25], [.05, 2900, .14]] },
+  /* 4 MP mit Schalldämpfer */ { lvl: .75, len: .2, blast: .25, bd: .02, c1: 2500, c0: 300, cd: .02, crack: .05, body: .5, bf0: 260, bf1: 120, bb: .03, drive: 1.5, mech: [[.012, 3500, .35], [.035, 2600, .3]] },
+  /* 5 Revolver      */ { lvl: 1.7, len: .55, blast: 1.15, bd: .06, c1: 8000, c0: 450, cd: .04, crack: 1.1, body: .7, bf0: 150, bf1: 60, bb: .08, drive: 3, ring: [1900, .12, .09] },
+  /* 6 Kampfgewehr   */ { lvl: 1.6, len: .6, blast: 1.15, bd: .06, c1: 8500, c0: 400, cd: .045, crack: 1, body: .75, bf0: 140, bf1: 55, bb: .09, drive: 3, mech: [[.05, 2800, .2]] },
+  /* 7 MG            */ { lvl: 1.5, len: .45, blast: 1.05, bd: .05, c1: 8000, c0: 420, cd: .04, crack: .9, body: .7, bf0: 150, bf1: 60, bb: .07, drive: 2.8, mech: [[.035, 2600, .2], [.06, 4200, .12]] },
+  /* 8 Doppelflinte  */ { lvl: 1.8, len: .8, blast: 1.3, bd: .09, c1: 5500, c0: 280, cd: .07, crack: .8, body: 1, bf0: 110, bf1: 40, bb: .14, drive: 3.4 },
+  /* 9 Minigun       */ { lvl: 1.2, len: .14, blast: .8, bd: .02, c1: 9000, c0: 600, cd: .015, crack: .6, body: .4, bf0: 200, bf1: 90, bb: .025, drive: 2.2 },
+  /* 10 Raketenwerfer */ { lvl: 1.6, len: 1.4, blast: .8, bd: .25, c1: 3000, c0: 200, cd: .3, crack: .3, body: 1, bf0: 90, bf1: 35, bb: .2, drive: 2.5, whoosh: .9 },
+  /* 11 Granatwerfer */ { lvl: 1.1, len: .4, blast: .35, bd: .03, c1: 1800, c0: 250, cd: .03, crack: .1, body: 1, bf0: 220, bf1: 70, bb: .05, drive: 2, mech: [[.02, 1500, .2]] },
+  /* 12 Flammenwerfer */ { lvl: .55, len: .3, blast: .5, bd: .18, c1: 1200, c0: 400, cd: .2, crack: 0, body: .1, bf0: 80, bf1: 60, bb: .1, drive: 1.3, atk: .04, crackle: .3 },
+];
+const GSB = [];   // fertige Klänge je Waffe
+function synthShot(P, sr, seed) {
+  const n = Math.ceil(P.len * sr), out = new Float32Array(n);
+  let s = (seed >>> 0) || 1; const r1 = () => ((s = (s * 16807) % 2147483647) / 2147483647) * 2 - 1;
+  let l1 = 0, l2 = 0, ph = 0, prev = 0, w1 = 0, w2 = 0, cr = 0;
+  const atk = P.atk || 0.0008, TAU = 6.2832, dt = 1 / sr;
+  // Abklingen schrittweise (Multiplikation statt Math.exp je Abtastwert → schnell)
+  const kC = Math.exp(-dt / P.cd), kB = Math.exp(-dt / P.bd), kF = Math.exp(-dt / 0.035), kBB = Math.exp(-dt / P.bb), kR = P.ring ? Math.exp(-dt / P.ring[2]) : 0, kW = Math.exp(-dt / 0.35), kWE = Math.exp(-dt / 0.45);
+  let eC = 1, eB = 1, eF = 1, eBB = 1, eR = 1, eW = 1, eWE = 1;
+  const lpA = fc => { const q = TAU * fc * dt; return q / (1 + q); };   // Tiefpass-Faktor (Näherung)
+  for (let i = 0; i < n; i++) {
+    const t = i * dt, nz = r1();
+    // Mündungsknall: Rauschen, dessen Filter sich schnell schließt (hell → dumpf)
+    const a = lpA(P.c0 + P.c1 * eC); eC *= kC;
+    l1 += a * (nz - l1); l2 += a * (l1 - l2);
+    let env = 1; if (t < atk) env = t / atk; else { env = eB; eB *= kB; }
+    let x = l2 * env * P.blast * 2.2;
+    // Anfangsknacken (hohe Frequenzen, die ersten 3 ms)
+    if (P.crack && t < 0.003) x += (nz - prev) * (1 - t / 0.003) * P.crack * 0.8;
+    prev = nz;
+    // Wumms: tiefer Ton, der schnell nach unten rutscht
+    if (P.body) { const fb = P.bf1 + (P.bf0 - P.bf1) * eF; eF *= kF; ph += TAU * fb * dt; x += Math.sin(ph) * eBB * P.body * (t < 0.002 ? t / 0.002 : 1); eBB *= kBB; }
+    if (P.ring) { x += Math.sin(TAU * P.ring[0] * t) * eR * P.ring[1]; eR *= kR; }   // Metall klingt nach
+    if (P.mech) for (const [tm, f, am] of P.mech) if (t >= tm && t < tm + 0.03) { const u = t - tm; x += (Math.sin(TAU * f * u) * 0.7 + nz * 0.5) * Math.exp(-u / 0.0035) * am; }   // Verschluss klackt
+    if (P.whoosh) {   // Rakete faucht davon
+      const aw = lpA(300 + 1700 * eW); eW *= kW; w1 += aw * (nz - w1); w2 += aw * (w1 - w2);
+      let ew = 1; if (t < 0.05) ew = t / 0.05; else { ew = eWE; eWE *= kWE; }
+      x += (w1 - w2) * P.whoosh * ew * 3;
+    }
+    if (P.crackle && r1() > 0.992) cr = P.crackle;   // Flammen knistern
+    if (cr > 0.001) { x += nz * cr; cr *= 0.93; }
+    out[i] = Math.tanh(x * P.drive);
+  }
+  let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, Math.abs(out[i]));
+  const k = pk > 0 ? 0.95 / pk : 1, fo = Math.floor(sr * 0.01);
+  for (let i = 0; i < n; i++) out[i] *= k * (i > n - fo ? (n - i) / fo : 1);
+  return out;
+}
+const GS_PEND = [];
+function genShotBuffers() {
+  if (!actx) return;
+  const w = GSB.length; if (w >= GS.length) return;
+  const sr = actx.sampleRate, v = GS_PEND.length;
+  const d = synthShot(GS[w], sr, 1234 + w * 97 + v * 7919), b = actx.createBuffer(1, d.length, sr); b.getChannelData(0).set(d); GS_PEND.push(b);
+  if (GS_PEND.length === 3) GSB.push(GS_PEND.splice(0));   // Waffe fertig (3 Varianten)
+  if (window.requestIdleCallback) requestIdleCallback(genShotBuffers, { timeout: 400 }); else setTimeout(genShotBuffers, 25);   // ein Klang pro Schritt, in Ruhepausen → kein Ruckeln
+}
+// Hall-Antwort: dichter Nachhall (wird dunkler) + einzelne frühe Echos von Wänden
+function makeIR(sr) {
+  const L = Math.floor(sr * 2.2), b = actx.createBuffer(2, L, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = b.getChannelData(ch); let lp = 0;
+    for (let i = 0; i < L; i++) {
+      const t = i / sr, a = 1 - Math.exp(-6.2832 * (5000 * Math.exp(-t / 0.45) + 300) / sr);
+      lp += a * ((Math.random() * 2 - 1) - lp);
+      d[i] = lp * Math.exp(-t * 2.6) * (t < 0.015 ? t / 0.015 : 1) * 0.5;
+    }
+    for (let k = 0; k < 9; k++) {
+      const ti = Math.floor(sr * (0.025 + Math.random() * 0.25)), amp = (0.45 - k * 0.035) * (Math.random() < 0.5 ? -1 : 1);
+      for (let j = 0; j < 60 && ti + j < L; j++) d[ti + j] += amp * Math.exp(-j / 10) * (Math.random() * 2 - 1);
+    }
+  }
+  return b;
 }
 function setVolume(v) { volume = v; if (master) master.gain.value = v; }
 // Position → Lautstärke (Entfernung) und Stereo-Richtung (relativ zur Blickrichtung)
@@ -239,6 +329,22 @@ function spatialOut(pos, maxD = 80) {
 }
 function noiseSrc() { const s = actx.createBufferSource(); s.buffer = noiseBuf; return s; }
 function sndShot(w, vol = 0.5, pos) {
+  if (!actx) return;
+  const set = GSB[w], P = GS[w];
+  if (!set || !P) return sndShotOld(w, vol, pos);   // Klänge noch nicht fertig berechnet
+  const o = spatialOut(pos, 180); if (o.g <= 0.005) return;
+  const d = o.d || 0, far = Math.min(1, d / 110);
+  const t = actx.currentTime + Math.min(0.45, d / 343);   // Schall braucht Zeit (fern = später)
+  const src = actx.createBufferSource(); src.buffer = set[Math.floor(Math.random() * set.length)]; src.playbackRate.value = 0.96 + Math.random() * 0.08;
+  let node = src;
+  if (far > 0.04) { const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900 + 15000 * Math.pow(1 - far, 2.2); src.connect(f); node = f; }   // fern = dumpf
+  const g = actx.createGain(); g.gain.value = vol * o.g * P.lvl * (0.92 + Math.random() * 0.16);
+  node.connect(g); g.connect(o.node);
+  if (revIn) { const sg = actx.createGain(); sg.gain.value = vol * Math.max(o.g, 0.04) * P.lvl * (0.2 + far * 0.6); node.connect(sg); sg.connect(revIn); }
+  src.start(t);
+}
+// alter, einfacher Schussklang (nur bis die neuen Klänge berechnet sind)
+function sndShotOld(w, vol = 0.5, pos) {
   if (!actx) return;
   const o = spatialOut(pos, 120); if (o.g <= 0.01) return;
   const [freq, len] = WEAPONS[w] ? WEAPONS[w].snd : [1400, 0.09], t = actx.currentTime, v = vol * o.g;
