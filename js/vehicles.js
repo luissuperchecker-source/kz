@@ -736,7 +736,7 @@ function startRide(i) {
     const ct = CAR_TYPES[ride.ctype];
     showMsg(`${ct.name}: ${ct.info}  ·  ${TOUCH ? '🔧' : kbK('tune')} = Tuning`);
   } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
-  else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
+  else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; ride.bombs = PLANE_BOMBS; ride.bombReload = 0; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
   else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
   else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
 }
@@ -760,7 +760,7 @@ function exitRide(silent) {
   if (!placed) p.set(ride.pos.x, ride.pos.y + 0.05, ride.pos.z);
   me.pos.copy(p); me.vel.set(0, 0, 0);
   if (v.kind === 'heli' || v.kind === 'plane') ride.pos.y = groundH(ride.pos.x, ride.pos.z, ride.pos.y);   // ohne Pilot landet der Heli/das Flugzeug (man selbst fällt aus der Höhe)
-  if (v.kind === 'plane') { ride.pitch = 0; ride.lean = 0; }
+  if (v.kind === 'plane') { ride.pitch = 0; ride.lean = 0; BOMB_AIM.visible = false; }
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
   rideLeft.v = ride.v; rideLeft.t = performance.now();
@@ -985,10 +985,38 @@ function heliRide(dt) {
    W/S = Gas mehr/weniger (am Boden S = bremsen), A/D = Kurve (Querlage), Leertaste = hochziehen, C/Strg = Nase runter.
    Abheben ab ~90 km/h, zu langsam in der Luft = Strömungsabriss (Nase kippt, sinkt). Zu hart aufsetzen = Bruchlandung. */
 const PLANE = { stall: 24, rot: 25, vmax: 62, thrust: 4.6, ceil: 320 };
+// Bomben: 6 an Bord, Abwurf alle 0,35 s, dann 8 s Nachladen (nach der Landung sofort voll). Roter Kreis = Einschlagstelle
+const PLANE_BOMBS = 6, BOMB_RELOAD = 8;
+const BOMB_AIM = (() => {
+  const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0xff3020, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.3, 40), mat); ring.rotation.x = -Math.PI / 2; g.add(ring);
+  for (let k = 0; k < 4; k++) { const b = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 2.2), mat); b.rotation.x = -Math.PI / 2; b.rotation.z = k * Math.PI / 2; b.position.set(Math.cos(k * Math.PI / 2) * 1.6, 0, -Math.sin(k * Math.PI / 2) * 1.6); g.add(b); }
+  g.visible = false; g.renderOrder = 5; scene.add(g); return g;
+})();
 function planeHint() {
-  const v = ride.planeV || 0, alt = ride.pos.y - groundH(ride.pos.x, ride.pos.z, ride.pos.y);
+  const v = ride.planeV || 0, alt = ride.pos.y - groundH(ride.pos.x, ride.pos.z, ride.pos.y), nowS = performance.now() / 1000;
   const warn = alt > 2 && v < PLANE.stall + 3 ? ' <span style="color:#ff6b6b">⚠ ZU LANGSAM – Nase runter, Gas!</span>' : alt < 2 && v > PLANE.rot ? ` <span style="color:#7dff7a">✈ Jetzt ${TOUCH ? '▲ZIEHEN' : kbK('jump')} – abheben!</span>` : '';
-  return `✈ <b>Flugzeug</b> · Gas ${Math.round((ride.thrl || 0) * 100)} % (<b>${kbK('forward')}/${kbK('back')}</b>) · <b>${kbK('jump')}</b> hochziehen · <b>${kbK('crouch')}</b> Nase runter · <b>${kbK('left')}/${kbK('right')}</b> Kurve · <b>${kbK('ride')}</b> aussteigen${warn}`;
+  const rl = ride.bombReload > nowS ? ride.bombReload - nowS : 0;
+  const bombs = `💣 <b>${TOUCH ? 'FEUER' : 'Linksklick'}</b> Bombe ${rl > 0 ? `<span style="color:#ff9a3a">(lädt … ${rl.toFixed(1)} s)</span>` : `(${ride.bombs === undefined ? PLANE_BOMBS : ride.bombs}/${PLANE_BOMBS})`}`;
+  return `✈ <b>Flugzeug</b> · Gas ${Math.round((ride.thrl || 0) * 100)} % (<b>${kbK('forward')}/${kbK('back')}</b>) · <b>${kbK('jump')}</b> hochziehen · <b>${kbK('crouch')}</b> Nase runter · <b>${kbK('left')}/${kbK('right')}</b> Kurve · ${bombs} · <b>${kbK('ride')}</b> aussteigen${warn}`;
+}
+// Bomben abwerfen + Einschlagstelle anzeigen (gleiche Flugbahn wie in updateRockets)
+function planeBombs(onG) {
+  const now = performance.now() / 1000;
+  if (ride.bombs === undefined) ride.bombs = PLANE_BOMBS;
+  if (ride.bombReload && now >= ride.bombReload) { ride.bombReload = 0; ride.bombs = PLANE_BOMBS; }
+  if (onG && (ride.planeV || 0) < 3 && ride.bombs < PLANE_BOMBS) { ride.bombs = PLANE_BOMBS; ride.bombReload = 0; }   // gelandet: neu beladen
+  const o = new THREE.Vector3(ride.pos.x, ride.pos.y + 0.45, ride.pos.z), v = ride.vel.clone().add(new THREE.Vector3(0, -1.5, 0));
+  if (!onG) {   // Zielhilfe: Flugbahn vorausrechnen
+    const p = o.clone(), q = v.clone(); let hit = false;
+    for (let t = 0; t < 15; t += 0.05) { q.y -= 9.81 * 0.05; q.multiplyScalar(1 - 0.001); p.addScaledVector(q, 0.05); const gh = groundH(p.x, p.z, p.y); if (p.y <= gh) { p.y = gh; hit = true; break; } }
+    BOMB_AIM.visible = hit; if (hit) { BOMB_AIM.position.set(p.x, p.y + 0.12, p.z); BOMB_AIM.rotation.y += 0.02; }
+  } else BOMB_AIM.visible = false;
+  if (me.trigger && !onG && !ride.bombReload && ride.bombs > 0 && now - (ride.bombShot || -9) > 0.35) {
+    ride.bombShot = now;
+    fireRocket(o, v, true, BOMB_W);
+    if (--ride.bombs <= 0) ride.bombReload = now + BOMB_RELOAD;
+  }
 }
 function planeRide(dt) {
   const K = VK.plane, P = PLANE;
@@ -1067,6 +1095,7 @@ function planeRide(dt) {
   me.shake = Math.max(0, me.shake - dt * 1.6);
   camera.fov += ((fovBase + Math.min(12, v * 0.18)) - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix();
   engineSound(true, v, ride.thrl, 'plane');
+  planeBombs(nowOnG);
   viewKnife.visible = false; viewNade.visible = false; viewGun.visible = false;
 }
 // Panzerkanone: Linksklick, 2,5 s Nachladen; Granate fliegt aus der Rohrmündung in Rohrrichtung
