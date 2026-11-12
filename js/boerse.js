@@ -1,5 +1,6 @@
 /* ======================= Börse: echte Aktien & Krypto mit echten Kursen =======================
-   Krypto: live von CoinGecko (direkt im Browser). Aktien: kurse.json, die GitHub alle 15 Minuten neu holt.
+   Krypto + US-Aktien: live von CoinGecko (direkt im Browser, eine Anfrage pro Minute).
+   Deutsche Aktien nur, falls eine kurse.json vom GitHub-Kursabruf existiert (optional).
    1 Coin = 1 €. US-Aktien werden mit dem echten Dollarkurs in Euro umgerechnet. Depot im Browser gespeichert. */
 const BO_CRYPTO = [
   ['bitcoin', 'Bitcoin', 'BTC'], ['ethereum', 'Ethereum', 'ETH'], ['solana', 'Solana', 'SOL'], ['ripple', 'XRP', 'XRP'],
@@ -19,22 +20,34 @@ async function boLoadStocks() {
     const r = await fetch('kurse.json?t=' + Date.now(), { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
     const d = await r.json();
-    BO.stocks = d.aktien; BO.stand = d.stand; BO.err.a = '';
-  } catch (e) { if (!BO.stocks) BO.err.a = 'wait'; }
+    BO.stocks = d.aktien; BO.standDE = d.stand; BO.err.a = '';
+  } catch (e) { if (!BO.stocks) { BO.err.a = 'wait'; BO.noDE = true; } }   // keine kurse.json (GitHub-Abruf nicht eingerichtet): nicht weiter nachfragen
   BO.tA = Date.now();
 }
+// US-Aktien live über tokenisierte Aktien (xStocks) bei CoinGecko: Kurs folgt 1:1 der echten Aktie, direkt im Browser abrufbar.
+// Nur Werte mit viel Handel (sonst weicht der Kurs ab). Alles kommt mit EINER Anfrage pro Minute zusammen mit Krypto.
+const BO_US = [
+  ['apple-xstock', 'Apple', 'AAPL'], ['microsoft-xstock', 'Microsoft', 'MSFT'], ['nvidia-xstock', 'NVIDIA', 'NVDA'], ['tesla-xstock', 'Tesla', 'TSLA'],
+  ['amazon-xstock', 'Amazon', 'AMZN'], ['alphabet-xstock', 'Alphabet (Google)', 'GOOGL'], ['meta-xstock', 'Meta (Facebook)', 'META'], ['netflix-xstock', 'Netflix', 'NFLX'],
+  ['amd-xstock', 'AMD', 'AMD'], ['intel-xstock', 'Intel', 'INTC'], ['broadcom-xstock', 'Broadcom', 'AVGO'], ['oracle-xstock', 'Oracle', 'ORCL'],
+  ['palantir-xstock', 'Palantir', 'PLTR'], ['coinbase-xstock', 'Coinbase', 'COIN'], ['robinhood-xstock', 'Robinhood', 'HOOD'], ['gamestop-xstock', 'GameStop', 'GME'],
+  ['mcdonald-s-xstock', "McDonald's", 'MCD'], ['coca-cola-xstock', 'Coca-Cola', 'KO'], ['pepsico-xstock', 'PepsiCo', 'PEP'], ['mastercard-xstock', 'Mastercard', 'MA'],
+  ['sp500-xstock', 'S&P 500 (500 größte US-Firmen)', 'SPY'], ['gold-xstock', 'Gold', 'GOLD'],
+];
 async function boLoadCrypto() {
   try {
-    const ids = BO_CRYPTO.map(c => c[0]).join(',');
-    const [m, fx] = await Promise.all([
-      fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&ids=${ids}&sparkline=true&price_change_percentage=24h`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
-      fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur,usd').then(r => r.json()).catch(() => null),
-    ]);
-    const c = {};
-    for (const x of m) c[x.id] = { p: x.current_price, ch: x.price_change_percentage_24h || 0, hist: ((x.sparkline_in_7d || {}).price || []).filter((v, i) => i % 3 === 0) };
-    BO.crypto = c; BO.err.k = '';
-    if (fx && fx.bitcoin && fx.bitcoin.usd) BO.usdEur = fx.bitcoin.eur / fx.bitcoin.usd;
-  } catch (e) { BO.err.k = BO.crypto ? '' : 'Krypto-Kurse gerade nicht erreichbar – gleich nochmal versuchen.'; }
+    const ids = BO_CRYPTO.map(c => c[0]).concat(BO_US.map(s => s[0])).join(',');
+    const r = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&ids=${ids}&sparkline=true&price_change_percentage=24h&per_page=100`);
+    if (!r.ok) throw new Error(r.status);
+    const m = await r.json();   // bei „Throttled“ (zu viele Anfragen) wirft das → alte Kurse bleiben stehen
+    const c = BO.crypto || {}, s = BO.us || {};
+    for (const x of m) {
+      if (!(x.current_price > 0)) continue;
+      const e = { p: x.current_price, ch: x.price_change_percentage_24h || 0, hist: ((x.sparkline_in_7d || {}).price || []).filter((v, i) => i % 3 === 0), t: x.last_updated };
+      if (x.id.endsWith('-xstock')) s[x.id] = e; else c[x.id] = e;
+    }
+    BO.crypto = c; BO.us = s; BO.err.k = ''; BO.stand = new Date();
+  } catch (e) { BO.err.k = BO.crypto ? '' : 'Kurse gerade nicht erreichbar – in einer Minute nochmal versuchen.'; }
   BO.tK = Date.now();
 }
 // Ein einheitlicher Eintrag pro Wertpapier: Preis in € (= Coins)
@@ -43,6 +56,11 @@ function boItem(key) {
     const id = key.slice(2), c = BO.crypto && BO.crypto[id], def = BO_CRYPTO.find(x => x[0] === id);
     if (!c || !def) return null;
     return { key, name: def[1], sym: def[2], p: c.p, ch: c.ch, hist: c.hist, chLabel: '24 h', histLabel: '7 Tage' };
+  }
+  if (key.startsWith('s:')) {   // US-Aktie (live)
+    const id = key.slice(2), s = BO.us && BO.us[id], def = BO_US.find(x => x[0] === id);
+    if (!s || !def) return null;
+    return { key, name: def[1], sym: def[2], p: s.p, ch: s.ch, hist: s.hist, chLabel: '24 h', histLabel: '7 Tage' };
   }
   const s = BO.stocks && BO.stocks[key]; if (!s) return null;
   const k = s.cur === 'USD' ? (BO.usdEur || 0.92) : 1;   // Dollar → Euro
@@ -83,15 +101,15 @@ function renderBoerse() {
   let html = '';
   const selIt = BO.sel && boItem(BO.sel);
   if (BO.tab === 'aktien') {
-    if (!BO.stocks) html = BO.err.a ? boWaitMsg() : '<div class="bWait">Kurse werden geladen …</div>';
+    const sec = (t, ks) => ks.length ? `<div class="tSec" style="color:#ffcc33;font-weight:700;font-size:13px;margin:10px 0 6px">${t}</div>` + ks.map(k => { const it = boItem(k); return it ? (BO.sel === k ? boDetail(it) : '') + boRow(it) : ''; }).join('') : '';
+    const us = BO_US.map(s => 's:' + s[0]).filter(k => boItem(k));
+    if (!us.length) html = `<div class="bWait">${BO.err.k || 'Kurse werden geladen …'}</div>`;
     else {
-      const keys = Object.keys(BO.stocks);
-      const us = keys.filter(k => BO.stocks[k].cur !== 'EUR'), de = keys.filter(k => BO.stocks[k].cur === 'EUR');
-      const st = BO.stand ? new Date(BO.stand) : null;
-      html += `<div class="bInfo">Kursstand: ${st ? st.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '–'} · wird alle 15 Min. aktualisiert. Außerhalb der Handelszeiten (abends, Wochenende) bleibt der letzte Kurs stehen.</div>`;
-      const sec = (t, ks) => ks.length ? `<div class="tSec" style="color:#ffcc33;font-weight:700;font-size:13px;margin:10px 0 6px">${t}</div>` + ks.map(k => { const it = boItem(k); return it ? (BO.sel === k ? boDetail(it) : '') + boRow(it) : ''; }).join('') : '';
-      html += sec('🇺🇸 USA', us) + sec('🇩🇪 Deutschland (DAX)', de);
+      const st = BO.stand;
+      html += `<div class="bInfo">🟢 Live-Kurse (Stand ${st ? st.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '–'}, jede Minute neu), in Euro umgerechnet. Die Kurse kommen von tokenisierten Aktien und folgen dem echten Börsenkurs – nachts und am Wochenende kann er leicht abweichen.</div>`;
+      html += sec('🇺🇸 USA', us);
     }
+    if (BO.stocks) html += sec('🇩🇪 Deutschland (DAX)', Object.keys(BO.stocks).filter(k => BO.stocks[k].cur === 'EUR'));   // nur, wenn der GitHub-Kursabruf eingerichtet ist
   } else if (BO.tab === 'krypto') {
     if (!BO.crypto) html = `<div class="bWait">${BO.err.k || 'Kurse werden geladen …'}</div>`;
     else {
@@ -105,7 +123,7 @@ function renderBoerse() {
       const it = boItem(k), c = boDepot.cost[k] || 0;
       cost += c;
       if (it) { val += boDepot.pos[k] * it.p; rows += (BO.sel === k ? boDetail(it) : '') + boRow(it); }
-      else { val += c; rows += `<div class="bRow"><div class="nm">${k.replace('c:', '')}<small>Kurs wird geladen …</small></div></div>`; }
+      else { val += c; rows += `<div class="bRow"><div class="nm">${k.replace(/^[cs]:/, '')}<small>Kurs wird geladen …</small></div></div>`; }
     }
     const gl = val - cost;
     html += `<div class="bSum"><div><b>${boEur(val)} €</b><span>Depotwert</span></div><div><b class="${gl >= 0 ? 'up' : 'dn'}">${gl >= 0 ? '+' : ''}${boEur(gl)} €</b><span>Gewinn / Verlust</span></div><div><b>${fmt(Math.floor(shopState.coins))}</b><span>Coins frei</span></div></div>`;
@@ -139,7 +157,7 @@ function boTrade(it, buy, arg) {
 async function boRefresh(force) {
   const now = Date.now(), jobs = [];
   if (force || now - BO.tK > 60000) jobs.push(boLoadCrypto());
-  if (force || now - BO.tA > 120000) jobs.push(boLoadStocks());
+  if (!BO.noDE && (force || now - BO.tA > 120000)) jobs.push(boLoadStocks());
   if (jobs.length) { await Promise.all(jobs); if (!$('boerse').classList.contains('hidden')) renderBoerse(); }
 }
 let boLock = false;   // nach dem Schließen wieder ins Spiel (wenn von der Karte aus geöffnet)
