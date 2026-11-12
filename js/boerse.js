@@ -37,7 +37,7 @@ const BO_ALIAS = { 'meta platforms': 'meta', 'advanced micro devices': 'amd', 'a
   'the walt disney': 'disney', 'walt disney': 'disney', 'the coca-cola': 'coca-cola', 'mcdonalds': "mcdonald's", 'exxon mobil': 'exxonmobil', 'berkshire hathaway class b': 'berkshire hathaway',
   'novartis ag': 'novartis', 'super micro computer': 'supermicro', 'jpmorgan chase & co': 'jpmorgan chase', 'jpmorgan': 'jpmorgan chase', 'rivian automotive': 'rivian', 'lockheed martin': 'lockheed' };
 function boCompany(name) {
-  let s = String(name).replace(/\s*[•(\[].*$/, '').replace(/\s+(tokenized|xstock|xstocks|token|ondo|bstock|on-chain)\b.*$/i, '');
+  let s = String(name).replace(/\s*[•(\[].*$/, '').replace(/\s+(tokenized|xstock|xstocks|token|ondo|bstock|astock|on-chain)\b.*$/i, '');
   for (let i = 0; i < 3; i++) s = s.replace(/[,.]?\s+(inc|corp|corporation|ltd|limited|plc|n\.?v|s\.?a|ag|se|holdings?|co|company|group|common stock|class [abc])\.?$/i, '').replace(/\s+(and|&)$/i, '').replace(/[,\s]+$/, '');
   s = s.trim(); if (!s || /^wrapped\b/i.test(s) || /pre[- ]?ipo/i.test(name)) return null;
   const l = s.toLowerCase(), a = BO_ALIAS[l] || l;
@@ -113,6 +113,7 @@ function boMerge(raw) {
     let sym = String(x.symbol || '').toUpperCase();
     const remora = /remora|rstock/i.test(x.name + ' ' + x.id);
     if (remora) sym = sym.replace(/^R/, '');   // Remora-Kürzel tragen ein „R“ davor
+    if (/\bastock\b/i.test(x.name)) sym = sym.replace(/^A(?=[A-Z]{2})/, '');   // aStock-Kürzel tragen ein „A“ davor
     sym = sym.replace(/(ON|X|B)$/, '');
     let g = groups.get(c.key); if (!g) groups.set(c.key, g = { label: c.label, list: [] });
     if (c.label.length < g.label.length) g.label = c.label;   // kürzester Name: „Spotify“ statt „Spotify Technology“
@@ -178,6 +179,12 @@ function boDetail(it) {
     ${own ? `<div style="margin-top:4px">Im Depot: <b>${boQty(own)}</b> Stück = <b>${boEur(val)} €</b> · <span class="${gl >= 0 ? 'up' : 'dn'}">${gl >= 0 ? '+' : ''}${boEur(gl)} € (${cost ? boPct(gl / cost * 100) : '–'})</span></div>` : ''}
     <div class="bBtns">${buy}</div><div class="bBtns">${sell}</div></div>`;
 }
+const boNorm = s => String(s).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
+// Zusätzliche Suchwörter: Marken, Spiele, Produkte → Firma
+const BO_WORDS = { alphabet: 'Google YouTube Android', meta: 'Facebook Instagram WhatsApp', 'take-two interactive': 'Take 2 Take2 GTA Rockstar 2K NBA', microsoft: 'Xbox Windows Minecraft',
+  apple: 'iPhone Mac', amazon: 'Prime AWS', sony: 'PlayStation', nvidia: 'Grafikkarten GeForce', tesla: 'Elon Musk', 'electronic arts': 'EA FIFA FC', roblox: 'Robux',
+  disney: 'Marvel Pixar Star Wars', netflix: 'Serien', 'coca-cola': 'Cola Coke', pepsico: 'Pepsi Lays', "mcdonald's": 'McDonalds Burger', spotify: 'Musik', uber: 'Taxi',
+  'berkshire hathaway': 'Warren Buffett', strategy: 'MicroStrategy Bitcoin', 'eli lilly': 'Lilly', gamestop: 'GME', amc: 'Kino', toyota: 'Auto', ferrari: 'Auto' };
 // Aktienliste: Suche + Sortierung, je 40 Stück („mehr anzeigen“)
 function boStockKeys() {
   let list = [];
@@ -186,7 +193,9 @@ function boStockKeys() {
   if (BO.stocks) for (const k in BO.stocks) if (BO.stocks[k].cur === 'EUR') list.push(k);
   const items = list.map(boItem).filter(Boolean);
   const q = BO.q.trim().toLowerCase();
-  const hit = it => !q || it.name.toLowerCase().includes(q) || String(it.sym).toLowerCase().startsWith(q) || it.key.slice(2).includes(q);
+  // Suche ohne Leerzeichen/Bindestriche („take two“ = „Take-Two“), dazu bekannte Namen (Google, Facebook, GTA …)
+  const nq = boNorm(q);
+  const hit = it => !nq || boNorm(it.name).includes(nq) || boNorm(it.sym).startsWith(nq) || boNorm(it.key.slice(2)).includes(nq) || boNorm(BO_WORDS[it.key.slice(2)] || '').includes(nq);
   const res = items.filter(hit);
   const S = { pop: (a, b) => (b.vol || 0) - (a.vol || 0), az: (a, b) => a.name.localeCompare(b.name, 'de'), up: (a, b) => b.ch - a.ch, dn: (a, b) => a.ch - b.ch }[BO.sort] || ((a, b) => 0);
   return { res: res.sort(S), total: items.length };
