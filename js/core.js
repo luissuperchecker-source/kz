@@ -5,20 +5,41 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-184409 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-184409';
-if (!BUILD.startsWith('__') && location.protocol.startsWith('http')) {
-  const check = async () => {
-    try {
-      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
-      const j = await r.json();
-      if (j.build && j.build !== BUILD) document.getElementById('updateBar').classList.remove('hidden');
-    } catch (e) {}
-  };
-  check(); setInterval(check, 30000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-184841 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-184841';
+// Im Menü wird eine neue Version automatisch geladen; mitten im Spiel erscheint der gelbe Balken.
+// Neu laden immer mit neuer Adresse (?u=…), damit der Browser nicht die zwischengespeicherte alte Seite nimmt.
+const UPD = { newer: null };
+const buildLabel = b => { const m = /^(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)/.exec(b || ''); return m ? `${m[3]}.${m[2]}. ${m[4]}:${m[5]} Uhr` : 'lokal'; };
+function freshReload(b) { const u = new URL(location.href); u.searchParams.set('u', b || String(Date.now())); location.replace(u.toString()); }
+function verLabel() {
+  const el = document.getElementById('verInfo'); if (!el) return;
+  el.innerHTML = UPD.newer ? `⚠ Neue Version verfügbar (${buildLabel(UPD.newer)}) – <u>jetzt laden</u>` : `Version ${buildLabel(BUILD)} · ${UPD.checked ? '✓ aktuell' : 'wird geprüft …'}`;
+  el.style.color = UPD.newer ? '#ffcc33' : '';
 }
-document.getElementById('btnUpdate').onclick = () => location.reload();
+async function checkUpdate(manual) {
+  if (BUILD.startsWith('__') || !location.protocol.startsWith('http')) return;
+  try {
+    const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+    const j = await r.json(); UPD.checked = true;
+    if (j.build && j.build !== BUILD) {
+      UPD.newer = j.build;
+      let inGame = false; try { inGame = typeof running !== 'undefined' && running; } catch (e) {}
+      let done = null; try { done = sessionStorage.getItem('kz_autoupd'); } catch (e) {}
+      if (manual || (!inGame && done !== j.build)) { try { sessionStorage.setItem('kz_autoupd', j.build); } catch (e) {} return freshReload(j.build); }   // im Menü: sofort laden (einmal pro Version)
+      document.getElementById('updateBar').classList.remove('hidden');
+    }
+  } catch (e) {}
+  verLabel();
+}
+checkUpdate(); setInterval(checkUpdate, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
+addEventListener('pageshow', e => { if (e.persisted) checkUpdate(); });   // Seite aus dem Zwischenspeicher zurückgeholt (Handy)
+addEventListener('focus', () => checkUpdate());
+document.getElementById('btnUpdate').onclick = () => freshReload(UPD.newer);
+{ const vi = document.getElementById('verInfo');   // Versionszeile im Menü: antippen = nach Update suchen
+  if (vi) vi.onclick = () => { if (UPD.newer) return freshReload(UPD.newer); UPD.checked = false; verLabel(); checkUpdate(true); };
+  verLabel(); }
 // Gewählte Karte: „tokio“ (Standard) oder „hafen“ (alte Karte). Wird beim Laden festgelegt; Wechsel = Seite neu laden.
 const MAP_ID = (() => {
   let m = 'tokio';
