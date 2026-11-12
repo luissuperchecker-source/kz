@@ -999,9 +999,11 @@ function planeRide(dt) {
   } else {
     // In der Luft: Querlage → Kurve, Höhenruder → Nase hoch/runter (wirkt erst mit Fahrt), ohne Eingabe langsam waagerecht
     const auth = Math.min(1, v / 20);
-    ride.lean += ((-steer * 0.75) - ride.lean) * Math.min(1, 2.2 * dt);
-    ride.yaw += -Math.sin(ride.lean) * 9.81 / Math.max(v, 12) * 1.25 * dt;
-    let p = pitch0 + pull * 0.6 * auth * dt;
+    // wendig wie ein Kunstflug-Kleinflugzeug: bis ~60° Querlage, schnelles Rollen; Ziehen in der Querlage = noch engere Kurve
+    ride.lean += ((-steer * 1.05) - ride.lean) * Math.min(1, 3.6 * dt);
+    const bank = Math.sin(ride.lean), pullT = Math.max(0, pull) * Math.abs(bank);
+    ride.yaw += -bank * (0.62 + 6 / Math.max(v, 15) + pullT * 0.45) * auth * dt;   // Wendekreis bei 145 km/h ≈ 60 m (vorher ≈ 190 m)
+    let p = pitch0 + pull * 0.6 * auth * Math.cos(ride.lean) * dt;   // in Schräglage zieht das Höhenruder eher in die Kurve als nach oben
     if (!pull) p += (-0.13 * (1 - ride.thrl) - p) * Math.min(1, 0.7 * dt);   // loslassen: waagerecht, mit wenig Gas sanfter Gleitflug
     if (lift < 0.85) p += (-0.45 - p) * (0.85 - lift) * 2.2 * dt;   // Strömungsabriss: Nase fällt
     ride.pitch = Math.max(-0.6, Math.min(0.45, p));
