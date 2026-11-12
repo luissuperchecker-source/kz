@@ -81,8 +81,8 @@ function updateHUD(dt) {
   const vk = ride.v >= 0 ? ride.kind : '';
   if (document.body.dataset.vk !== vk) {
     document.body.dataset.vk = vk; const cl = document.body.classList;
-    cl.toggle('inVeh', !!vk); cl.toggle('vCar', vk === 'car'); cl.toggle('vHeli', vk === 'heli'); cl.toggle('vTank', vk === 'tank');
-    const lbl = { car: 'HAND-<br>BREMSE', moped: 'WHEELIE', heli: '▲<br><small>HOCH</small>' }[vk]; if (lbl) $('tbVh').innerHTML = lbl;
+    cl.toggle('inVeh', !!vk); cl.toggle('vCar', vk === 'car'); cl.toggle('vHeli', vk === 'heli' || vk === 'plane'); cl.toggle('vTank', vk === 'tank');
+    const lbl = { car: 'HAND-<br>BREMSE', moped: 'WHEELIE', heli: '▲<br><small>HOCH</small>', plane: '▲<br><small>ZIEHEN</small>' }[vk]; if (lbl) $('tbVh').innerHTML = lbl;
     const rb = document.querySelector('.tb[data-t=ride]'); if (rb) rb.innerHTML = vk ? 'AUS-<br>STEIGEN' : 'EIN-<br>STEIGEN';
     if (!vk) for (const k of ['KeyA', 'KeyD', 'KeyW', 'KeyS', 'Space', 'Handbrake', 'KeyC']) if (TOUCH) keys[k] = false;
   }
@@ -90,18 +90,18 @@ function updateHUD(dt) {
   const near = me.alive && ride.v < 0 ? nearestFreeVehicle() : -1, gshop = ride.v < 0 ? nearGunShop() : null;
   if (gshop) { hudSet('rideHint', 'html', gshop.boerse ? boHint() : gunshopHint(gshop)); hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'none'); return; }
   if (GS.aim) { GS.aim.scale.setScalar(GS.aim.userData.s0); GS.aim = null; }   // Laden verlassen: Hervorhebung weg
-  if (ride.v >= 0 && (ride.kind === 'tank' || ride.kind === 'heli')) {
+  if (ride.v >= 0 && (ride.kind === 'tank' || ride.kind === 'heli' || ride.kind === 'plane')) {
     const nowS = performance.now() / 1000;
     if (ride.kind === 'tank') {
       const rl = Math.max(0, TANK_RELOAD - (nowS - (ride.tankShot || -9)));
       hudSet('rideHint', 'html', `🛡️ <b>Panzer</b> · Maus = Turm · <b>Linksklick</b> = Kanone ${rl > 0 ? `<span style="color:#ff9a3a">(lädt … ${rl.toFixed(1)} s)</span>` : '<span style="color:#7dff7a">(BEREIT)</span>'} · <b>${kbK('forward')}/${kbK('back')}</b> fahren · <b>${kbK('left')}/${kbK('right')}</b> drehen · <b>${kbK('ride')}</b> aussteigen`);
-    } else hudSet('rideHint', 'html', heliHint());
+    } else hudSet('rideHint', 'html', ride.kind === 'plane' ? planeHint() : heliHint());
     hudSet('rideHint', 'display', 'block'); hudSet('speedo', 'display', 'block');
-    hudSet('speedo', 'html', ride.kind === 'heli' ? `${Math.round(Math.hypot(ride.vel.x, ride.vel.z) * 3.6)}<small>km/h · ${Math.round(ride.pos.y)} m</small>` : `${Math.round(Math.abs(ride.speed) * 3.6)}<small>km/h</small>`);
+    hudSet('speedo', 'html', ride.kind === 'plane' ? `${Math.round((ride.planeV || 0) * 3.6)}<small>km/h · ${Math.max(0, Math.round(ride.pos.y - groundH(ride.pos.x, ride.pos.z, ride.pos.y)))} m Höhe</small>` : ride.kind === 'heli' ? `${Math.round(Math.hypot(ride.vel.x, ride.vel.z) * 3.6)}<small>km/h · ${Math.round(ride.pos.y)} m</small>` : `${Math.round(Math.abs(ride.speed) * 3.6)}<small>km/h</small>`);
     return;
   }
   hudSet('rideHint', 'html', ride.v >= 0 ? (ride.kind === 'car' ? (TOUCH ? `<b>AUSSTEIGEN</b> oben rechts` : `<b>${kbK('ride')}</b> aussteigen · <b>${kbK('gas')}</b> Gas · <b>${kbK('back')}</b> Bremse/rückwärts · <b>${kbK('left')}/${kbK('right')}</b> lenken · <b>${kbK('handbrake')}</b> Handbremse`) : TOUCH ? `<b>AUSSTEIGEN</b> oben rechts · <b>SPRUNG</b> Wheelie` : `<b>${kbK('ride')}</b> absteigen · <b>${kbK('gas')}</b> Gas · <b>${kbK('back')}</b> Bremse · <b>${kbK('left')}/${kbK('right')}</b> lenken · <b>${kbK('jump')}</b> Wheelie`)
-    : near >= 0 ? `<b>${TOUCH ? 'EINSTEIGEN' : 'E'}</b> – ${({ car: 'ins Auto einsteigen', tank: 'in den Panzer steigen', heli: 'in den Helikopter steigen' })[vehicles[near].kind] || 'auf das Moped steigen'}` : '');
+    : near >= 0 ? `<b>${TOUCH ? 'EINSTEIGEN' : 'E'}</b> – ${({ car: 'ins Auto einsteigen', tank: 'in den Panzer steigen', heli: 'in den Helikopter steigen', plane: 'ins Flugzeug steigen' })[vehicles[near].kind] || 'auf das Moped steigen'}` : '');
   hudSet('rideHint', 'display', ride.v >= 0 || near >= 0 ? 'block' : 'none');
   hudSet('speedo', 'display', ride.v >= 0 ? 'block' : 'none');
   if (ride.v >= 0) {

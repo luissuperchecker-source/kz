@@ -333,6 +333,34 @@ function makeHeli() {
   const dummy = new THREE.Group();
   return { root, spinners: [], fronts: [], rotor, tail, steer: dummy, stand: dummy, wf: dummy, wr: dummy, heli: true };
 }
+/* ---------- Kleinflugzeug (Hochdecker wie eine Cessna, vorne = +x, ~8 m lang, 11 m Spannweite) ---------- */
+const PLANE_COLS = [0xc8102e, 0x1a4fa0, 0x0a7a4a, 0xff8000];
+const PLANE_WHITE = new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.35, metalness: 0.15 });
+function makePlane(i) {
+  const W = PLANE_WHITE, C = new THREE.MeshStandardMaterial({ color: PLANE_COLS[i % 4], roughness: 0.35, metalness: 0.2 }), G = HELI_MAT.glass, D = HELI_MAT.dark;
+  const root = new THREE.Group(); root.rotation.order = 'YXZ';
+  const body = [
+    B(3.6, 1.25, 1.15, W, 0.4, 1.3, 0), B(0.95, 0.95, 1.0, W, 2.6, 1.2, 0),                    // Rumpf, Motorhaube
+    B(3.8, 0.62, 0.6, W, -3.2, 1.5, 0, 0, 0, 0.06), B(1.3, 0.5, 0.45, W, -5.3, 1.62, 0),       // Heckausleger
+    B(1.7, 0.55, 1.17, G, 0.85, 1.68, 0), B(0.08, 0.6, 1.0, G, 1.72, 1.7, 0, 0, 0, -0.55),    // Seitenfenster, Frontscheibe
+    B(4.6, 0.16, 1.17, C, -0.2, 0.95, 0), B(3.9, 0.12, 0.62, C, -3.2, 1.25, 0, 0, 0, 0.06),   // Zierstreifen
+    B(1.55, 0.12, 11.2, W, 0.75, 2.24, 0), B(1.56, 0.13, 0.7, C, 0.75, 2.24, 5.3), B(1.56, 0.13, 0.7, C, 0.75, 2.24, -5.3),   // Tragfläche mit farbigen Spitzen
+    B(0.95, 0.08, 3.7, W, -5.55, 1.62, 0), B(1.15, 1.35, 0.08, C, -5.45, 2.35, 0, 0, 0, 0.42), // Höhen- und Seitenleitwerk
+    { geo: new THREE.ConeGeometry(0.28, 0.45, 14), mat: D, p: [3.3, 1.2, 0], r: [0, 0, -Math.PI / 2] },   // Propeller-Nabe
+    { geo: new THREE.CylinderGeometry(0.3, 0.3, 0.2, 14), mat: TIRE, p: [2.45, 0.3, 0], r: [Math.PI / 2, 0, 0] }, B(0.08, 0.6, 0.08, D, 2.45, 0.6, 0),   // Bugrad
+  ];
+  for (const s of [-1, 1]) body.push(
+    B(0.07, 2.4, 0.07, D, 0.75, 1.5, s * 1.6, s * 0.96, 0, 0),                                 // Flügelstrebe
+    { geo: new THREE.CylinderGeometry(0.32, 0.32, 0.22, 14), mat: TIRE, p: [0.1, 0.32, s * 1.15], r: [Math.PI / 2, 0, 0] },   // Haupträder
+    B(0.12, 0.08, 0.75, D, 0.1, 0.55, s * 0.78, s * 0.5, 0, 0),                                 // Fahrwerksbein
+    B(0.6, 0.35, 0.3, C, 0.1, 0.38, s * 1.15));                                                // Radverkleidung
+  root.add(partsToGroup(body, true));
+  const prop = new THREE.Group(); prop.position.set(3.42, 1.2, 0); root.add(prop);
+  prop.add(partsToGroup([B(0.05, 1.9, 0.16, D, 0, 0, 0), B(0.05, 0.16, 1.9, D, 0, 0, 0, Math.PI / 4, 0, 0)], true));
+  scene.add(root);
+  const dummy = new THREE.Group();
+  return { root, spinners: [], fronts: [], prop, steer: dummy, stand: dummy, wf: dummy, wr: dummy, plane: true };
+}
 // Folierung eines Autos tauschen (nur bei dir sichtbar)
 function setCarPaint(v, mat) {
   const m = v.mesh; if (!m.car || !mat || m.paint === mat) return;
@@ -528,7 +556,7 @@ const vehicles = MAP_VEHICLES.map((v, i) => {
   const kind = v.kind || 'moped';
   // Autotyp: an Drift-Strecken Drift-Autos, sonst abwechselnd Drift / Rennwagen / Muscle-Car (für alle Spieler gleich)
   const ctype = kind === 'car' ? (v.ctype || ['drift', 'race', 'muscle'][i % 3]) : null;
-  const m = kind === 'tank' ? makeTank() : kind === 'heli' ? makeHeli() : kind !== 'car' ? makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length])
+  const m = kind === 'tank' ? makeTank() : kind === 'heli' ? makeHeli() : kind === 'plane' ? makePlane(i) : kind !== 'car' ? makeMoped(MOPED_PAINTS[i % MOPED_PAINTS.length])
     : ctype === 'f1' ? makeF1(F1_PAINTS[i % 4])
     : ctype === 'race' ? makeCar(RACE_PAINTS[i % 4], SILVER_RIM, 'race')
     : ctype === 'muscle' ? makeCar(MUSCLE_PAINTS[i % 4], CAR_BLACK, 'muscle')
@@ -595,6 +623,8 @@ const VK = {
     camD: 11, camH: 4.6, eyeUp: 2.6, eyeF: 0, eyeSide: 0, exitSide: 2.9, exitBack: 4.6, enter: 4.6, farDraw: 260 },
   heli: { name: 'Helikopter', back: 0, up: 0.6, r: 1.7, h: 2.9, max: 45, acc: 16, top: 45, brake: 10, rev: -10, coast: 3, steer: 1.3, steerHi: 999,
     camD: 13, camH: 3.4, eyeUp: 2, eyeF: 0, eyeSide: 0, exitSide: 2.6, exitBack: 5, enter: 4.8, farDraw: 400 },
+  plane: { name: 'Flugzeug', back: 0, up: 0.8, r: 1.6, h: 2.6, max: 62, acc: 0, top: 62, brake: 6, rev: 0, coast: 0, steer: 0.6, steerHi: 999,
+    camD: 14, camH: 3.6, eyeUp: 2, eyeF: 0, eyeSide: 0, exitSide: 3.2, exitBack: 4, enter: 5, farDraw: 450 },
 };
 const ride = { v: -1, pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, speed: 0, lean: 0, onGround: true, h: 1.3, lastMouse: 0 };
 let myRider = null;
@@ -652,6 +682,7 @@ function startRide(i) {
     const ct = CAR_TYPES[ride.ctype];
     showMsg(`${ct.name}: ${ct.info}  ·  ${TOUCH ? '🔧' : kbK('tune')} = Tuning`);
   } else if (v.kind === 'tank') showMsg('PANZER!  Maus = Turm · Linksklick = Kanone · W/S fahren · A/D drehen · E aussteigen');
+  else if (v.kind === 'plane') { ride.thrl = 0; ride.pitch = 0; ride.planeV = 0; showMsg(TOUCH ? 'FLUGZEUG!  ▲ Gas · ▲ZIEHEN ab ~90 km/h = abheben · ◀ ▶ Kurven' : `FLUGZEUG!  ${kbK('forward')} Gas · ab ~90 km/h ${kbK('jump')} = hochziehen · ${kbK('crouch')} = Nase runter · ${kbK('left')}/${kbK('right')} Kurven`); }
   else if (v.kind === 'heli') { ride.heliAmmo = HELI_AMMO; ride.heliReload = 0; ride.pitch = 0; showMsg('HELIKOPTER!  Leertaste = steigen · C = sinken · W/S vor/zurück · A/D drehen · Linksklick = Raketen'); }
   else showMsg('Aufgestiegen!  W Gas · S Bremse · A/D lenken · Leertaste Wheelie (antippen!) · E absteigen');
 }
@@ -674,7 +705,8 @@ function exitRide(silent) {
   }
   if (!placed) p.set(ride.pos.x, ride.pos.y + 0.05, ride.pos.z);
   me.pos.copy(p); me.vel.set(0, 0, 0);
-  if (v.kind === 'heli') ride.pos.y = groundH(ride.pos.x, ride.pos.z, ride.pos.y);   // ohne Pilot landet der Heli (man selbst fällt aus der Höhe)
+  if (v.kind === 'heli' || v.kind === 'plane') ride.pos.y = groundH(ride.pos.x, ride.pos.z, ride.pos.y);   // ohne Pilot landet der Heli/das Flugzeug (man selbst fällt aus der Höhe)
+  if (v.kind === 'plane') { ride.pitch = 0; ride.lean = 0; }
   net.send({ t: 'exit', v: ride.v, s: [ride.pos.x, ride.pos.y, ride.pos.z, ride.yaw] });
   v.x = ride.pos.x; v.y = ride.pos.y; v.z = ride.pos.z; v.yaw = ride.yaw; v.d = 0; v.lean = 0;
   rideLeft.v = ride.v; rideLeft.t = performance.now();
@@ -688,6 +720,7 @@ function exitRide(silent) {
 /* ---------- Fahrphysik (eigenes Moped) ---------- */
 function updateRide(dt) {
   if (ride.kind === 'heli') return heliRide(dt);
+  if (ride.kind === 'plane') return planeRide(dt);
   let thr =(keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
   // Joystick/Lenkrad/Pedale ersetzen nur die Richtung, die sie gerade benutzen (Lenkrad lenkt, W/S gibt weiter Gas)
   if (touchIn.my) thr = -touchIn.my;
@@ -892,6 +925,92 @@ function heliRide(dt) {
   const targetFov = me.scoped ? 40 : fovBase + Math.min(10, hs * 0.2);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix();
   engineSound(true, hs, Math.max(Math.abs(thr), Math.abs(up)), 'heli');
+  viewKnife.visible = false; viewNade.visible = false; viewGun.visible = false;
+}
+/* ---------- Flugzeug fliegen (einfach zu lernen, aber wie ein echtes Kleinflugzeug):
+   W/S = Gas mehr/weniger (am Boden S = bremsen), A/D = Kurve (Querlage), Leertaste = hochziehen, C/Strg = Nase runter.
+   Abheben ab ~90 km/h, zu langsam in der Luft = Strömungsabriss (Nase kippt, sinkt). Zu hart aufsetzen = Bruchlandung. */
+const PLANE = { stall: 24, rot: 25, vmax: 62, thrust: 4.6, ceil: 320 };
+function planeHint() {
+  const v = ride.planeV || 0, alt = ride.pos.y - groundH(ride.pos.x, ride.pos.z, ride.pos.y);
+  const warn = alt > 2 && v < PLANE.stall + 3 ? ' <span style="color:#ff6b6b">⚠ ZU LANGSAM – Nase runter, Gas!</span>' : alt < 2 && v > PLANE.rot ? ` <span style="color:#7dff7a">✈ Jetzt ${TOUCH ? '▲ZIEHEN' : kbK('jump')} – abheben!</span>` : '';
+  return `✈ <b>Flugzeug</b> · Gas ${Math.round((ride.thrl || 0) * 100)} % (<b>${kbK('forward')}/${kbK('back')}</b>) · <b>${kbK('jump')}</b> hochziehen · <b>${kbK('crouch')}</b> Nase runter · <b>${kbK('left')}/${kbK('right')}</b> Kurve · <b>${kbK('ride')}</b> aussteigen${warn}`;
+}
+function planeRide(dt) {
+  const K = VK.plane, P = PLANE;
+  let thr = (keys.KeyW || keys.Gas ? 1 : 0) - (keys.KeyS ? 1 : 0), steer = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
+  if (touchIn.my) thr = -touchIn.my;
+  if (touchIn.mx) steer = -touchIn.mx;
+  const pull = (keys.Space ? 1 : 0) - (keys.KeyC || keys.ControlLeft ? 1 : 0);
+  const gh = groundH(ride.pos.x, ride.pos.z, ride.pos.y), alt = ride.pos.y - gh, onG = alt < 0.05;
+  // Gas (Hebel bleibt stehen), am Boden mit S bremsen
+  ride.thrl = Math.max(0, Math.min(1, (ride.thrl || 0) + thr * (thr > 0 ? 0.55 : 0.8) * dt));
+  let v = ride.planeV || 0;
+  const pitch0 = ride.pitch || 0;
+  const flaps = (0.35 - Math.min(0.35, ride.thrl)) * 0.06 * v;   // wenig Gas: Landeklappen → langsamer anfliegen (~95 km/h)
+  v += (ride.thrl * P.thrust - v * v * (P.thrust / (P.vmax * P.vmax)) - flaps - 9.81 * Math.sin(pitch0) - (onG ? 0.6 : 0)) * dt;
+  if (onG && thr < 0) v -= 8 * dt;   // Radbremse
+  v = Math.max(0, v);
+  const lift = Math.min(1.3, (v / P.stall) ** 2);
+  if (onG) {
+    // Rollen: Bugrad lenkt, Nase hoch erst ab Abhebetempo
+    ride.yaw += steer * 0.7 * Math.min(1, v / 4) * Math.max(0.25, 1 - v / 40) * dt;
+    const want = pull > 0 && v > P.rot ? 0.14 : 0;
+    ride.pitch = pitch0 + (want - pitch0) * Math.min(1, 4 * dt);
+    ride.lean += (0 - ride.lean) * Math.min(1, 6 * dt);
+  } else {
+    // In der Luft: Querlage → Kurve, Höhenruder → Nase hoch/runter (wirkt erst mit Fahrt), ohne Eingabe langsam waagerecht
+    const auth = Math.min(1, v / 20);
+    ride.lean += ((-steer * 0.75) - ride.lean) * Math.min(1, 2.2 * dt);
+    ride.yaw += -Math.sin(ride.lean) * 9.81 / Math.max(v, 12) * 1.25 * dt;
+    let p = pitch0 + pull * 0.6 * auth * dt;
+    if (!pull) p += (-0.13 * (1 - ride.thrl) - p) * Math.min(1, 0.7 * dt);   // loslassen: waagerecht, mit wenig Gas sanfter Gleitflug
+    if (lift < 0.85) p += (-0.45 - p) * (0.85 - lift) * 2.2 * dt;   // Strömungsabriss: Nase fällt
+    ride.pitch = Math.max(-0.6, Math.min(0.45, p));
+  }
+  // Bewegung entlang der Nase; zu wenig Auftrieb = zusätzliches Sinken
+  const fx = Math.cos(ride.yaw), fz = -Math.sin(ride.yaw), cp = Math.cos(ride.pitch);
+  let vy = v * Math.sin(ride.pitch) * (onG ? (v > P.rot ? 1 : 0) : 1) - (onG ? 0 : (1 - Math.min(1, lift)) * 9);
+  if (ride.pos.y > P.ceil && vy > 0) vy = 0;
+  ride.vel.set(fx * v * cp, vy, fz * v * cp);
+  const vyBefore = vy;
+  moveBody(ride, ride.vel.x * dt, vy * dt, ride.vel.z * dt);
+  // Kartenrand: wenden statt hinausfliegen
+  const XMIN = -430, XMAX = 1090, ZM = 430;
+  if (ride.pos.x < XMIN || ride.pos.x > XMAX || Math.abs(ride.pos.z) > ZM) {
+    ride.pos.x = Math.max(XMIN, Math.min(XMAX, ride.pos.x)); ride.pos.z = Math.max(-ZM, Math.min(ZM, ride.pos.z));
+    if (!onG) { ride.yaw += Math.PI * dt * 0.9; if (!ride.edgeMsg || performance.now() - ride.edgeMsg > 3000) { ride.edgeMsg = performance.now(); showMsg('Kartenrand – bitte umkehren'); } }
+  }
+  const gh2 = groundH(ride.pos.x, ride.pos.z, ride.pos.y), nowOnG = ride.pos.y - gh2 < 0.05;
+  // Aufsetzen / Bruchlandung / Aufprall
+  let crash = ride.blocked && v > 8;
+  if (!onG && nowOnG) {
+    if (vyBefore < -6 || Math.abs(ride.lean) > 0.5 || ride.pitch < -0.25) crash = true;
+    else { sndThud(0.35); showMsg(v > 15 ? '✈ Gelandet – S zum Bremsen' : '✈ Gelandet'); ride.pitch = 0; }
+  }
+  if (crash) {
+    sndThud(1); me.shake = Math.max(me.shake, 1);
+    for (let k = 0; k < 8; k++) puff(new THREE.Vector3(ride.pos.x + rnd(-2, 2), ride.pos.y + 1, ride.pos.z + rnd(-2, 2)), k % 2 ? 0x333333 : 0xff8a20, 0.8, 1.6, new THREE.Vector3(rnd(-2, 2), 2, rnd(-2, 2)), { opacity: 0.7, grow: 3 });
+    showMsg('💥 BRUCHLANDUNG! Das Flugzeug ist wieder heil – vorsichtiger landen'); v = 0; ride.thrl = 0; ride.pitch = 0; ride.lean = 0;
+    ride.pos.y = groundH(ride.pos.x, ride.pos.z, ride.pos.y + 300);
+  }
+  if (ride.pos.y < -10) ride.pos.set(950, 1, 300);
+  ride.planeV = v; ride.speed = v; ride.wh = 0; ride.dive = 0; ride.thr = thr; ride.onGround = nowOnG;
+  me.pos.set(ride.pos.x, ride.pos.y + K.up, ride.pos.z); me.vel.set(0, 0, 0); me.onGround = true;
+  const veh = vehicles[ride.v]; veh.x = ride.pos.x; veh.y = ride.pos.y; veh.z = ride.pos.z; veh.yaw = ride.yaw; veh.lean = ride.lean; veh.wh = ride.pitch; veh.st = ride.thrl;
+  // Kamera: hinter dem Flugzeug (folgt der Nase), Maus schaut frei
+  if (performance.now() - ride.lastMouse > 900) {
+    let d = (ride.yaw - Math.PI / 2) - me.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); me.yaw += d * Math.min(1, dt * 2.5);
+    me.pitch += ((-0.12 - ride.pitch * 0.6) - me.pitch) * Math.min(1, dt * 2);
+  }
+  const target = new THREE.Vector3(ride.pos.x, ride.pos.y + K.camH, ride.pos.z);
+  const back = new THREE.Vector3(Math.sin(me.yaw) * Math.cos(me.pitch), -Math.sin(me.pitch), Math.cos(me.yaw) * Math.cos(me.pitch));
+  let dist = K.camD; const hit = rayMap(target, back, dist + 0.3); if (hit) dist = Math.max(1.5, hit.dist - 0.3);
+  camera.position.copy(target).addScaledVector(back, dist);
+  camera.rotation.set(me.pitch, me.yaw, ride.lean * 0.35);
+  me.shake = Math.max(0, me.shake - dt * 1.6);
+  camera.fov += ((fovBase + Math.min(12, v * 0.18)) - camera.fov) * Math.min(1, dt * 6); camera.updateProjectionMatrix();
+  engineSound(true, v, ride.thrl, 'plane');
   viewKnife.visible = false; viewNade.visible = false; viewGun.visible = false;
 }
 // Panzerkanone: Linksklick, 2,5 s Nachladen; Granate fliegt aus der Rohrmündung in Rohrrichtung
@@ -1155,8 +1274,13 @@ function updateVehicles(dt) {
     if (m.isHi !== hi) { m.isHi = hi; m.hi.visible = hi; for (const c of m.lo) c.visible = !hi; }
   }
   for (const v of vehicles) {
-    const m = v.mesh, K = VK[v.kind], isTank = v.kind === 'tank', isHeli = v.kind === 'heli', isCar = v.kind === 'car' || isTank || isHeli;
-    if (isHeli) {   // Rotoren drehen, solange jemand drin sitzt (laufen kurz nach)
+    const m = v.mesh, K = VK[v.kind], isTank = v.kind === 'tank', isPlane = v.kind === 'plane', isHeli = v.kind === 'heli' || isPlane, isCar = v.kind === 'car' || isTank || isHeli;
+    if (isPlane) {   // Propeller: dreht je nach Gas (eigenes Flugzeug) bzw. solange jemand drin sitzt
+      const on = v.i === ride.v || !!v.d, tgt = on ? 18 + 40 * (v.i === ride.v ? (ride.thrl || 0) : (v.st || 0.5)) : 0;
+      v.rot = (v.rot || 0) + (tgt - (v.rot || 0)) * Math.min(1, dt * (on ? 1.5 : 0.5));
+      m.prop.rotation.x += v.rot * dt;
+    } else
+    if (isHeli && !isPlane) {   // Rotoren drehen, solange jemand drin sitzt (laufen kurz nach)
       const on = v.i === ride.v || !!v.d;
       v.rot = (v.rot || 0) + ((on ? 26 : 0) - (v.rot || 0)) * Math.min(1, dt * (on ? 0.8 : 0.4));
       m.rotor.rotation.y += v.rot * dt; m.tail.rotation.z += v.rot * 1.8 * dt;
@@ -1293,6 +1417,13 @@ function engineSound(on, speed = 0, thr = 0, kind = 'moped', squeal = false) {
     eng = { o, o2, f, g, kind };
   }
   const t = actx.currentTime, sp = Math.abs(speed);
+  if (kind === 'plane') {   // Kolbenmotor mit Propeller: sonores Brummen, höher mit mehr Gas
+    eng.o.frequency.setTargetAtTime(48 + thr * 46 + sp * 0.2, t, 0.15);
+    eng.o2.frequency.setTargetAtTime(22 + thr * 26, t, 0.15);
+    eng.f.frequency.setTargetAtTime(420 + thr * 520, t, 0.15);
+    eng.g.gain.setTargetAtTime(0.05 + thr * 0.045, t, 0.15);
+    return;
+  }
   if (kind === 'tank' || kind === 'heli') {   // Panzer: tiefes Dieselgrollen · Heli: schnelles Rotor-Wummern
     const heli = kind === 'heli';
     eng.o.frequency.setTargetAtTime(heli ? 55 + thr * 12 : 22 + sp * 2 + thr * 6, t, 0.1);

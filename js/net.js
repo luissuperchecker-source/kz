@@ -159,7 +159,7 @@ function hostHandle(from, m) {
     // Abstand: Host kennt die Position ~50 ms verzögert, darum auch die mitgeschickte Position gelten lassen (wenn plausibel)
     let dist = Math.hypot(p.x - v.x, p.z - v.z);
     if (m.p && Math.hypot(m.p[0] - p.x, m.p[2] - p.z) < 4) dist = Math.min(dist, Math.hypot(m.p[0] - v.x, m.p[2] - v.z));
-    if (dist > (v.kind === 'tank' || v.kind === 'heli' ? 5.2 : v.kind === 'car' ? 4.6 : 3.6)) return sendTo(from, { t: 'enterFail', r: 'far' });
+    if (dist > (v.kind === 'tank' || v.kind === 'heli' || v.kind === 'plane' ? 5.2 : v.kind === 'car' ? 4.6 : 3.6)) return sendTo(from, { t: 'enterFail', r: 'far' });
     for (const o of vehicles) if (o.d === from) o.d = 0;
     v.d = from;
     sendTo(from, { t: 'entered', v: m.v });
@@ -205,7 +205,7 @@ function applyDamage(target, dmg, attacker, w, head) {
   sendTo(target, { t: 'dmg', id: target, from: attacker });
   if (p.hp > 0) return;
   p.hp = 0; p.alive = false; p.d++;
-  for (const v of vehicles) if (v.d === target) { v.d = 0; v.lean = 0; if (v.kind === 'heli') v.y = groundH(v.x, v.z, v.y); }   // Fahrer fällt vom Moped, Heli landet
+  for (const v of vehicles) if (v.d === target) { v.d = 0; v.lean = 0; if (v.kind === 'heli' || v.kind === 'plane') v.y = groundH(v.x, v.z, v.y); }   // Fahrer fällt vom Moped, Heli landet
   if (a && a !== p) a.k++;
   const col = q => q ? (q.team >= 0 ? TEAM_COLORS[q.team] : q.color) : '#fff';
   broadcast({ t: 'kill', k: attacker, kn: a ? a.name : '?', kc: col(a), v: target, vn: p.name, vc: col(p), w, head });

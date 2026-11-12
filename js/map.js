@@ -2401,6 +2401,9 @@ function weltAirport(road) {
   airliner(700, 240, 0, 0x00897b); airliner(RX0 + 36, RZ, 0, 0x6a1b9a); airliner(945, 200, Math.PI, 0x2b2b2b, 0.45);
   window.MAP_STREETS.push([RX0, RZ - RW / 2, RX1, RZ + RW / 2], [555, 230, 995, 250], [600, 114, 960, 226], [635.5, 6.5, 644.5, 56], [895.5, 6.5, 904.5, 56], [635.5, 50, 904.5, 62]);
   (window.MAP_POIS = window.MAP_POIS || []).push({ x: 770, z: 90, t: '✈' }, { x: 935, z: 75, t: '🗼' });
+  // Fliegbare Kleinflugzeuge: drei auf dem Vorfeld (Nase zum Rollweg), eines startbereit am Ostende der Bahn (Start nach Westen)
+  MAP_VEHICLES.push({ x: 895, z: 140, yaw: -Math.PI / 2, kind: 'plane' }, { x: 918, z: 140, yaw: -Math.PI / 2, kind: 'plane' },
+    { x: 905, z: 178, yaw: -Math.PI / 2, kind: 'plane' }, { x: 995, z: RZ + 8, yaw: Math.PI, kind: 'plane' });
 }
 /* Ringstadt: Stadtteil zwischen Ringstraße (x 345) und Ostallee (x 480) – Altbau-Häuserzeilen, Hotels, Fan-Shops;
    verbindet die alte Karte nahtlos mit F1-Ring und Flughafen. Dazu Bebauung rund um Rennstrecke und Flughafen. */
