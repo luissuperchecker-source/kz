@@ -159,10 +159,17 @@ function boSpark(h, w = 100, hgt = 30, fill) {
   const col = h[h.length - 1] >= h[0] ? '#6bff7a' : '#ff6b6b';
   return `<svg class="spark" viewBox="0 0 ${w} ${hgt}" preserveAspectRatio="none">${fill ? `<polygon points="0,${hgt} ${pts} ${w},${hgt}" fill="${col}" opacity=".12"/>` : ''}<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${fill ? 1.2 : 1.6}" vector-effect="non-scaling-stroke"/></svg>`;
 }
+// Bekannte Marken unter dem Firmennamen anzeigen (wem gehört was?)
+const BO_BRANDS = { 'take-two interactive': '🎮 GTA · Rockstar Games · 2K · NBA 2K', alphabet: 'Google · YouTube · Android', meta: 'Facebook · Instagram · WhatsApp',
+  microsoft: 'Xbox · Windows · Minecraft · Call of Duty', sony: 'PlayStation', 'electronic arts': 'EA Sports FC · Battlefield · Die Sims', roblox: 'Roblox',
+  apple: 'iPhone · Mac · AirPods', amazon: 'Amazon · Prime Video · AWS', disney: 'Marvel · Pixar · Star Wars', tesla: 'Elektroautos', nvidia: 'GeForce-Grafikkarten',
+  netflix: 'Streaming', spotify: 'Musik-Streaming', pepsico: 'Pepsi · Lay’s · 7UP', 'coca-cola': 'Coca-Cola · Fanta · Sprite', unity: 'Spiele-Engine Unity',
+  'berkshire hathaway': 'Warren Buffett', gamestop: 'Videospiel-Läden', nintendo: 'Switch · Mario · Pokémon', ferrari: 'Sportwagen' };
 function boRow(it) {
   const own = boDepot.pos[it.key] || 0, logo = it.img ? `<img src="${boEsc(it.img)}" loading="lazy" alt="">` : '';
   const mid = it.hist ? boSpark(it.hist) : `<span class="vol">${it.vol ? 'Handel ' + boShort(it.vol) : ''}</span>`;
-  return `<div class="bRow ${BO.sel === it.key ? 'sel' : ''}" data-k="${boEsc(it.key)}"><div class="nm">${logo}<span>${boEsc(it.name)}<small>${boEsc(it.sym)}${own ? ` · du hast ${boQty(own)} = ${boEur(own * it.p)} €` : ''}</small></span></div>
+  const brand = BO_BRANDS[it.key.slice(2)];
+  return `<div class="bRow ${BO.sel === it.key ? 'sel' : ''}" data-k="${boEsc(it.key)}"><div class="nm">${logo}<span>${boEsc(it.name)}<small>${boEsc(it.sym)}${brand ? ` · ${boEsc(brand)}` : ''}${own ? ` · du hast ${boQty(own)} = ${boEur(own * it.p)} €` : ''}</small></span></div>
     <div class="px">${boEur(it.p)} €</div><div class="sp">${mid}</div><div class="ch ${it.ch >= 0 ? 'up' : 'dn'}">${boPct(it.ch)}</div></div>`;
 }
 const boShort = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Mrd. €' : n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' Mio. €' : Math.round(n / 1000) + ' Tsd. €';
@@ -173,7 +180,8 @@ function boDetail(it) {
   const sell = [0.25, 0.5, 1].map(f => `<button class="sell" data-sell="${f}" ${own <= 0 ? 'disabled' : ''}>Verkaufen<br><small>${f === 1 ? 'alles' : f * 100 + ' %'}</small></button>`).join('');
   const gl = val - cost;
   if (!it.hist && it.id) setTimeout(() => boLoadHist(it), 0);
-  return `<div class="bDet"><h3>${boEsc(it.name)} <small style="color:#a8c0a8;font-weight:400">${boEsc(it.sym)}</small></h3>
+  const brand = it.key.startsWith('k:') && BO_BRANDS[it.key.slice(2)];
+  return `<div class="bDet"><h3>${boEsc(it.name)} <small style="color:#a8c0a8;font-weight:400">${boEsc(it.sym)}</small></h3>${brand ? `<div style="font-size:12.5px;color:#ffcf6b;margin-bottom:2px">Dazu gehört: ${boEsc(brand)}</div>` : ''}
     <div><b style="font-size:20px">${boEur(it.p)} €</b> <span class="${it.ch >= 0 ? 'up' : 'dn'}">${boPct(it.ch)} ${it.chLabel}</span></div>${it.low ? '<div style="font-size:11.5px;color:#ffcf6b;margin-top:2px">⚠ Wird wenig gehandelt – der Kurs kann etwas vom echten Börsenkurs abweichen.</div>' : ''}
     ${it.hist ? boSpark(it.hist, 300, 110, true) + `<div style="font-size:11px;color:#8fa88f;text-align:right">Verlauf: ${it.histLabel}</div>` : '<div class="bWait" style="padding:8px">Kursverlauf wird geladen …</div>'}
     ${own ? `<div style="margin-top:4px">Im Depot: <b>${boQty(own)}</b> Stück = <b>${boEur(val)} €</b> · <span class="${gl >= 0 ? 'up' : 'dn'}">${gl >= 0 ? '+' : ''}${boEur(gl)} € (${cost ? boPct(gl / cost * 100) : '–'})</span></div>` : ''}
@@ -181,7 +189,7 @@ function boDetail(it) {
 }
 const boNorm = s => String(s).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
 // Zusätzliche Suchwörter: Marken, Spiele, Produkte → Firma
-const BO_WORDS = { alphabet: 'Google YouTube Android', meta: 'Facebook Instagram WhatsApp', 'take-two interactive': 'Take 2 Take2 GTA Rockstar 2K NBA', microsoft: 'Xbox Windows Minecraft',
+const BO_WORDS = { alphabet: 'Google YouTube Android', meta: 'Facebook Instagram WhatsApp', 'take-two interactive': 'Take 2 Take2 GTA Grand Theft Auto Rockstar Red Dead 2K NBA', microsoft: 'Xbox Windows Minecraft',
   apple: 'iPhone Mac', amazon: 'Prime AWS', sony: 'PlayStation', nvidia: 'Grafikkarten GeForce', tesla: 'Elon Musk', 'electronic arts': 'EA FIFA FC', roblox: 'Robux',
   disney: 'Marvel Pixar Star Wars', netflix: 'Serien', 'coca-cola': 'Cola Coke', pepsico: 'Pepsi Lays', "mcdonald's": 'McDonalds Burger', spotify: 'Musik', uber: 'Taxi',
   'berkshire hathaway': 'Warren Buffett', strategy: 'MicroStrategy Bitcoin', 'eli lilly': 'Lilly', gamestop: 'GME', amc: 'Kino', toyota: 'Auto', ferrari: 'Auto' };
@@ -212,7 +220,7 @@ function renderBoerse() {
     else {
       const st = BO.stand, today = st && st.toDateString() === new Date().toDateString();
       const stT = st ? st.toLocaleString('de-DE', today ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' Uhr' : '';
-      html += `<div class="bInfo">🟢 <b>${total} Aktien</b> mit Live-Kursen in Euro${BO.loadingS ? ` – lade weitere … (Teil ${Math.min(BO.pg || 1, BO_PAGES)} von bis zu ${BO_PAGES})` : stT ? ` (Stand ${stT}, alle 10 Min. neu)` : ''}. Such einfach nach dem Namen! Die Kurse kommen von tokenisierten Aktien und folgen dem echten Börsenkurs – nachts und am Wochenende kann er leicht abweichen. <span style="opacity:.6">Kursdaten: CoinGecko</span></div>`;
+      html += `<div class="bInfo">🟢 <b>${total} Aktien</b> mit Live-Kursen in Euro${BO.loadingS ? ` – lade weitere … (Teil ${Math.min(BO.pg || 1, BO_PAGES)} von bis zu ${BO_PAGES})` : stT ? ` (Stand ${stT}, alle 10 Min. neu)` : ''}. Such einfach nach dem Namen! <b>Prozent = Veränderung der letzten 24 Stunden (in Euro)</b> – kann daher etwas von „seit gestern Abend“ in Finanz-Apps abweichen. Die Kurse kommen von tokenisierten Aktien und folgen dem echten Börsenkurs – nachts und am Wochenende kann er leicht abweichen. <span style="opacity:.6">Kursdaten: CoinGecko</span></div>`;
       if (!res.length) html += `<div class="bWait">Keine Aktie gefunden für „${boEsc(BO.q)}“.</div>`;
       const shown = res.slice(0, BO.show);
       if (selIt && !shown.some(it => it.key === BO.sel)) html += boDetail(selIt) + boRow(selIt);
