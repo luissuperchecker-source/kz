@@ -680,6 +680,22 @@ function setWreck(v, on) {
   });
   v.mesh.root.userData.still = 0;
 }
+// Freier Platz für einen neuen Heli nahe der Absturzstelle: kein Haus, keine Mauer, kein Baum im Rotorkreis.
+// Sucht in Ringen nach außen (bis 40 m); nichts frei → null (dann am alten Landeplatz)
+function heliFreeSpot(x, z) {
+  const R = 3.6;
+  const free = (px, pz) => {
+    if (px < -430 || px > 1090 || Math.abs(pz) > 430) return false;   // innerhalb der Karte
+    const gh = groundH(px, pz);
+    for (const b of nearBoxes(px, pz, R + 1)) if (b.max.x > px - R && b.min.x < px + R && b.max.z > pz - R && b.min.z < pz + R && b.max.y > gh + 0.3 && b.min.y < gh + 4) return false;
+    return true;
+  };
+  for (let r = 0; r <= 40; r += 4) {
+    const n = r ? Math.ceil(r * 1.6) : 1;
+    for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, px = x + Math.cos(a) * r, pz = z + Math.sin(a) * r; if (free(px, pz)) return [px, pz]; }
+  }
+  return null;
+}
 function vehicleBoomFx(o) {
   const p = new THREE.Vector3(o[0], o[1] + 1, o[2]);
   for (let k = 0; k < 3; k++) setTimeout(() => explosionFx(p.clone().add(new THREE.Vector3(rnd(-1.5, 1.5), rnd(0, 1.5), rnd(-1.5, 1.5)))), k * 150);

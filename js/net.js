@@ -203,7 +203,7 @@ function hostHandle(from, m) {
     }
   }
 }
-// Fahrzeug explodiert: Insassen sterben, Wrack brennt, nach 30 s neues Fahrzeug am Startplatz
+// Fahrzeug explodiert: Insassen sterben, Wrack brennt, nach 30 s neues Fahrzeug am Startplatz (Heli: an der Absturzstelle)
 function destroyVehicle(v, by, w) {
   const drv = v.d;
   v.dead = performance.now(); v.hits = 0;
@@ -213,7 +213,9 @@ function destroyVehicle(v, by, w) {
   v.d = 0; v.lean = 0;
   setTimeout(() => {
     const s = MAP_VEHICLES[v.i]; if (!s) return;
-    v.x = s.x; v.z = s.z; v.y = groundH(s.x, s.z); v.yaw = s.yaw; v.lean = 0; v.d = 0; v.dead = 0; v.hits = 0;
+    let sx = s.x, sz = s.z, syaw = s.yaw;
+    if (v.kind === 'heli') { const p = heliFreeSpot(v.x, v.z); if (p) { sx = p[0]; sz = p[1]; syaw = v.yaw; } }   // Heli: neu an der Absturzstelle (am Boden)
+    v.x = sx; v.z = sz; v.y = groundH(sx, sz); v.yaw = syaw; v.lean = 0; v.d = 0; v.dead = 0; v.hits = 0;
     broadcast({ t: 'vspawn', v: v.i, s: [v.x, v.y, v.z, v.yaw] });
   }, WRECK_TIME);
 }
