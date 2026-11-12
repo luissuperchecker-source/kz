@@ -527,9 +527,10 @@ const CAR_TYPES = {
     p: { m: 1150, Iz: 1950, muF: 1.32, muR: 1.45, BF: 9, BR: 11.5, P: 265000, Fmax: 9300, drag: 0.92, brake: 1.35, maxSteer: 0.5, h: 0.42, tc: 0.75 } },
   muscle: { name: 'Muscle-Car', info: 'viel Kraft, Burnouts – bei Vollgas kommt das Heck',
     p: { m: 1600, Iz: 2950, muF: 0.98, muR: 1.06, P: 290000, Fmax: 10800, drag: 1.25, brake: 0.95, maxSteer: 0.58, steerFade: 9, h: 0.55 } },
-  f1: { name: 'Formel 1', info: 'über 330 km/h, riesiger Abtrieb – je schneller, desto mehr Grip. Früh bremsen!',
-    p: { m: 800, a: 1.95, b: 1.65, h: 0.3, Iz: 1100, muF: 1.6, muR: 1.8, BF: 11, BR: 12.5, P: 640000, Fmax: 10500, drag: 0.8, roll: 120, brake: 2.6,
-      maxSteer: 0.36, steerFade: 22, tc: 0.8, rev: 96, mw: 40, aero: 2.6 } },
+  f1: { name: 'Formel 1', info: 'über 330 km/h, Abtrieb und enormer Grip – sehr enge Kurven möglich',
+    // enge Kurven: viel Lenkeinschlag, der erst bei sehr hohem Tempo abnimmt (fadePow 2), sehr griffige Reifen, Bremskraft vor allem vorne
+    p: { m: 800, a: 1.8, b: 1.8, h: 0.25, Iz: 1050, muF: 3.3, muR: 3.9, BF: 13, BR: 16, P: 640000, Fmax: 10500, drag: 0.8, roll: 120, brake: 2.6, brakeRear: 0.12,
+      maxSteer: 0.62, steerFade: 40, fadePow: 2, tc: 0.8, rev: 96, mw: 40, aero: 2.4 } },
 };
 // Tuning (im Browser gespeichert, pro Autotyp): Motor, Reifen, Fahrwerk, Lenkeinschlag, Bremse, Folierung
 const TIRES = [{ n: 'Drift-Reifen', muR: 0.86, muF: 0.97, price: 300 }, { n: 'Serienreifen', muR: 1, muF: 1, price: 0 }, { n: 'Sportreifen', muR: 1.1, muF: 1.07, price: 500 }, { n: 'Rennreifen (Slicks)', muR: 1.22, muF: 1.16, price: 1200 }];
@@ -1181,7 +1182,9 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     const au = Math.max(Math.abs(u), 2.5), sgn = u < -0.5 ? -1 : 1;
     // Lenkwinkel: Fahrer + Selbstausrichtung (Nachlauf) zur Fahrtrichtung der Vorderachse
     const free = Math.atan2(vy + K.a * r, au) * sgn;
-    const sens = analog ? 1 / (1 + Math.abs(u) / 40) : 1 / (1 + Math.abs(u) / K.steerFade);
+    // Lenkung wird mit dem Tempo feiner; fadePow > 1 (F1): bei mittlerem Tempo viel Einschlag, erst sehr schnell deutlich weniger
+    const sens = K.fadePow ? 1 / (1 + Math.pow(Math.abs(u) / (analog ? K.steerFade * 1.25 : K.steerFade), K.fadePow))
+      : analog ? 1 / (1 + Math.abs(u) / 40) : 1 / (1 + Math.abs(u) / K.steerFade);
     const align = Math.min(1, Math.abs(u) / 6) * (analog ? 0.5 : 0.8);
     const delta = Math.max(-K.maxSteer, Math.min(K.maxSteer, ride.steerS * K.maxSteer * sens + free * align));
     // Radlasten mit Gewichtsverlagerung
@@ -1190,7 +1193,7 @@ function carDrive(dt, thr, steerIn, hand, analog) {
     // Längskräfte: Antrieb hinten, Bremse 65/35, Handbremse blockiert hinten, rückwärts fahren
     let FxF = 0, drive = 0, brakeR = 0;
     const capR = K.muR * FzR;
-    if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W; FxF = -Fb * 0.65; brakeR = Fb * 0.35; }
+    if (brakeIn && u > 0.5) { const Fb = brakeIn * K.brake * W, rb = K.brakeRear || 0.35; FxF = -Fb * (1 - rb); brakeR = Fb * rb; }   // Bremskraftverteilung vorne/hinten
     else if (brakeIn) drive = u > -12 ? -brakeIn * 4200 : 0;   // rückwärts
     else if (gas) { const nb = ride.nitroT > 0 ? 1.65 : 1; drive = wR > K.rev * (nb > 1 ? 1.2 : 1) ? 0 : gas * nb * Math.min(K.Fmax, K.P / Math.max(Math.abs(wR), 4)); }   // Nitro: mehr Schub und Drehzahl
     if (K.tc && gas && wR - u > 0.08 * Math.max(Math.abs(u), 3)) drive *= 1 - K.tc;   // Traktionskontrolle (Rennwagen): Gas weg, wenn die Räder durchdrehen
