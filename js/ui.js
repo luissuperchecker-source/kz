@@ -316,6 +316,7 @@ function frame(t) {
   updateEffects(dt);
   updateVehicles(dt);
   updateAtmosphere(dt);
+  ambientTick(dt);   // Wind, Vögel, Stadtrauschen
   const sunMoved = followSun(camera.position.x, camera.position.z);
   // Grafik „Leistung“: Schatten nur ~10× pro Sekunde neu zeichnen (und sofort, wenn der Schattenbereich mitwandert)
   if (gfx === 'perf' || gfx === 'clean') { SHADOW.t -= dt; if (sunMoved || SHADOW.t <= 0) { renderer.shadowMap.needsUpdate = true; SHADOW.t = 0.1; } }

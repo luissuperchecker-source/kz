@@ -86,7 +86,7 @@ async function boLoadAll() {
       if (!Array.isArray(d)) break;   // Sperre (zu viele Anfragen): später an dieser Seite weitermachen
       BO.raw.push(...d); boMerge(BO.raw);
       BO.pg = d.length < 250 ? BO_PAGES + 1 : BO.pg + 1;
-      if (open()) renderBoerse();
+      if (open()) renderBoerse(true);
       if (BO.pg <= BO_PAGES) await boSleep(5000);
     }
     if (BO.pg > BO_PAGES) {   // alle Seiten geladen
@@ -134,7 +134,7 @@ function boItem(key) {
   if (key.startsWith('c:')) {
     const id = key.slice(2), c = BO.crypto && BO.crypto[id], def = BO_CRYPTO.find(x => x[0] === id);
     if (!c || !def) return null;
-    return { key, name: def[1], sym: def[2], p: c.p, ch: c.ch, hist: c.hist, img: c.img, chLabel: '24 h', histLabel: '7 Tage' };
+    return { key, id, name: def[1], sym: def[2], p: c.p, ch: c.ch, hist: c.hist, img: c.img, chLabel: '24 h', histLabel: '7 Tage' };
   }
   if (key.startsWith('k:')) {
     const k = key.slice(2), s = (BO.extra && BO.extra[k]) || (BO.all && BO.all.get(k)); if (!s) return null;
@@ -144,13 +144,33 @@ function boItem(key) {
   const ch = s.prev ? (s.p / s.prev - 1) * 100 : 0;
   return { key, name: s.name, sym: key.replace('.DE', ''), p: s.p, ch, hist: s.hist, chLabel: 'heute', histLabel: '30 Tage' };
 }
-// Kursverlauf (7 Tage) erst beim Anklicken laden – spart Daten
-async function boLoadHist(it) {
-  if (!it || !it.id || BO.hist[it.key] || BO.histBusy) return;
+// Kursverlauf erst beim Anklicken laden (Zeitraum 1 Tag / 1 Woche / 1 Monat) – spart Daten
+BO.tf = 7; BO.chart = {}; BO.amt = '';
+async function boLoadHist(it, days = BO.tf) {
+  const ck = it && it.key + '|' + days;
+  if (!it || !it.id || BO.chart[ck] || BO.histBusy) return;
   BO.histBusy = true;
-  try { const r = await fetch(`https://api.coingecko.com/api/v3/coins/${it.id}/market_chart?vs_currency=eur&days=7`); if (r.ok) { const d = await r.json(); BO.hist[it.key] = (d.prices || []).filter((v, i) => i % 3 === 0).map(p => p[1]); } } catch (e) {}
+  try {
+    const r = await fetch(`https://api.coingecko.com/api/v3/coins/${it.id}/market_chart?vs_currency=eur&days=${days}`);
+    if (r.ok) { const d = await r.json(), pr = d.prices || [], step = Math.max(1, Math.floor(pr.length / 120)); BO.chart[ck] = pr.filter((v, i) => i % step === 0 || i === pr.length - 1); if (days === 7) BO.hist[it.key] = BO.chart[ck].map(p => p[1]); }
+  } catch (e) {}
   BO.histBusy = false;
-  if (!$('boerse').classList.contains('hidden') && BO.sel === it.key) renderBoerse();
+  if (!$('boerse').classList.contains('hidden') && BO.sel === it.key) renderBoerse(true);
+}
+// Großer Chart wie in einer Trading-App: Fläche, Linie, Preisachse (Hoch/Mitte/Tief), Zeitachse, aktueller Kurs
+function boChart(data, days) {
+  const W = 340, H = 140, pr = data.map(p => p[1]);
+  let lo = Math.min(...pr), hi = Math.max(...pr); if (hi - lo < 1e-9) { hi *= 1.001; lo *= 0.999; }
+  const X = i => (i / (data.length - 1) * (W - 52)).toFixed(1), Y = v => (8 + (hi - v) / (hi - lo) * (H - 26)).toFixed(1);
+  const pts = data.map((p, i) => `${X(i)},${Y(p[1])}`).join(' '), up = pr[pr.length - 1] >= pr[0], col = up ? '#3ddc84' : '#ff5c5c';
+  const grid = [hi, (hi + lo) / 2, lo].map(v => `<line x1="0" x2="${W - 52}" y1="${Y(v)}" y2="${Y(v)}" stroke="#ffffff" stroke-opacity=".08"/><text x="${W - 48}" y="${+Y(v) + 4}" fill="#9fb0a0" font-size="10">${boEur(v)}</text>`).join('');
+  const fmtT = t => { const d = new Date(t); return days <= 1 ? d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }); };
+  const ly = Y(pr[pr.length - 1]);
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin:6px 0">${grid}
+    <defs><linearGradient id="bg${days}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".35"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <polygon points="0,${H - 18} ${pts} ${X(data.length - 1)},${H - 18}" fill="url(#bg${days})"/><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round"/>
+    <line x1="0" x2="${W - 52}" y1="${ly}" y2="${ly}" stroke="${col}" stroke-dasharray="3 3" stroke-opacity=".6"/><circle cx="${X(data.length - 1)}" cy="${ly}" r="3.2" fill="${col}"/>
+    <text x="0" y="${H - 4}" fill="#9fb0a0" font-size="10">${fmtT(data[0][0])}</text><text x="${W - 56}" y="${H - 4}" fill="#9fb0a0" font-size="10" text-anchor="end">${fmtT(data[data.length - 1][0])}</text></svg>`;
 }
 function boSpark(h, w = 100, hgt = 30, fill) {
   if (!h || h.length < 2) return '';
@@ -179,12 +199,19 @@ function boDetail(it) {
     + `<button data-buy="max" ${c < 1 ? 'disabled' : ''}>Kaufen<br><small>alles (${fmt(Math.floor(c))})</small></button>`;
   const sell = [0.25, 0.5, 1].map(f => `<button class="sell" data-sell="${f}" ${own <= 0 ? 'disabled' : ''}>Verkaufen<br><small>${f === 1 ? 'alles' : f * 100 + ' %'}</small></button>`).join('');
   const gl = val - cost;
-  if (!it.hist && it.id) setTimeout(() => boLoadHist(it), 0);
   const brand = it.key.startsWith('k:') && BO_BRANDS[it.key.slice(2)];
-  return `<div class="bDet"><h3>${boEsc(it.name)} <small style="color:#a8c0a8;font-weight:400">${boEsc(it.sym)}</small></h3>${brand ? `<div style="font-size:12.5px;color:#ffcf6b;margin-bottom:2px">Dazu gehört: ${boEsc(brand)}</div>` : ''}
-    <div><b style="font-size:20px">${boEur(it.p)} €</b> <span class="${it.ch >= 0 ? 'up' : 'dn'}">${boPct(it.ch)} ${it.chLabel}</span></div>${it.low ? '<div style="font-size:11.5px;color:#ffcf6b;margin-top:2px">⚠ Wird wenig gehandelt – der Kurs kann etwas vom echten Börsenkurs abweichen.</div>' : ''}
-    ${it.hist ? boSpark(it.hist, 300, 110, true) + `<div style="font-size:11px;color:#8fa88f;text-align:right">Verlauf: ${it.histLabel}</div>` : '<div class="bWait" style="padding:8px">Kursverlauf wird geladen …</div>'}
-    ${own ? `<div style="margin-top:4px">Im Depot: <b>${boQty(own)}</b> Stück = <b>${boEur(val)} €</b> · <span class="${gl >= 0 ? 'up' : 'dn'}">${gl >= 0 ? '+' : ''}${boEur(gl)} € (${cost ? boPct(gl / cost * 100) : '–'})</span></div>` : ''}
+  // Chart: gewählter Zeitraum (live geladen) – bei DAX-Werten aus kurse.json nur der 30-Tage-Verlauf
+  const data = it.id ? BO.chart[it.key + '|' + BO.tf] : (it.hist ? it.hist.map((p, i) => [Date.now() - (it.hist.length - 1 - i) * 864e5, p]) : null);
+  if (it.id && !data) setTimeout(() => boLoadHist(it, BO.tf), 0);
+  let stats = '';
+  if (data && data.length > 1) { const pr = data.map(p => p[1]), chg = (pr[pr.length - 1] / pr[0] - 1) * 100; stats = `<div class="bStats"><span>Hoch <b>${boEur(Math.max(...pr))} €</b></span><span>Tief <b>${boEur(Math.min(...pr))} €</b></span><span>Zeitraum <b class="${chg >= 0 ? 'up' : 'dn'}">${boPct(chg)}</b></span></div>`; }
+  const tfs = it.id ? `<div class="bTf">${[[1, '1 Tag'], [7, '1 Woche'], [30, '1 Monat'], [365, '1 Jahr']].map(([d, l]) => `<button data-tf="${d}" class="${BO.tf === d ? 'on' : 'sec'}">${l}</button>`).join('')}</div>` : '';
+  return `<div class="bDet"><h3>${it.img ? `<img src="${boEsc(it.img)}" alt="" style="width:22px;height:22px;border-radius:50%;vertical-align:-4px;margin-right:6px;background:#fff">` : ''}${boEsc(it.name)} <small style="color:#a8c0a8;font-weight:400">${boEsc(it.sym)}</small></h3>${brand ? `<div style="font-size:12.5px;color:#ffcf6b;margin-bottom:2px">Dazu gehört: ${boEsc(brand)}</div>` : ''}
+    <div><b style="font-size:22px">${boEur(it.p)} €</b> <span class="${it.ch >= 0 ? 'up' : 'dn'}">${it.ch >= 0 ? '▲' : '▼'} ${boPct(it.ch)} ${it.chLabel}</span></div>${it.low ? '<div style="font-size:11.5px;color:#ffcf6b;margin-top:2px">⚠ Wird wenig gehandelt – der Kurs kann etwas vom echten Börsenkurs abweichen.</div>' : ''}
+    ${tfs}${data && data.length > 1 ? boChart(data, it.id ? BO.tf : 30) + stats : '<div class="bWait" style="padding:24px 8px">📈 Chart wird geladen …</div>'}
+    ${own ? `<div class="bPos">Im Depot: <b>${boQty(own)}</b> Stück · Wert <b>${boEur(val)} €</b> · Einstand ${boEur(cost)} € · <span class="${gl >= 0 ? 'up' : 'dn'}">${gl >= 0 ? '+' : ''}${boEur(gl)} € (${cost ? boPct(gl / cost * 100) : '–'})</span></div>` : ''}
+    <div class="bOrder"><input id="boAmt" type="number" min="1" step="1" inputmode="numeric" placeholder="Betrag in Coins" value="${boEsc(BO.amt)}"><button data-buy="custom" ${c < 1 ? 'disabled' : ''}>Kaufen</button>
+      <span class="bOrderInfo">${+BO.amt > 0 ? `≈ ${boQty(+BO.amt / it.p)} Stück` : '1 Coin = 1 €'}</span></div>
     <div class="bBtns">${buy}</div><div class="bBtns">${sell}</div></div>`;
 }
 const boNorm = s => String(s).toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
@@ -208,7 +235,21 @@ function boStockKeys() {
   const S = { pop: (a, b) => (b.vol || 0) - (a.vol || 0), az: (a, b) => a.name.localeCompare(b.name, 'de'), up: (a, b) => b.ch - a.ch, dn: (a, b) => a.ch - b.ch }[BO.sort] || ((a, b) => 0);
   return { res: res.sort(S), total: items.length };
 }
-function renderBoerse() {
+// Laufband oben (wie an der echten Börse): meist gehandelte Aktien + Krypto mit Kurs und Veränderung
+function boTicker() {
+  const el = $('boTicker'); if (!el) return;
+  const stamp = (BO.stand ? +BO.stand : 0) + '|' + BO.tK;
+  if (el.dataset.s === stamp) return; el.dataset.s = stamp;   // nur bei neuen Kursen neu bauen (sonst springt das Band)
+  const items = [];
+  if (BO.all) [...BO.all.entries()].sort((a, b) => b[1].sum - a[1].sum).slice(0, 16).forEach(([k]) => { const it = boItem('k:' + k); if (it) items.push(it); });
+  BO_CRYPTO.slice(0, 4).forEach(c => { const it = boItem('c:' + c[0]); if (it) items.push(it); });
+  if (!items.length) { el.innerHTML = ''; return; }
+  const html = items.map(it => `<span><b>${boEsc(it.sym)}</b> ${boEur(it.p)} € <i class="${it.ch >= 0 ? 'up' : 'dn'}">${it.ch >= 0 ? '▲' : '▼'} ${boPct(it.ch)}</i></span>`).join('');
+  el.innerHTML = `<div class="bTape">${html}${html}</div>`;
+}
+function renderBoerse(auto) {
+  if (auto && document.activeElement && document.activeElement.id === 'boAmt') return;   // nicht neu zeichnen, während man einen Betrag tippt
+  boTicker();
   $('boCoins').textContent = fmt(Math.floor(shopState.coins));
   document.querySelectorAll('#boerse [data-bt]').forEach(b => b.classList.toggle('on', b.dataset.bt === BO.tab));
   $('boTools').classList.toggle('hidden', BO.tab !== 'aktien');
@@ -275,10 +316,10 @@ async function boRefresh(force) {
   const now = Date.now(), jobs = [];
   if (!BO.loadingS && (force || now - BO.tK > 60000)) jobs.push(boLoadCrypto());   // während die Aktien laden: Pause (Anfrage-Limit)
   if (!BO.noDE && (force || now - BO.tA > 300000)) jobs.push(boLoadStocks());
-  if (jobs.length) { await Promise.all(jobs); if (!$('boerse').classList.contains('hidden')) renderBoerse(); }
+  if (jobs.length) { await Promise.all(jobs); if (!$('boerse').classList.contains('hidden')) renderBoerse(true); }
   // alle Aktien nur, solange die Börse offen ist (viele Daten), alle 10 Minuten; kurz nach dem Krypto-Abruf (Anfrage-Limit)
   if (!$('boerse').classList.contains('hidden') && !BO.loadingS && (!BO.tS || Date.now() - BO.tS > BO_REFRESH)) {
-    await boSleep(1500); await boLoadAll(); if (!$('boerse').classList.contains('hidden')) renderBoerse();
+    await boSleep(1500); await boLoadAll(); if (!$('boerse').classList.contains('hidden')) renderBoerse(true);
   }
 }
 let boLock = false;   // nach dem Schließen wieder ins Spiel (wenn von der Karte aus geöffnet)
@@ -298,12 +339,22 @@ document.querySelectorAll('#boerse [data-bt]').forEach(b => b.onclick = () => { 
   si.addEventListener('input', () => { BO.q = si.value; BO.show = 40; BO.sel = null; renderBoerse(); });
   for (const ev of ['keydown', 'keyup']) si.addEventListener(ev, e => { e.stopPropagation(); if (e.key === 'Escape') si.blur(); });
   $('boSort').addEventListener('change', e => { BO.sort = e.target.value; BO.show = 40; renderBoerse(); }); }
+// Betragsfeld: Tasten nicht ans Spiel geben, Enter = kaufen, Stückzahl live anzeigen
+$('boBody').addEventListener('keydown', e => { if (e.target.id !== 'boAmt') return; e.stopPropagation(); if (e.key === 'Enter') { const b = $('boBody').querySelector('[data-buy="custom"]'); if (b) b.click(); } });
+$('boBody').addEventListener('keyup', e => { if (e.target.id === 'boAmt') e.stopPropagation(); });
+$('boBody').addEventListener('input', e => {
+  if (e.target.id !== 'boAmt') return; BO.amt = e.target.value;
+  const it = BO.sel && boItem(BO.sel), inf = $('boBody').querySelector('.bOrderInfo');
+  if (it && inf) inf.textContent = +BO.amt > 0 ? `≈ ${boQty(+BO.amt / it.p)} Stück` : '1 Coin = 1 €';
+});
 $('boBody').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (b) {
     if (b.dataset.more) { BO.show += 40; renderBoerse(); return; }
+    if (b.dataset.tf) { BO.tf = +b.dataset.tf; renderBoerse(); return; }
     if (b.disabled || !BO.sel) return;
     const it = boItem(BO.sel);
+    if (b.dataset.buy === 'custom') { const a = Math.floor(+BO.amt); if (!(a > 0)) { showMsg('Betrag eingeben (in Coins)'); return; } if (a > shopState.coins) { showMsg('So viele Coins hast du nicht'); sndBeep(220, 0.15, 0.1, 'square'); return; } BO.amt = ''; boTrade(it, true, a); return; }
     if (b.dataset.buy) boTrade(it, true, b.dataset.buy === 'max' ? 'max' : +b.dataset.buy);
     else if (b.dataset.sell) boTrade(it, false, +b.dataset.sell);
     return;

@@ -168,6 +168,15 @@ function makeMoped(paint) {
 }
 /* ---------- Auto (Sportwagen-Karosserie aus map.js), vorne = +x, 4,6 m lang ---------- */
 const CAR_WHEEL_R = 0.36;
+// EU-Nummernschild (blauer Streifen mit „D“, schwarze Schrift) – ein Material für alle Autos
+const PLATE_MAT = (() => {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 56; const g = c.getContext('2d');
+  g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, 256, 56); g.strokeStyle = '#111'; g.lineWidth = 4; g.strokeRect(2, 2, 252, 52);
+  g.fillStyle = '#1d3c9a'; g.fillRect(4, 4, 30, 48); g.fillStyle = '#ffd200'; g.font = 'bold 13px Arial'; g.textAlign = 'center'; g.fillText('★', 19, 22); g.fillStyle = '#fff'; g.font = 'bold 16px Arial'; g.fillText('D', 19, 46);
+  g.fillStyle = '#111'; g.font = 'bold 34px Arial'; g.textAlign = 'left'; g.fillText('KZ·AR 47', 44, 41);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = MAX_ANISO;
+  return new THREE.MeshStandardMaterial({ map: t, roughness: 0.5, metalness: 0.1 });
+})();
 function makeCar(paint, rim = RIM, type = 'drift') {
   const root = new THREE.Group(); root.rotation.order = 'YXZ';
   // Skyline-Form: kantige Karosserie, lackiertes Dach, getönte Scheiben (Formen in map.js)
@@ -190,6 +199,11 @@ function makeCar(paint, rim = RIM, type = 'drift') {
     { geo: lamp, mat: TAILLIGHT, p: [-2.3, 0.84, s * 0.42], r: [0, 0, Math.PI / 2] }, { geo: lamp, mat: TAILLIGHT, p: [-2.3, 0.84, s * 0.67], r: [0, 0, Math.PI / 2] },
     { geo: ring, mat: CHROME, p: [-2.29, 0.84, s * 0.42], r: [0, 0, Math.PI / 2] }, { geo: ring, mat: CHROME, p: [-2.29, 0.84, s * 0.67], r: [0, 0, Math.PI / 2] },
     { geo: ARCH_GEO, mat: CAR_BLACK, p: [1.42, CAR_WHEEL_R, s * 0.96], r: [0, 0, 0] }, { geo: ARCH_GEO, mat: CAR_BLACK, p: [-1.45, CAR_WHEEL_R, s * 0.96], r: [0, 0, 0] });
+  // Nummernschilder vorne/hinten, Türfugen, Türgriffe, Scheibenwischer (mehr Echtheit)
+  body.push({ geo: new THREE.PlaneGeometry(0.52, 0.114), mat: PLATE_MAT, p: [2.375, 0.3, 0], r: [0, Math.PI / 2, 0] }, { geo: new THREE.PlaneGeometry(0.52, 0.114), mat: PLATE_MAT, p: [-2.315, 0.56, 0], r: [0, -Math.PI / 2, 0] },
+    B(0.025, 0.02, 0.56, CAR_BLACK, 2.37, 0.3, 0), B(0.025, 0.02, 0.56, CAR_BLACK, -2.31, 0.56, 0));
+  for (const s of [-1, 1]) body.push(B(0.012, 0.58, 0.006, CAR_BLACK, 0.82, 0.64, s * 0.952), B(0.012, 0.5, 0.006, CAR_BLACK, -0.78, 0.66, s * 0.952), B(0.11, 0.022, 0.016, CHROME, -0.42, 0.84, s * 0.958),
+    B(0.03, 0.012, 0.42, CAR_BLACK, 0.92, 0.99, s * 0.26, 0, s * 0.35, 0));
   if (type === 'muscle') body.push(B(0.8, 0.13, 0.55, paint, 1.25, 0.98, 0, 0, 0, -0.05), B(0.06, 0.1, 0.45, CAR_BLACK, 1.62, 0.99, 0),   // Lufthutze
     { geo: new THREE.CylinderGeometry(0.075, 0.075, 0.2, 14), mat: CHROME, p: [-2.28, 0.33, -0.42], r: [0, 0, Math.PI / 2] });                // zweites Endrohr
   if (type === 'race') body.push(B(0.5, 0.03, 1.9, CARBON, 2.3, 0.13, 0));   // breitere Frontlippe

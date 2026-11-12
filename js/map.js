@@ -1597,6 +1597,16 @@ function euMats() {
     speckle(g, s, 4000, '0,0,0', 0.07, 2);
   }, 256), roughness: 0.9 });
   for (const m of [EU.pave, EU.plaza]) m.map.encoding = THREE.sRGBEncoding;
+  // Haustür: Holz mit Kassetten, Glaseinsatz oben, Messinggriff, Hausnummer
+  EU.door = new THREE.MeshStandardMaterial({ map: canvasTex((g, s) => {
+    g.fillStyle = '#4a2c1a'; g.fillRect(0, 0, s, s * 2);
+    g.fillStyle = '#5c3822'; g.fillRect(14, 18, s - 28, s * 0.42); g.fillRect(14, s * 0.62, s - 28, s * 0.32);
+    g.fillStyle = '#9fb4c4'; g.fillRect(30, 30, s - 60, s * 0.3); g.strokeStyle = '#2a1a10'; g.lineWidth = 6; g.strokeRect(30, 30, s - 60, s * 0.3);
+    g.fillStyle = '#d4af37'; g.fillRect(s - 44, s * 0.55, 18, 6);
+    speckle(g, s, 600, '0,0,0', 0.12, 2);
+  }, 128, false), roughness: 0.6 });
+  EU.door.map.encoding = THREE.sRGBEncoding;
+  EU.pipe = new THREE.MeshStandardMaterial({ color: 0x8a8f94, roughness: 0.45, metalness: 0.6 });   // Regenfallrohr (Zink)
   return EU;
 }
 const EU_SHOPS = ['METZGEREI', 'BLUMEN', 'EISCAFÉ', 'OPTIKER', 'SCHUHE', 'HANDYSHOP', 'REISEBÜRO', 'BIOLADEN', 'DROGERIE', 'IMBISS', 'BOUTIQUE', 'SPIELWAREN', 'BÄCKER', 'WEINHANDEL'];
@@ -1621,7 +1631,13 @@ function euHouse(cx, cz, w, d, floors, alongX, face) {
     const rot = alongX ? (face > 0 ? 0 : Math.PI) : (face > 0 ? Math.PI / 2 : -Math.PI / 2);
     const sm = EU_SIGN[name] || (EU_SIGN[name] = tkSignMat(name, col[0], col[1], false));   // gleiches Schild = gleiches Material
     tkSign(cx + fx * (half + 0.05), 2.95, cz + fz * (half + 0.05), Math.min(w - 1, 6), 0.55, rot, sm);
+  } else {   // Wohnhaus: Haustür mit Stufe und Lampe
+    const du = w > 4 ? -w / 2 + 1.6 + Math.floor(srand() * Math.max(1, Math.round(w / 3.2) - 1)) * 3.2 : 0;
+    at(du, 0.03, 0, 1.15, 2.3, 0.06, E.door);
+    at(du, 0.4, 0, 1.8, 0.16, 0.8, F.trim, { shadow: false });
+    at(du + 0.85, 0.08, 2.35, 0.14, 0.2, 0.14, LAMP_MAT);
   }
+  at(w / 2 - 0.14, 0.07, 0, 0.1, top + 0.3, 0.1, E.pipe);   // Regenfallrohr an der Hausecke
   // Balkone an manchen Fensterachsen (Achsen liegen bei 1,6 + k·3,2 m vom Rand)
   const axes = Math.round(w / 3.2);
   for (let f = 1; f < floors; f++) for (let k = 0; k < axes; k++) {

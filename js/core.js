@@ -5,8 +5,8 @@ const PREFIX = 'kampfzone-arena-v1-';
 const TOUCH = matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && matchMedia('(hover: none)').matches);
 if (TOUCH) document.body.classList.add('touch');
 
-/* Update-Prüfung: beim Veröffentlichen wird 20261112-200435 durch eine Versionsnummer ersetzt */
-const BUILD = '20261112-200435';
+/* Update-Prüfung: beim Veröffentlichen wird 20261112-201123 durch eine Versionsnummer ersetzt */
+const BUILD = '20261112-201123';
 // Im Menü wird eine neue Version automatisch geladen; mitten im Spiel erscheint der gelbe Balken.
 // Neu laden immer mit neuer Adresse (?u=…), damit der Browser nicht die zwischengespeicherte alte Seite nimmt.
 const UPD = { newer: null };
@@ -342,6 +342,34 @@ function sndShot(w, vol = 0.5, pos) {
   node.connect(g); g.connect(o.node);
   if (revIn) { const sg = actx.createGain(); sg.gain.value = vol * Math.max(o.g, 0.04) * P.lvl * (0.2 + far * 0.6); node.connect(sg); sg.connect(revIn); }
   src.start(t);
+}
+/* ---------- Umgebungsgeräusche: Wind in Böen (höher oben lauter), Vögel auf dem Land, Stadtrauschen in der Stadt ---------- */
+const AMB = { on: false, bird: 3 };
+function ambientTick(dt) {
+  if (!actx || !master || typeof me === 'undefined') return;
+  if (!AMB.on) {
+    const loop = (type, f, q) => { const s = noiseSrc(); s.loop = true; const fl = actx.createBiquadFilter(); fl.type = type; fl.frequency.value = f; if (q) fl.Q.value = q; const g = actx.createGain(); g.gain.value = 0; s.connect(fl); fl.connect(g); g.connect(master); s.start(); return { g, fl }; };
+    const w = loop('bandpass', 380, 0.6), c = loop('lowpass', 160);
+    Object.assign(AMB, { on: true, wg: w.g, wf: w.fl, cg: c.g });
+  }
+  const t = actx.currentTime, x = me.pos.x, z = me.pos.z, play = typeof running !== 'undefined' && running;
+  const inCity = MAP_ID !== 'welt' || (x > 28 && x < 292 && z > -292 && z < -28) || (x > 348 && x < 482 && Math.abs(z) < 345);
+  const gust = 0.5 + 0.5 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1), high = Math.min(1, Math.max(0, me.pos.y) / 80);
+  AMB.wg.gain.setTargetAtTime(play ? 0.012 + 0.016 * gust + 0.03 * high : 0, t, 0.6);
+  AMB.wf.frequency.setTargetAtTime(280 + 260 * gust + 300 * high, t, 0.6);
+  AMB.cg.gain.setTargetAtTime(play && inCity ? 0.045 : 0, t, 1.2);
+  AMB.bird -= dt;
+  if (AMB.bird <= 0) { AMB.bird = 2.5 + Math.random() * 6; if (play && !inCity && me.pos.y < 25) birdChirp(); }
+}
+function birdChirp() {
+  const n = 2 + Math.floor(Math.random() * 4), f0 = 2200 + Math.random() * 1800, t0 = actx.currentTime;
+  let out = master; if (actx.createStereoPanner) { out = actx.createStereoPanner(); out.pan.value = Math.random() * 1.6 - 0.8; out.connect(master); }
+  for (let k = 0; k < n; k++) {
+    const t = t0 + k * 0.11 + Math.random() * 0.03, o = actx.createOscillator(), g = actx.createGain(); o.type = 'sine';
+    o.frequency.setValueAtTime(f0 * (1 + Math.random() * 0.15), t); o.frequency.exponentialRampToValueAtTime(f0 * (1.3 + Math.random() * 0.4), t + 0.06);
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.011, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+    o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.1);
+  }
 }
 // alter, einfacher Schussklang (nur bis die neuen Klänge berechnet sind)
 function sndShotOld(w, vol = 0.5, pos) {

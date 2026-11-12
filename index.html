@@ -180,6 +180,19 @@
   #boerse .up { color: #6bff7a; } #boerse .dn { color: #ff6b6b; }
   #boerse svg.spark { width: 100%; height: 30px; display: block; }
   #boTools { display: flex; gap: 6px; margin-bottom: 8px; } #boTools.hidden { display: none; }
+  /* Trading-App-Look: Laufband, Zeitraum-Knöpfe, Kennzahlen, Order-Zeile */
+  #boTicker { overflow: hidden; white-space: nowrap; background: #07110b; border: 1px solid #1f3a28; border-radius: 6px; margin: 8px 0 2px; font-size: 12px; height: 24px; line-height: 24px; }
+  #boTicker:empty { display: none; }
+  #boTicker .bTape { display: inline-block; animation: boTape 60s linear infinite; }
+  #boTicker span { margin: 0 14px; color: #d8e8d8; } #boTicker i { font-style: normal; font-weight: 700; }
+  @keyframes boTape { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  #boerse .up { color: #3ddc84; } #boerse .dn { color: #ff5c5c; }
+  #boerse .bDet { background: linear-gradient(#0c1a12, #0a140e); border-color: #2f6a45; }
+  #boerse .bTf { display: flex; gap: 4px; margin-top: 8px; } #boerse .bTf button { flex: 1; margin: 0; padding: 5px 2px; font-size: 12px; } #boerse .bTf button.on { outline: 2px solid #3ddc84; }
+  #boerse .bStats { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: #9fb0a0; margin: 2px 0 4px; } #boerse .bStats b { color: #e8f0e8; }
+  #boerse .bPos { margin: 6px 0; padding: 6px 8px; background: rgba(255,255,255,.04); border-radius: 6px; font-size: 13px; }
+  #boerse .bOrder { display: flex; gap: 6px; align-items: center; margin-top: 6px; } #boerse .bOrder input { flex: 1; min-width: 0; margin: 0; } #boerse .bOrder button { width: auto; margin: 0; padding: 8px 14px; }
+  #boerse .bOrderInfo { font-size: 12px; color: #9fb0a0; white-space: nowrap; }
   #boSearch { flex: 1; min-width: 0; margin: 0; } #boSort { width: auto; margin: 0; }
   #boerse .bRow .nm { display: flex; align-items: center; gap: 8px; } #boerse .bRow .nm > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   #boerse .bRow .nm img { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; background: #fff; object-fit: contain; }
@@ -403,6 +416,7 @@
   <div id="menuNews">
     <h4>NEU</h4>
     • 🔫 <b>Alle 13 Waffen neu gestaltet</b> – echte Formen statt Klötzen · 🏎️ <b>F1-Autos</b> fahren viel engere Kurven<br>
+    • 📈 Börse wie eine Trading-App (Laufband, Chart 1 Tag–1 Jahr, Betrag eingeben) · 🚗 Nummernschilder · 🏠 Haustüren · 🐦 Wind &amp; Vögel<br>
     • ✈ <b>Flugzeuge mit Waffen</b>: Linksklick Raketen wie beim Heli · Rechtsklick halten = Bombe (roter Zielkreis), loslassen = Abwurf<br>
     • 🔊 <b>Echtere Schüsse</b>: eigener Klang pro Waffe, Hall &amp; Echo, ferne Schüsse dumpf und verzögert<br>
     • 💥 <b>Fahrzeuge explodieren</b> bei Treffern von Raketenwerfer, Panzer &amp; Heli-Raketen (Panzer halten 3 Treffer aus)<br>
@@ -586,6 +600,7 @@
   <div class="panel">
     <div class="shopHead"><h2>📈 Börse</h2><div class="coinBig"><span class="coin"></span> <span id="boCoins">0</span> Coins</div></div>
     <div class="bInfo">Echte Aktien &amp; Kryptowährungen mit echten Kursen. <b>1 Coin = 1 €</b> – du kannst auch Bruchteile kaufen. Gewinne und Verluste sind echt wie an der Börse!</div>
+    <div id="boTicker"></div>
     <div class="bTabs"><button data-bt="aktien" class="sec">🏢 Aktien</button><button data-bt="krypto" class="sec">🪙 Krypto</button><button data-bt="depot" class="sec">💼 Mein Depot</button></div>
     <div id="boTools" class="hidden"><input id="boSearch" type="search" placeholder="🔍 Aktie suchen … z. B. Apple, Ferrari, Adidas" autocomplete="off" spellcheck="false">
       <select id="boSort"><option value="pop">Meist gehandelt</option><option value="az">A – Z</option><option value="up">Gewinner heute</option><option value="dn">Verlierer heute</option></select></div>
@@ -617,18 +632,18 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/core.js?v=20261112-200435"></script>
-<script src="js/map.js?v=20261112-200435"></script>
-<script src="js/models.js?v=20261112-200435"></script>
-<script src="js/game.js?v=20261112-200435"></script>
-<script src="js/vehicles.js?v=20261112-200435"></script>
-<script src="js/net.js?v=20261112-200435"></script>
-<script src="js/ui.js?v=20261112-200435"></script>
-<script src="js/jobs.js?v=20261112-200435"></script>
-<script src="js/gamepad.js?v=20261112-200435"></script>
-<script src="js/keybinds.js?v=20261112-200435"></script>
-<script src="js/tuning.js?v=20261112-200435"></script>
-<script src="js/gunshop.js?v=20261112-200435"></script>
-<script src="js/boerse.js?v=20261112-200435"></script>
+<script src="js/core.js?v=20261112-201123"></script>
+<script src="js/map.js?v=20261112-201123"></script>
+<script src="js/models.js?v=20261112-201123"></script>
+<script src="js/game.js?v=20261112-201123"></script>
+<script src="js/vehicles.js?v=20261112-201123"></script>
+<script src="js/net.js?v=20261112-201123"></script>
+<script src="js/ui.js?v=20261112-201123"></script>
+<script src="js/jobs.js?v=20261112-201123"></script>
+<script src="js/gamepad.js?v=20261112-201123"></script>
+<script src="js/keybinds.js?v=20261112-201123"></script>
+<script src="js/tuning.js?v=20261112-201123"></script>
+<script src="js/gunshop.js?v=20261112-201123"></script>
+<script src="js/boerse.js?v=20261112-201123"></script>
 </body>
 </html>
