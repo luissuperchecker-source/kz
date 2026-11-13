@@ -319,7 +319,7 @@ function GPROF(pts, thick, mat, x = 0, holes = null, bevel, uvs = 7) {
   const mk = list => { const s = new THREE.Shape(); list.forEach((p, i) => { if (i === 0) s.moveTo(p[0], p[1]); else if (p.length === 4) s.quadraticCurveTo(p[0], p[1], p[2], p[3]); else s.lineTo(p[0], p[1]); }); return s; };
   const sh = mk(pts);
   if (holes) for (const h of holes) sh.holes.push(new THREE.Path(mk(h).getPoints()));
-  const bv = bevel !== undefined ? bevel : Math.min(0.0035, thick * 0.14), depth = Math.max(0.0005, thick - 2 * bv);
+  const bv = bevel !== undefined ? Math.min(bevel, 0.0008) : Math.min(0.001, thick * 0.04), depth = Math.max(0.0005, thick - 2 * bv);
   const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: bv > 0, bevelThickness: bv, bevelSize: bv * 0.8, bevelSegments: 1, curveSegments: 6 });
   g.translate(0, 0, -depth / 2); g.rotateY(-Math.PI / 2);
   const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * uvs, uv.getY(i) * uvs);   // Textur fein genug
@@ -337,8 +337,15 @@ const PGRIP = (mat, z, y, len = 0.13, th = 0.034) => GPROF([[z, y], [z + 0.045, 
 function makeGun(w) {
   const { metal, metalDS, steel, poly, tan, wood, glass, red, shell, brass, polyGrip, rubber, dark, olive } = GUN_MATS;
   const P = [];
+  // Waffen-Kästchen mit SCHARFEN Kanten (nur hauchdünne Glanzkante) statt weich abgerundet
+  const B = (w, h, d, mat, x, y, z, rx = 0, ry = 0, rz = 0) => {
+    const mn = Math.min(w, h, d);
+    return { geo: mn < 0.012 ? withUv2(new THREE.BoxGeometry(w, h, d)) : roundedBoxGeo(w, h, d, Math.min(0.001, mn * 0.05), 1, 0.25), mat, p: [x, y, z], r: [rx, ry, rz] };
+  };
+  // Achteckiges Rohr mit flachen Seiten (z. B. eckiger Handschutz), entlang z
+  const OCT = (r, len, mat, x, y, z) => { const g = new THREE.CylinderGeometry(r, r, len, 8).rotateY(Math.PI / 8).toNonIndexed(); g.computeVertexNormals(); return { geo: g, mat, p: [x, y, z], r: [Math.PI / 2, 0, 0] }; };
   const M = pt => (pt.mag = true, pt), PU = pt => (pt.pump = true, pt), BO = pt => (pt.bolt = true, pt), SP = pt => (pt.spin = true, pt);
-  const rail = (z0, z1, y, x = 0, rot = 0) => {   // Picatinny-Schiene mit Querrillen
+  const rail =(z0, z1, y, x = 0, rot = 0) => {   // Picatinny-Schiene mit Querrillen
     const L = z1 - z0; P.push(B(0.022, 0.008, L, metal, x, y, (z0 + z1) / 2, 0, 0, rot));
     for (let z = z0 + 0.008; z < z1 - 0.004; z += 0.01) P.push(B(0.022, 0.004, 0.005, metal, x, y + 0.006, z, 0, 0, rot));
   };
@@ -353,10 +360,10 @@ function makeGun(w) {
     P.push(B(0.056, 0.062, 0.3, metal, 0, 0.03, -0.03), B(0.003, 0.022, 0.065, steel, 0.0295, 0.032, 0.0), B(0.002, 0.018, 0.04, dark, 0.0305, 0.032, 0.0),
       CX(0.011, 0.03, metal, 0.037, 0.045, 0.07), B(0.052, 0.012, 0.03, metal, 0, 0.066, 0.118), B(0.012, 0.012, 0.04, metal, 0.03, 0.066, 0.13));
     rail(-0.175, 0.15, 0.066);   // Flat-Top-Schiene nur auf dem Obergehäuse (wie beim M4A1)
-    // Rundes, geripptes Karabiner-Handschutz mit Lüftungslöchern, Deltaring hinten, Kappe vorne
-    P.push(C(0.031, 0.031, 0.27, poly, 0, 0.03, -0.335, 16), C(0.037, 0.037, 0.024, metal, 0, 0.03, -0.19, 18), C(0.033, 0.033, 0.012, metal, 0, 0.03, -0.476, 16));
-    for (let i = 0; i < 12; i++) P.push(C(0.0325, 0.0325, 0.006, poly, 0, 0.03, -0.215 - i * 0.022, 16));
-    for (let i = 0; i < 6; i++) for (const s of [-1, 1]) P.push(B(0.006, 0.003, 0.012, dark, s * 0.012, 0.0615, -0.235 - i * 0.04));
+    // Eckiger Alu-Handschutz (achteckig, flache Seiten) mit durchgehender Schiene oben und M-LOK-Schlitzen
+    P.push(OCT(0.034, 0.285, metal, 0, 0.03, -0.3275), B(0.05, 0.05, 0.01, metal, 0, 0.03, -0.18));
+    rail(-0.47, -0.185, 0.066);
+    for (let i = 0; i < 5; i++) { const z = -0.225 - i * 0.05; P.push(B(0.002, 0.009, 0.026, dark, 0.0316, 0.03, z), B(0.002, 0.009, 0.026, dark, -0.0316, 0.03, z), B(0.009, 0.002, 0.026, dark, 0, -0.0016, z)); }
     // Lauf, A2-Kornsockel (Dreieck mit Schutzohren, Bajonetthalter, Riemenbügel), Vogelkäfig-Mündungsfeuerdämpfer
     P.push(C(0.0105, 0.0105, 0.54, steel, 0, 0.03, -0.45), C(0.017, 0.017, 0.03, metal, 0, 0.03, -0.515),
       GPROF([[-0.531, 0.044], [-0.499, 0.044], [-0.507, 0.082], [-0.523, 0.082]], 0.02, metal),
