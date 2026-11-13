@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kampfzone ist umgezogen</title>
+<script>
+(function () {
+  var d = {}, n = 0, h = '';
+  try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); if (k && k.indexOf('kz_') === 0 && k !== 'kz_aktien' && k !== 'kz_imported') { d[k] = localStorage.getItem(k); n++; } } } catch (e) {}
+  if (n) { try { h = '#kzimport=' + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(d))))); } catch (e) { h = ''; } }
+  location.replace('https://kampfzone.github.io/' + location.search + (h || location.hash));
+})();
+</script>
+<noscript><meta http-equiv="refresh" content="0;url=https://kampfzone.github.io/"></noscript>
+<style>body{background:#111;color:#eee;font:18px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}a{color:#ffb84d}</style>
+</head><body><p>Kampfzone ist umgezogen: <a href="https://kampfzone.github.io/">kampfzone.github.io</a></p></body></html>
