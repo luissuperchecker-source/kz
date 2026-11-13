@@ -241,27 +241,61 @@ const GRIP_TEX = canvasTex((g, s) => {
   g.fillStyle = '#3a3c40'; g.fillRect(0, 0, s, s);
   for (let y = 0; y < s; y += 6) for (let x = (y / 6) % 2 * 3; x < s; x += 6) { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(x, y, 3, 3); }
 }, 64);
-// Echte Oberflächen: schwarz eloxiertes/brüniertes Metall, schwarzer Kunststoff, geöltes Walnussholz
+// Feine Oberflächenstruktur als Normal-Map (sandgestrahltes Eloxal, genarbter Kunststoff, Stoff):
+// bricht große glatte Flächen auf, damit sie nicht wie Plastikklötze aussehen
+const GUN_NRM = (() => {
+  const size = TOUCH ? 128 : 256, c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'), h = new Float32Array(size * size), at = (x, y) => h[((y + size) % size) * size + (x + size) % size];
+  for (let i = 0; i < h.length; i++) h[i] = Math.random();
+  for (let b = 0; b < 2; b++) { const o = new Float32Array(h.length); for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { let s = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) s += at(x + dx, y + dy); o[y * size + x] = s / 9; } h.set(o); }
+  const im = g.createImageData(size, size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * 10, dy = (at(x, y + 1) - at(x, y - 1)) * 10, l = Math.hypot(dx, dy, 1), i = (y * size + x) * 4;
+    im.data[i] = (-dx / l * 0.5 + 0.5) * 255; im.data[i + 1] = (-dy / l * 0.5 + 0.5) * 255; im.data[i + 2] = (0.5 / l + 0.5) * 255; im.data[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAX_ANISO; return t;
+})();
+const GN = s => ({ normalMap: GUN_NRM, normalScale: new THREE.Vector2(s, s) });
+// Echte Oberflächen: schwarz eloxiertes Alu (matt, leichter Glanz), phosphatierter Stahl, schwarzer Kunststoff, geöltes Walnussholz
 const GUN_MATS = {
-  metal: new THREE.MeshStandardMaterial({ map: GUN_TEX, color: 0x9da1a8, roughness: 0.46, metalness: 0.72 }),
-  metalDS: new THREE.MeshStandardMaterial({ map: GUN_TEX, color: 0x9da1a8, roughness: 0.46, metalness: 0.72, side: THREE.DoubleSide }),
-  polyGrip: new THREE.MeshStandardMaterial({ map: GRIP_TEX, color: 0x8a8c90, roughness: 0.92, metalness: 0 }),
-  rubber: new THREE.MeshStandardMaterial({ color: 0x0e0e0f, roughness: 0.95 }),
-  steel: new THREE.MeshStandardMaterial({ color: 0x5a5f66, roughness: 0.3, metalness: 0.95 }),
-  poly: new THREE.MeshStandardMaterial({ map: POLY_TEX, color: 0x6b6d72, roughness: 0.82, metalness: 0.05 }),
-  tan: new THREE.MeshStandardMaterial({ map: POLY_TEX, color: new THREE.Color(2.2, 1.7, 0.9), roughness: 0.78, metalness: 0.05 }),
+  metal: new THREE.MeshStandardMaterial(Object.assign({ map: GUN_TEX, color: 0x70747c, roughness: 0.42, metalness: 0.35 }, GN(0.05))),
+  metalDS: new THREE.MeshStandardMaterial(Object.assign({ map: GUN_TEX, color: 0x70747c, roughness: 0.42, metalness: 0.35, side: THREE.DoubleSide }, GN(0.05))),
+  polyGrip: new THREE.MeshStandardMaterial(Object.assign({ map: GRIP_TEX, color: 0x7a7c80, roughness: 0.92, metalness: 0 }, GN(0.35))),
+  rubber: new THREE.MeshStandardMaterial(Object.assign({ color: 0x0e0e0f, roughness: 0.95 }, GN(0.3))),
+  steel: new THREE.MeshStandardMaterial(Object.assign({ color: 0x44474d, roughness: 0.45, metalness: 0.75 }, GN(0.05))),
+  poly: new THREE.MeshStandardMaterial(Object.assign({ map: POLY_TEX, color: 0x55575c, roughness: 0.75, metalness: 0.05 }, GN(0.18))),
+  tan: new THREE.MeshStandardMaterial(Object.assign({ map: POLY_TEX, color: new THREE.Color(2.0, 1.55, 0.85), roughness: 0.75, metalness: 0.05 }, GN(0.18))),
   wood: new THREE.MeshStandardMaterial({ map: WOOD_TEX, color: 0xd9b48c, roughness: 0.38, metalness: 0 }),
   dark: new THREE.MeshStandardMaterial({ color: 0x050506, roughness: 0.9, metalness: 0.2 }),   // Bohrungen, Öffnungen
-  olive: new THREE.MeshStandardMaterial({ map: POLY_TEX, color: new THREE.Color(1.05, 1.25, 0.75), roughness: 0.7, metalness: 0.15 }),
-  awm: new THREE.MeshStandardMaterial({ map: POLY_TEX, color: new THREE.Color(0.62, 0.78, 0.5), roughness: 0.75, metalness: 0.05 }),   // grüner Scharfschützen-Schaft
+  olive: new THREE.MeshStandardMaterial(Object.assign({ map: POLY_TEX, color: new THREE.Color(1.05, 1.25, 0.75), roughness: 0.7, metalness: 0.15 }, GN(0.18))),
+  awm: new THREE.MeshStandardMaterial(Object.assign({ map: POLY_TEX, color: new THREE.Color(0.62, 0.78, 0.5), roughness: 0.75, metalness: 0.05 }, GN(0.2))),   // grüner Scharfschützen-Schaft
   white: new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.5, emissive: 0x333333 }),   // Visierpunkte
-  glass: new THREE.MeshStandardMaterial({ color: 0x1d3a55, roughness: 0.03, metalness: 0.9, envMapIntensity: 2 }),
+  glass: new THREE.MeshStandardMaterial({ color: 0x0f1d26, roughness: 0.04, metalness: 0.7, envMapIntensity: 1.1 }),   // vergütete Linse (dunkel, grünlich-blau)
+  lens: new THREE.MeshStandardMaterial({ color: 0x9fc0d0, roughness: 0.05, metalness: 0.3, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1.5 }),   // Visierfenster (durchsichtig)
   red: new THREE.MeshBasicMaterial({ color: 0xff2a1a }),
   shell: new THREE.MeshStandardMaterial({ color: 0xa3201a, roughness: 0.5 }),
   brass: new THREE.MeshStandardMaterial({ color: 0xc09a40, roughness: 0.3, metalness: 0.9 }),
-  glove: new THREE.MeshStandardMaterial({ color: 0x2c2b26, roughness: 0.9 }),
+  glove: new THREE.MeshStandardMaterial(Object.assign({ color: 0x35342e, roughness: 0.88 }, GN(0.35))),
+  gloveDark: new THREE.MeshStandardMaterial(Object.assign({ color: 0x24231e, roughness: 0.7 }, GN(0.3))),   // Knöchelschutz, Fingerkuppen
   flame: new THREE.MeshStandardMaterial({ color: 0xff8a20, emissive: 0xff6a10, emissiveIntensity: 2 }),
 };
+// Gravuren (hell in das schwarze Metall graviert): ein gemeinsamer Textur-Atlas, eine Zeile pro Schriftzug
+const MARK_TXT = ['SAFE', 'SEMI', 'AUTO', 'M4A1 CARBINE', 'CAL. 5.56 MM', 'W1742863', '9x19', 'P17', 'KZ 47118', '.338 LAPUA MAG', '12 GA. 3" MAG', '7.62x51', 'CAL. 9 MM', '.357 MAGNUM', 'KZ 30521', '5.56 NATO'];
+const MARK_W = [];
+const MARK_TEX = canvasTex((g, s) => {
+  g.clearRect(0, 0, s, s); g.font = 'bold 21px Arial, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(205,207,204,0.92)';
+  MARK_TXT.forEach((t, i) => { g.fillText(t, 4, i * 32 + 16); MARK_W.push(Math.min(504, g.measureText(t).width + 8)); });
+}, 512, false);
+const MARK_MAT = new THREE.MeshStandardMaterial({ map: MARK_TEX, transparent: true, depthWrite: false, roughness: 0.55, metalness: 0.4, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
+// Schriftzug i, Höhe h (m), beginnt bei (x, y, z); side -1 = linke Seite (zum Spieler hin), +1 = rechte Seite
+function MARK(i, h, x, y, z, side = -1) {
+  const w = h * MARK_W[i] / 22, g = new THREE.PlaneGeometry(w, h), uv = g.attributes.uv;
+  const u1 = MARK_W[i] / 512, v0 = 1 - (i * 32 + 27) / 512, v1 = 1 - (i * 32 + 5) / 512;
+  for (let k = 0; k < uv.count; k++) uv.setXY(k, uv.getX(k) * u1, v0 + uv.getY(k) * (v1 - v0));
+  g.translate(w / 2, 0, 0);
+  return { geo: g, mat: MARK_MAT, p: [x, y, z], r: [0, side < 0 ? -Math.PI / 2 : Math.PI / 2, 0] };
+}
 // Rakete (Raketenwerfer): Spitze zeigt nach +z, damit lookAt sie in Flugrichtung dreht
 function makeRocketMesh() {
   const g = new THREE.Group(), m = GUN_MATS;
@@ -326,12 +360,12 @@ function GPROF(pts, thick, mat, x = 0, holes = null, bevel, uvs = 7) {
   return { geo: g, mat, p: [x, 0, 0], r: [0, 0, 0] };
 }
 // Abzug (gebogen) und Abzugsbügel als Ring
-const TRIG = (mat, z, y) => GPROF([[z - 0.004, y + 0.012], [z + 0.003, y + 0.012], [z + 0.005, y - 0.004, z - 0.002, y - 0.016], [z - 0.007, y - 0.014], [z - 0.002, y - 0.002, z - 0.004, y + 0.012]], 0.006, mat, 0, null, 0.0008);
+const TRIG0 = (mat, z, y) => GPROF([[z - 0.004, y + 0.012], [z + 0.003, y + 0.012], [z + 0.005, y - 0.004, z - 0.002, y - 0.016], [z - 0.007, y - 0.014], [z - 0.002, y - 0.002, z - 0.004, y + 0.012]], 0.006, mat, 0, null, 0.0008);
 const GUARD = (mat, z0, z1, y0, y1, th = 0.012) => GPROF([[z0, y0], [z1, y0], [z1 + 0.004, y1 + 0.006, z1 - 0.008, y1], [z0 + 0.004, y1], [z0, y1 + 0.01]], th, mat, 0,
   [[[z0 + 0.006, y0 - 0.003], [z1 - 0.005, y0 - 0.003], [z1 - 0.002, y1 + 0.009, z1 - 0.011, y1 + 0.005], [z0 + 0.008, y1 + 0.005], [z0 + 0.006, y1 + 0.012]]], 0.0012);
 // Pistolengriff (Gewehre): schräg nach hinten, Fingermulden vorne
 const PGRIP = (mat, z, y, len = 0.13, th = 0.034) => GPROF([[z, y], [z + 0.045, y], [z + 0.045 + len * 0.42, y - len], [z + 0.032 + len * 0.42, y - len - 0.014], [z - 0.002 + len * 0.42, y - len - 0.012],
-  [z + 0.008 + len * 0.3, y - len * 0.72, z + len * 0.22, y - len * 0.6], [z + len * 0.1, y - len * 0.35, z + len * 0.12, y - len * 0.25], [z + 0.002, y - 0.02]], th, mat);
+  [z + 0.008 + len * 0.3, y - len * 0.72, z + len * 0.22, y - len * 0.6], [z + len * 0.1, y - len * 0.35, z + len * 0.12, y - len * 0.25], [z + 0.002, y - 0.02]], th, mat, 0, null, undefined, mat === GUN_MATS.polyGrip ? 40 : 7);
 
 /* --- Waffenmodelle (Maße in Metern, Lauf zeigt nach -z; Hände/Mündung/Visier wie bisher) --- */
 function makeGun(w) {
@@ -345,10 +379,20 @@ function makeGun(w) {
   // Achteckiges Rohr mit flachen Seiten (z. B. eckiger Handschutz), entlang z
   const OCT = (r, len, mat, x, y, z) => { const g = new THREE.CylinderGeometry(r, r, len, 8).rotateY(Math.PI / 8).toNonIndexed(); g.computeVertexNormals(); return { geo: g, mat, p: [x, y, z], r: [Math.PI / 2, 0, 0] }; };
   const M = pt => (pt.mag = true, pt), PU = pt => (pt.pump = true, pt), BO = pt => (pt.bolt = true, pt), SP = pt => (pt.spin = true, pt);
-  const rail =(z0, z1, y, x = 0, rot = 0) => {   // Picatinny-Schiene mit Querrillen
-    const L = z1 - z0; P.push(B(0.022, 0.008, L, metal, x, y, (z0 + z1) / 2, 0, 0, rot));
-    for (let z = z0 + 0.008; z < z1 - 0.004; z += 0.01) P.push(B(0.022, 0.004, 0.005, metal, x, y + 0.006, z, 0, 0, rot));
+  const rail = (z0, z1, y, x = 0, rot = 0) => {   // Picatinny-Schiene: schmaler Steg + breite Querzähne mit Lücken (Abstand wie echt)
+    const L = z1 - z0, dx = -Math.sin(rot), dy = Math.cos(rot);
+    P.push(B(0.022, 0.008, L, metal, x - dx * 0.002, y - dy * 0.002, (z0 + z1) / 2, 0, 0, rot));
+    for (let z = z0 + 0.005; z < z1 - 0.008; z += 0.0143) P.push(B(0.03, 0.006, 0.0072, metal, x + dx * 0.002, y + dy * 0.002, z + 0.0036, 0, 0, rot));
   };
+  // Querschnitt [x, y] entlang z ausgeformt (z. B. Pistolenschlitten mit abgeschrägten Oberkanten)
+  const XPROF = (pts, z0, z1, mat) => {
+    const s = new THREE.Shape(); pts.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1]));
+    const g = new THREE.ExtrudeGeometry(s, { depth: z1 - z0, bevelEnabled: false }); g.translate(0, 0, z0);
+    const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 7, uv.getY(i) * 7);
+    return { geo: g, mat, p: [0, 0, 0], r: [0, 0, 0] };
+  };
+  let trigAt = null;   // Lage des Abzugs (für den Zeigefinger)
+  const TRIG = (m, z, y) => { if (!trigAt) trigAt = [z, y]; return TRIG0(m, z, y); };
   const scope = (zc, y, len = 0.3, r = 0.017) => {   // Zielfernrohr: Röhre, Objektiv, Okular, Türme, Ringe, Linsen
     P.push(C(r, r, len, metal, 0, y, zc), C(r, r * 1.55, 0.07, metal, 0, y, zc - len / 2 - 0.035), C(r * 1.55, r * 1.55, 0.03, metal, 0, y, zc - len / 2 - 0.085),
       C(r * 1.05, r * 1.35, 0.06, metal, 0, y, zc + len / 2 + 0.03), C(r * 1.42, r * 1.42, 0.003, glass, 0, y, zc - len / 2 - 0.1), C(r * 1.2, r * 1.2, 0.003, glass, 0, y, zc + len / 2 + 0.061),
@@ -356,10 +400,26 @@ function makeGun(w) {
     for (const dz of [-len * 0.32, len * 0.32]) P.push(B(0.03, 0.012, 0.016, metal, 0, y - r - 0.006, zc + dz), C(r + 0.004, r + 0.004, 0.016, metal, 0, y, zc + dz));
   };
   let info;
-  if (w === 0) { // Sturmgewehr (AR-Bauart): Ober-/Unterschale, Schiene, M-LOK-Handschutz, Rotpunkt, gebogenes Magazin, Teleskopschaft
-    P.push(B(0.056, 0.062, 0.3, metal, 0, 0.03, -0.03), B(0.003, 0.022, 0.065, steel, 0.0295, 0.032, 0.0), B(0.002, 0.018, 0.04, dark, 0.0305, 0.032, 0.0),
-      CX(0.011, 0.03, metal, 0.037, 0.045, 0.07), B(0.052, 0.012, 0.03, metal, 0, 0.066, 0.118), B(0.012, 0.012, 0.04, metal, 0.03, 0.066, 0.13));
-    rail(-0.175, 0.15, 0.066);   // Flat-Top-Schiene nur auf dem Obergehäuse (wie beim M4A1)
+  if (w === 0) { // Sturmgewehr M4A1: Flat-Top-Obergehäuse, gravierte Unterschale, eckiger M-LOK-Handschutz, Holo-Visier, Teleskopschaft
+    // Obergehäuse (Seitenprofil) mit Lippe an der Trennfuge, dunkle Fuge zur Unterschale
+    P.push(GPROF([[-0.18, 0.0], [0.115, 0.0], [0.12, 0.006], [0.12, 0.057], [0.116, 0.061], [-0.176, 0.061], [-0.18, 0.057]], 0.05, metal),
+      B(0.052, 0.005, 0.292, metal, 0, 0.0035, -0.031), B(0.051, 0.0012, 0.292, dark, 0, 0.0004, -0.031),
+      // rechts: Staubschutzdeckel mit Scharnierstange, Hülsenabweiser, schräge Schließhilfe
+      B(0.002, 0.022, 0.068, steel, 0.0262, 0.033, 0.0), C(0.0018, 0.0018, 0.074, steel, 0.0266, 0.021, 0.0, 6), B(0.003, 0.005, 0.007, steel, 0.0276, 0.04, -0.03),
+      B(0.009, 0.022, 0.022, metal, 0.029, 0.044, 0.044), B(0.012, 0.022, 0.036, metal, 0.029, 0.043, 0.078),
+      limbPart([0.03, 0.045, 0.072], [0.046, 0.045, 0.094], 0.0085, 0.0085, metal, 12), limbPart([0.046, 0.045, 0.094], [0.05, 0.045, 0.0995], 0.0095, 0.0095, steel, 12),
+      // Ladehebel hinten oben mit T-Griff und Sperrklinke
+      B(0.016, 0.009, 0.032, metal, 0, 0.0565, 0.128), B(0.056, 0.01, 0.014, metal, 0, 0.0565, 0.143), B(0.012, 0.008, 0.012, metal, -0.031, 0.058, 0.138));
+    rail(-0.176, 0.112, 0.066);   // Flat-Top-Schiene auf dem Obergehäuse
+    // Holographisches Visier (EOTech-Bauart): Klemmfuß, Batteriegehäuse, eckige Haube mit Fenster, Leuchtabsehen (Ring + Punkt)
+    P.push(B(0.034, 0.008, 0.11, metal, 0, 0.0755, -0.03), B(0.004, 0.007, 0.028, steel, -0.0195, 0.0755, -0.048), CX(0.005, 0.004, steel, -0.019, 0.0755, -0.02),
+      B(0.052, 0.016, 0.13, metal, 0, 0.0875, -0.03), B(0.006, 0.034, 0.07, metal, 0.025, 0.112, -0.012), B(0.006, 0.034, 0.07, metal, -0.025, 0.112, -0.012),
+      B(0.056, 0.006, 0.07, metal, 0, 0.131, -0.012), B(0.04, 0.012, 0.035, metal, 0, 0.101, -0.077),
+      B(0.044, 0.032, 0.001, GUN_MATS.lens, 0, 0.112, -0.045),
+      { geo: new THREE.TorusGeometry(0.0075, 0.0005, 4, 28), mat: red, p: [0, 0.115, -0.044], r: [0, 0, 0] }, B(0.0014, 0.0014, 0.0005, red, 0, 0.115, -0.044),
+      B(0.009, 0.006, 0.003, rubber, -0.011, 0.0885, 0.036), B(0.009, 0.006, 0.003, rubber, 0.011, 0.0885, 0.036),
+      // hinteres Klappvisier (eingeklappt)
+      B(0.026, 0.008, 0.03, poly, 0, 0.0755, 0.092), B(0.02, 0.004, 0.026, poly, 0, 0.0815, 0.09));
     // Eckiger Alu-Handschutz (achteckig, flache Seiten) mit durchgehender Schiene oben und M-LOK-Schlitzen
     P.push(OCT(0.034, 0.285, metal, 0, 0.03, -0.3275), B(0.05, 0.05, 0.01, metal, 0, 0.03, -0.18));
     rail(-0.47, -0.185, 0.066);
@@ -371,20 +431,26 @@ function makeGun(w) {
       B(0.004, 0.024, 0.004, steel, 0, 0.094, -0.515), B(0.012, 0.022, 0.022, metal, 0, 0.006, -0.515), { geo: new THREE.TorusGeometry(0.009, 0.0025, 6, 12), mat: steel, p: [0, -0.008, -0.515], r: [0, Math.PI / 2, 0] },
       C(0.0115, 0.0115, 0.055, metal, 0, 0.03, -0.7475), C(0.0065, 0.0065, 0.002, dark, 0, 0.03, -0.776));
     for (let k = 0; k < 5; k++) { const a = Math.PI * (0.18 + k * 0.16); P.push(B(0.003, 0.007, 0.032, dark, Math.cos(a) * 0.0113, 0.03 + Math.sin(a) * 0.0113, -0.752, 0, 0, a + Math.PI / 2)); }
-    // Kleinteile: Hülsenabweiser, Stifte, Magazinhalter, Verschlussfang, Feuerwahlhebel
-    P.push(B(0.008, 0.02, 0.02, metal, 0.031, 0.045, 0.045), CX(0.0045, 0.054, steel, 0, -0.012, -0.155), CX(0.0045, 0.054, steel, 0, -0.012, 0.1),
-      CX(0.006, 0.006, metal, 0.027, -0.028, -0.03), B(0.004, 0.032, 0.012, metal, -0.026, -0.018, -0.028), CX(0.007, 0.004, steel, -0.027, -0.024, 0.065), B(0.003, 0.006, 0.026, steel, -0.029, -0.024, 0.075),
-      C(0.019, 0.019, 0.006, metal, 0, 0.02, 0.124));
-    P.push(B(0.03, 0.026, 0.016, metal, 0, 0.087, 0.1),
-      B(0.034, 0.022, 0.06, metal, 0, 0.087, -0.04), C(0.024, 0.024, 0.08, metalDS, 0, 0.115, -0.04, 18, true), CY(0.006, 0.014, metal, 0.028, 0.115, -0.04), B(0.004, 0.004, 0.002, red, 0, 0.115, -0.01),
+    // Kleinteile Unterschale: Zerlege-/Kippstift, Abzugs- und Hahnstift, Magazinhalter (rechts), Verschlussfang + Feuerwahlhebel (links)
+    P.push(CX(0.0045, 0.054, steel, 0, -0.012, -0.155), CX(0.0045, 0.054, steel, 0, -0.012, 0.1), CX(0.0032, 0.0515, steel, 0, -0.02, 0.008), CX(0.0032, 0.0515, steel, 0, -0.015, 0.032),
+      CX(0.006, 0.006, metal, 0.027, -0.028, -0.03), B(0.004, 0.032, 0.012, metal, -0.026, -0.018, -0.028), CX(0.0025, 0.004, steel, -0.0275, -0.006, -0.028),
+      CX(0.007, 0.004, steel, -0.027, -0.024, 0.065), B(0.003, 0.006, 0.026, steel, -0.029, -0.024, 0.075), C(0.019, 0.019, 0.006, metal, 0, 0.02, 0.124),
+      // Gravuren links: Wahlhebelstellungen und Magazinschacht-Beschriftung mit Seriennummer
+      MARK(0, 0.0052, -0.0256, -0.016, 0.03), MARK(1, 0.0052, -0.0256, -0.007, 0.057), MARK(2, 0.0052, -0.0256, -0.02, 0.08),
+      MARK(3, 0.0058, -0.0256, -0.061, -0.112), MARK(4, 0.0058, -0.0256, -0.072, -0.112), MARK(5, 0.0058, -0.0256, -0.083, -0.112),
       // Unterschale mit Magazinschacht
       GPROF([[-0.17, 0.001], [0.12, 0.001], [0.12, -0.03], [0.085, -0.035], [0.045, -0.035], [0.03, -0.05], [-0.035, -0.05], [-0.04, -0.104], [-0.116, -0.104], [-0.121, -0.05], [-0.17, -0.028]], 0.05, metal),
       GUARD(metal, -0.03, 0.04, -0.05, -0.078), TRIG(steel, 0.003, -0.056),
-      M(GPROF([[-0.113, -0.098], [-0.044, -0.098], [-0.051, -0.2], [-0.068, -0.282], [-0.137, -0.272], [-0.12, -0.2]], 0.027, metal)),   // gebogenes Magazin
+      // gebogenes 30-Schuss-Alumagazin mit zwei eingeprägten Längsrippen, Kunststoff-Boden
+      M(GPROF([[-0.113, -0.098], [-0.044, -0.098], [-0.051, -0.2], [-0.068, -0.282], [-0.137, -0.272], [-0.12, -0.2]], 0.027, metal)),
+      M(GPROF([[-0.0687, -0.112], [-0.0627, -0.112], [-0.0687, -0.2], [-0.0821, -0.258], [-0.0881, -0.258], [-0.0747, -0.2]], 0.0292, metal)),
+      M(GPROF([[-0.0963, -0.112], [-0.0903, -0.112], [-0.0963, -0.2], [-0.1105, -0.258], [-0.1165, -0.258], [-0.1023, -0.2]], 0.0292, metal)),
       M(GPROF([[-0.07, -0.278], [-0.138, -0.268], [-0.142, -0.283], [-0.07, -0.294]], 0.033, poly)),
-      PGRIP(poly, 0.045, -0.034, 0.13), C(0.016, 0.016, 0.2, metal, 0, 0.02, 0.22), C(0.02, 0.02, 0.014, metal, 0, 0.02, 0.12),
-      GPROF([[0.2, 0.045], [0.372, 0.05], [0.392, 0.06], [0.41, 0.052], [0.41, -0.086], [0.392, -0.092], [0.33, -0.032], [0.215, -0.01], [0.2, 0.0]], 0.046, poly),   // Teleskopschaft
-      B(0.048, 0.142, 0.016, rubber, 0, -0.018, 0.418), { geo: new THREE.TorusGeometry(0.012, 0.003, 6, 12), mat: steel, p: [0, -0.05, 0.36], r: [0, Math.PI / 2, 0] });
+      PGRIP(polyGrip, 0.045, -0.034, 0.13), C(0.016, 0.016, 0.2, metal, 0, 0.02, 0.22), C(0.02, 0.02, 0.014, metal, 0, 0.02, 0.12),
+      // Teleskopschaft mit Riemenschlitz, Verstellhebel unten, Gummikappe, Riemenbügel
+      GPROF([[0.2, 0.045], [0.372, 0.05], [0.392, 0.06], [0.41, 0.052], [0.41, -0.086], [0.392, -0.092], [0.33, -0.032], [0.215, -0.01], [0.2, 0.0]], 0.046, poly, 0,
+        [[[0.37, -0.046], [0.396, -0.046], [0.396, -0.07], [0.374, -0.06]]]),
+      B(0.012, 0.007, 0.045, poly, 0, -0.0085, 0.245), B(0.048, 0.142, 0.016, rubber, 0, -0.018, 0.418), { geo: new THREE.TorusGeometry(0.012, 0.003, 6, 12), mat: steel, p: [0, -0.05, 0.36], r: [0, Math.PI / 2, 0] });
     info = { len: 0.775, muzzleY: 0.03, grip: [0, -0.1, 0.1], fore: [0, -0.01, -0.33], foreNear: [0, -0.01, -0.22], sight: 0.115 };
   } else if (w === 1) { // Pumpgun: Stahlgehäuse, Laufschiene mit Korn, Röhrenmagazin, gerillter Vorderschaft (Pumpe), Holzschaft
     P.push(GPROF([[-0.12, 0.054], [0.098, 0.054], [0.124, 0.03], [0.124, -0.032], [-0.12, -0.032]], 0.058, metal),
@@ -398,6 +464,7 @@ function makeGun(w) {
       B(0.048, 0.18, 0.02, rubber, 0, -0.054, 0.41, 0.12), B(0.004, 0.05, 0.12, poly, 0.032, 0.012, -0.05));
     for (let i = 0; i < 4; i++) P.push(CY(0.009, 0.045, shell, 0.04, 0.012, -0.09 + i * 0.024), CY(0.0095, 0.01, brass, 0.04, -0.015, -0.09 + i * 0.024));
     P.push({ geo: new THREE.TorusGeometry(0.012, 0.003, 6, 12), mat: steel, p: [0, -0.1, 0.33], r: [0, Math.PI / 2, 0] });
+    P.push(MARK(10, 0.0058, -0.0292, 0.026, -0.11), MARK(14, 0.0045, -0.0292, 0.014, -0.11));   // Gravuren Gehäuse links
     info = { len: 0.71, muzzleY: 0.035, grip: [0, -0.07, 0.09], fore: [0, -0.03, -0.3], foreNear: [0, -0.03, -0.25], sight: 0.07 };
   } else if (w === 2) { // Scharfschützengewehr: Repetierer, Schaft mit Wangenauflage, kannelierter Lauf, Mündungsbremse, großes Zielfernrohr, Zweibein
     P.push(C(0.022, 0.022, 0.28, steel, 0, 0.025, -0.0), C(0.016, 0.012, 0.73, steel, 0, 0.025, -0.505), C(0.0055, 0.0055, 0.002, dark, 0, 0.025, -0.931));
@@ -414,6 +481,7 @@ function makeGun(w) {
       BO(CX(0.006, 0.06, steel, 0.05, 0.03, 0.1)), BO(SPH(0.012, steel, 0.08, 0.025, 0.1)), BO(C(0.023, 0.023, 0.06, steel, 0, 0.025, 0.14)));
     rail(-0.16, 0.12, 0.052); scope(-0.02, 0.09, 0.26, 0.019);
     P.push(B(0.05, 0.02, 0.03, metal, 0, -0.06, -0.42), limbPart([0.018, -0.065, -0.42], [0.02, -0.07, -0.66], 0.006, 0.006, metal, 8), limbPart([-0.018, -0.065, -0.42], [-0.02, -0.07, -0.66], 0.006, 0.006, metal, 8));
+    P.push(MARK(9, 0.0062, -0.0223, 0.027, -0.125), MARK(14, 0.0045, -0.0223, 0.017, -0.125));   // Kaliber + Nummer auf dem Gehäuse
     info = { len: 0.935, muzzleY: 0.025, grip: [0, -0.09, 0.14], fore: [0, -0.04, -0.25], foreNear: [0, -0.04, -0.2], sight: 0.09 };
   } else if (w === 4) { // Maschinenpistole mit integriertem Schalldämpfer: Gehäuse, Ladehebel-Rohr, gebogenes Magazin, Abzugsgruppe, Schubschaft
     P.push(GPROF([[-0.2, 0.05], [0.118, 0.05], [0.14, 0.034], [0.14, -0.016], [0.02, -0.02], [-0.2, -0.02]], 0.05, metal),
@@ -429,6 +497,7 @@ function makeGun(w) {
       { geo: new THREE.TorusGeometry(0.011, 0.003, 6, 14), mat: metal, p: [0, 0.07, -0.17], r: [0, 0, 0] }, B(0.003, 0.016, 0.003, steel, 0, 0.068, -0.17),
       C(0.006, 0.006, 0.18, steel, 0.02, 0.0, 0.23), C(0.006, 0.006, 0.18, steel, -0.02, 0.0, 0.23),
       GPROF([[0.31, 0.04], [0.325, 0.04], [0.33, -0.07], [0.315, -0.075]], 0.05, poly), B(0.048, 0.11, 0.008, rubber, 0, -0.016, 0.334));
+    P.push(MARK(12, 0.0055, -0.0252, 0.022, -0.17), MARK(14, 0.0042, -0.0252, 0.013, -0.17));
     info = { len: 0.46, muzzleY: 0.025, grip: [0, -0.08, 0.08], fore: [0, -0.09, -0.16], foreNear: [0, -0.09, -0.16], sight: 0.072 };
   } else if (w === 5) { // Revolver: Rahmen mit Trommelfenster, Lauf mit Unterlauf-Nase und Laufschiene, 6-Schuss-Trommel, Hahn, Holzgriff
     P.push(GPROF([[-0.06, 0.058], [0.034, 0.058], [0.05, 0.046], [0.056, 0.02], [0.05, -0.006], [0.03, -0.012], [-0.03, -0.012], [-0.05, 0.0], [-0.06, 0.012]], 0.032, steel, 0,
@@ -443,12 +512,13 @@ function makeGun(w) {
     P.push(GPROF([[0.04, 0.05], [0.058, 0.076], [0.068, 0.073], [0.058, 0.044]], 0.01, steel), B(0.008, 0.006, 0.012, steel, 0, 0.061, 0.03),
       GUARD(steel, -0.02, 0.034, -0.012, -0.044, 0.008), TRIG(steel, 0.008, -0.016),
       GPROF([[0.032, -0.004], [0.058, 0.016], [0.076, 0.0], [0.092, -0.088], [0.082, -0.104], [0.046, -0.104], [0.04, -0.07, 0.03, -0.06], [0.034, -0.016]], 0.036, wood));
+    P.push(MARK(13, 0.0048, -0.0122, 0.03, -0.196));   // Kaliber auf dem Lauf
     info = { len: 0.22, muzzleY: 0.035, grip: [0, -0.05, 0.065], fore: [-0.012, -0.07, 0.055], foreNear: [-0.012, -0.07, 0.055], sight: 0.064 };
   } else if (w === 6) { // Kampfgewehr (7,62 mm) mit Zielfernrohr: langes Obergehäuse mit Schienen, Kunststoff-Unterschale, gerades Magazin, Klappschaft
     P.push(GPROF([[-0.52, 0.062], [0.14, 0.062], [0.14, 0.0], [-0.12, 0.0], [-0.14, 0.014], [-0.52, 0.014]], 0.062, metal),
       B(0.004, 0.02, 0.07, dark, 0.031, 0.034, 0.0), B(0.01, 0.014, 0.03, metal, -0.036, 0.04, -0.3));
     rail(-0.52, 0.14, 0.066);
-    for (const s of [-1, 1]) rail(-0.5, -0.24, 0.036, s * 0.034, s * Math.PI / 2);
+    for (const s of [-1, 1]) rail(-0.5, -0.24, 0.036, s * 0.034, -s * Math.PI / 2);
     P.push(C(0.013, 0.012, 0.3, steel, 0, 0.03, -0.67), C(0.017, 0.017, 0.06, metal, 0, 0.03, -0.85), C(0.006, 0.006, 0.002, dark, 0, 0.03, -0.881));
     for (let k = 0; k < 4; k++) P.push(B(0.002, 0.034, 0.04, dark, 0, 0.03, -0.855, 0, 0, k * Math.PI / 4));
     P.push(GPROF([[-0.15, 0.001], [0.13, 0.001], [0.13, -0.03], [0.045, -0.035], [0.03, -0.05], [-0.052, -0.05], [-0.056, -0.08], [-0.132, -0.08], [-0.14, -0.04]], 0.058, tan),
@@ -458,6 +528,7 @@ function makeGun(w) {
       GPROF([[0.14, 0.055], [0.36, 0.06], [0.4, 0.07], [0.422, 0.062], [0.422, -0.09], [0.4, -0.1], [0.3, -0.042], [0.2, -0.034], [0.14, -0.01]], 0.05, tan, 0, [[[0.2, 0.03], [0.33, 0.035], [0.3, -0.012], [0.21, -0.008]]]),
       B(0.05, 0.02, 0.12, tan, 0, 0.07, 0.33), B(0.052, 0.16, 0.014, rubber, 0, -0.015, 0.43));
     scope(-0.04, 0.094, 0.24, 0.017);
+    P.push(MARK(11, 0.0058, -0.0292, -0.06, -0.126), MARK(14, 0.0045, -0.0292, -0.07, -0.126));
     info = { len: 0.88, muzzleY: 0.03, grip: [0, -0.09, 0.11], fore: [0, -0.01, -0.36], foreNear: [0, -0.01, -0.28], sight: 0.092 };
   } else if (w === 7) { // Maschinengewehr: Gehäuse mit Zuführdeckel, Tragegriff, Lauf mit Hitzeschild, Munitionskasten mit Gurt, Zweibein, Schaft
     P.push(GPROF([[-0.17, 0.055], [0.15, 0.055], [0.17, 0.034], [0.17, -0.03], [-0.17, -0.03]], 0.085, metal),
@@ -471,6 +542,7 @@ function makeGun(w) {
     P.push(PGRIP(poly, 0.1, -0.03, 0.13), GUARD(metal, 0.06, 0.13, -0.03, -0.06), TRIG(steel, 0.09, -0.036),
       GPROF([[0.17, 0.04], [0.4, 0.03], [0.44, 0.04], [0.45, -0.1], [0.42, -0.112], [0.3, -0.064], [0.17, -0.03]], 0.06, poly), B(0.062, 0.15, 0.016, rubber, 0, -0.03, 0.457),
       B(0.05, 0.02, 0.03, metal, 0, -0.035, -0.6), limbPart([0.02, -0.04, -0.6], [0.022, -0.045, -0.38], 0.006, 0.006, metal, 8), limbPart([-0.02, -0.04, -0.6], [-0.022, -0.045, -0.38], 0.006, 0.006, metal, 8));
+    P.push(MARK(15, 0.0065, -0.0427, 0.018, -0.12), MARK(14, 0.005, -0.0427, 0.006, -0.12));
     info = { len: 0.74, muzzleY: 0.02, grip: [0, -0.1, 0.15], fore: [0, -0.02, -0.3], foreNear: [0, -0.02, -0.25], sight: 0.1 };
   } else if (w === 8) { // Doppelflinte: zwei Läufe nebeneinander mit Schiene, Basküle (Stahl), Hebel oben, Holz-Vorderschaft, Schaft mit Pistolengriff
     P.push(C(0.0175, 0.0175, 0.56, steel, 0.018, 0.03, -0.36), C(0.0175, 0.0175, 0.56, steel, -0.018, 0.03, -0.36),
@@ -524,24 +596,43 @@ function makeGun(w) {
       PGRIP(poly, 0.08, -0.01, 0.1), TRIG(steel, 0.09, -0.016), GPROF([[-0.24, -0.0], [-0.2, -0.0], [-0.195, -0.1], [-0.235, -0.105]], 0.032, poly));
     for (let k = 0; k < 8; k++) P.push(C(0.0345, 0.0345, 0.008, dark, 0, 0.02, -0.12 - k * 0.022, 16, true));
     info = { len: 0.64, muzzleY: 0.02, grip: [0, -0.07, 0.12], fore: [0, -0.06, -0.22], foreNear: [0, -0.06, -0.22], sight: 0.07 };
-  } else { // Pistole (Polymer-Pistole, 9 mm): kantiger Schlitten mit Griffrillen hinten, abgeschrägte Nase, Griffstück mit Schiene,
-    // eckigem Abzugsbügel, Fingermulden und geraster Griffoberfläche, Abzug mit Sicherung, Verschlussfang, Zerlegehebel, weiße Visierpunkte
-    P.push(GPROF([[-0.13, 0.017], [0.06, 0.017], [0.06, 0.044], [0.054, 0.051], [-0.115, 0.051], [-0.13, 0.04]], 0.03, metal));   // Schlitten mit abgeschrägter Nase
-    for (let i = 0; i < 7; i++) P.push(B(0.0312, 0.024, 0.0025, dark, 0, 0.034, 0.024 + i * 0.0055));
-    P.push(B(0.002, 0.014, 0.034, dark, 0.0152, 0.04, -0.012), B(0.016, 0.006, 0.032, steel, 0, 0.0515, -0.012), B(0.02, 0.004, 0.18, metal, 0, 0.052, -0.035),
-      C(0.0085, 0.0085, 0.008, steel, 0, 0.03, -0.128), C(0.0045, 0.0045, 0.0025, dark, 0, 0.03, -0.1325),
-      GPROF([[-0.122, 0.018], [0.055, 0.018], [0.062, 0.008], [0.074, -0.004], [0.075, -0.018], [0.09, -0.11], [0.083, -0.121], [0.04, -0.121], [0.03, -0.098, 0.024, -0.083], [0.02, -0.068, 0.022, -0.058],
-        [0.016, -0.046], [0.012, -0.04], [-0.046, -0.038], [-0.05, -0.034], [-0.05, -0.006], [-0.122, -0.006]], 0.029, poly, 0, [[[-0.042, -0.008], [0.006, -0.008], [0.009, -0.031], [-0.038, -0.031]]]),
-      GPROF([[0.074, -0.02], [0.088, -0.106], [0.081, -0.116], [0.044, -0.116], [0.03, -0.096, 0.025, -0.083], [0.021, -0.068, 0.023, -0.058], [0.019, -0.028]], 0.0304, polyGrip, 0, null, undefined, 40),   // geraster Griff (feine Struktur)
+  } else { // Pistole (Polymer-Pistole 9 mm, Glock-Bauart): Schlitten mit abgeschrägten Oberkanten, hintere Griffrillen, Auswurffenster mit Laufhaube,
+    // Griffstück mit steilem 22°-Griffwinkel, Fingermulden, Rauhung, eckigem Abzugsbügel, Schiene, Abzug mit Sicherung, Gravuren, weiße Visierpunkte
+    P.push(XPROF([[-0.0127, 0.017], [0.0127, 0.017], [0.0127, 0.046], [0.0093, 0.0512], [-0.0093, 0.0512], [-0.0127, 0.046]], -0.129, 0.059, metal));
+    for (let i = 0; i < 7; i++) P.push(B(0.0262, 0.024, 0.0024, dark, 0, 0.033, 0.025 + i * 0.0047));   // hintere Griffrillen
+    P.push(B(0.0012, 0.013, 0.042, dark, 0.0128, 0.044, -0.008), B(0.012, 0.0012, 0.042, dark, 0.0045, 0.0514, -0.008),   // Auswurffenster
+      B(0.011, 0.0016, 0.03, steel, 0.0035, 0.0518, -0.012), B(0.0016, 0.004, 0.02, steel, 0.0131, 0.04, 0.02),   // Laufhaube, Auszieher
+      C(0.0085, 0.0085, 0.006, steel, 0, 0.03, -0.1295), C(0.0045, 0.0045, 0.0025, dark, 0, 0.03, -0.1325), C(0.0042, 0.0042, 0.002, dark, 0, 0.021, -0.1295),
+      // Kimme (U-Kerbe mit weißer Umrandung) und Korn mit weißem Punkt
+      B(0.007, 0.008, 0.009, steel, 0.0068, 0.0552, 0.05), B(0.007, 0.008, 0.009, steel, -0.0068, 0.0552, 0.05), B(0.02, 0.003, 0.009, steel, 0, 0.0525, 0.05),
+      B(0.002, 0.004, 0.001, GUN_MATS.white, 0.0068, 0.0565, 0.055), B(0.002, 0.004, 0.001, GUN_MATS.white, -0.0068, 0.0565, 0.055),
+      B(0.0045, 0.0075, 0.006, steel, 0, 0.0548, -0.116), SPH(0.0017, GUN_MATS.white, 0, 0.0565, -0.1128),
+      MARK(7, 0.0062, -0.01275, 0.036, -0.104), MARK(6, 0.0052, -0.01275, 0.0355, -0.075),
+      // Griffstück: Staubschutz mit Schiene, eckiger Abzugsbügel, Fingermulden vorne, Biberschwanz hinten
+      GPROF([[-0.122, 0.018], [0.056, 0.018], [0.064, 0.008], [0.071, -0.004], [0.066, -0.013], [0.094, -0.085], [0.09, -0.094], [0.044, -0.094],
+        [0.034, -0.086, 0.033, -0.071], [0.024, -0.064, 0.024, -0.05], [0.016, -0.044, 0.018, -0.034], [0.012, -0.03], [-0.046, -0.038], [-0.052, -0.034], [-0.052, -0.006], [-0.122, -0.006]], 0.029, poly, 0,
+        [[[-0.042, -0.008], [0.006, -0.008], [0.008, -0.029], [-0.038, -0.031]]]),
+      GPROF([[0.063, -0.02], [0.089, -0.084], [0.086, -0.089], [0.047, -0.089], [0.038, -0.082, 0.036, -0.071], [0.028, -0.064, 0.028, -0.05], [0.021, -0.044, 0.022, -0.036]], 0.0304, polyGrip, 0, null, undefined, 40),
       TRIG(steel, -0.017, -0.012), B(0.0015, 0.012, 0.0025, poly, 0, -0.012, -0.0165),
-      B(0.03, 0.004, 0.004, dark, 0, -0.006, -0.085), B(0.03, 0.004, 0.004, dark, 0, -0.006, -0.097), B(0.03, 0.004, 0.004, dark, 0, -0.006, -0.109),   // Zubehörschiene
-      B(0.003, 0.006, 0.022, metal, -0.0158, 0.015, -0.018), B(0.0032, 0.005, 0.008, metal, 0.0156, 0.011, -0.046), B(0.0032, 0.005, 0.008, metal, -0.0156, 0.011, -0.046),
-      B(0.004, 0.009, 0.006, poly, 0.0152, -0.022, 0.006),
-      B(0.005, 0.008, 0.005, steel, 0, 0.0555, -0.115), SPH(0.0018, GUN_MATS.white, 0, 0.0575, -0.112),
-      B(0.007, 0.01, 0.008, steel, 0.008, 0.056, 0.05), B(0.007, 0.01, 0.008, steel, -0.008, 0.056, 0.05), B(0.002, 0.003, 0.001, GUN_MATS.white, 0.008, 0.058, 0.046), B(0.002, 0.003, 0.001, GUN_MATS.white, -0.008, 0.058, 0.046),
-      M(GPROF([[0.04, -0.118], [0.084, -0.118], [0.086, -0.128], [0.038, -0.128]], 0.03, poly)));
+      B(0.03, 0.004, 0.005, dark, 0, -0.006, -0.1),   // Schienen-Querrille
+      B(0.0025, 0.005, 0.024, steel, -0.0157, 0.0135, -0.006),   // Verschlussfanghebel
+      B(0.0032, 0.005, 0.008, metal, 0.0156, 0.011, -0.046), B(0.0032, 0.005, 0.008, metal, -0.0156, 0.011, -0.046),   // Zerlegehebel
+      B(0.004, 0.009, 0.006, poly, -0.0152, -0.022, 0.012),   // Magazinhalter (links)
+      CX(0.0018, 0.0295, steel, 0, 0.009, -0.034), CX(0.0018, 0.0295, steel, 0, 0.005, -0.004), CX(0.0018, 0.0295, steel, 0, 0.004, 0.052),   // Stifte
+      B(0.0005, 0.006, 0.02, steel, -0.0146, -0.0005, -0.103), MARK(8, 0.0036, -0.0149, -0.0005, -0.111),   // Seriennummernplättchen
+      M(GPROF([[0.04, -0.093], [0.095, -0.093], [0.097, -0.099], [0.093, -0.103], [0.043, -0.103], [0.038, -0.098]], 0.03, poly)));
     info = { len: 0.145, muzzleY: 0.03, grip: [0, -0.05, 0.04], fore: [-0.012, -0.07, 0.035], foreNear: [-0.012, -0.07, 0.035], sight: 0.058 };
   }
+  // Handhaltung für die Ansicht in der Hand: Griffwinkel ga, halbe Griffbreite/-tiefe gw, Vorderhand-Achse hg [y, Radius],
+  // senkrechter Vordergriff vg [Winkel, halbe Breite, halbe Tiefe], eigene Handposition hgr/hfo (Figuren behalten grip/fore)
+  const HANDS = {
+    0: { hg: [0.03, 0.034] }, 1: { hg: [-0.008, 0.031], hgr: [0, -0.058, 0.15], ga: 0.75, gw: [0.02, 0.024] },
+    2: { hg: [-0.024, 0.033], ga: 0.2, gw: [0.032, 0.03] }, 3: { ga: 0.39, gw: [0.0148, 0.026], hgr: [0, -0.048, 0.053] },
+    4: { hg: [-0.019, 0.027], ga: 0.37, gw: [0.021, 0.024], hfo: [0, -0.045, -0.19] }, 5: { ga: 0.18, gw: [0.018, 0.024] },
+    6: { hg: [0.038, 0.031] }, 7: { hg: [-0.022, 0.035] }, 8: { hg: [-0.007, 0.03], hgr: [0, -0.06, 0.13], ga: 0.35, gw: [0.024, 0.024] },
+    9: { hg: [0, 0.06], roll: -Math.PI / 2, hfo: [0, 0, -0.05] }, 10: { vg: [0.1, 0.015, 0.02], hgr: [0, -0.08, 0.04] }, 11: { vg: [0.08, 0.016, 0.02] }, 12: { vg: [0.08, 0.016, 0.02] },
+  };
+  Object.assign(info, { ga: 0.4, gw: [0.017, 0.021], trig: trigAt }, HANDS[w] || HANDS[3]);
   info.parts = P;
   return info;
 }
@@ -723,22 +814,68 @@ for (const s of window.GUN_SHOPS || []) {
   grp.userData.c = [s.x, s.z]; scene.add(grp); window.SHOP_DISPLAYS.push(grp);
 }
 let gunInfo = null;
+/* Hände mit Handschuhen (statt Klötzen): Handfläche, Finger mit drei Gliedern, Daumen, Knöchelschutz, Bündchen und Ärmel */
+const ELL = (mat, c, size, rot) => Object.assign(SPH(0.5, mat, c[0], c[1], c[2], size[0], size[1], size[2]), { r: rot });   // Ellipsoid (Handfläche, Ballen)
+function handFinger(out, pts, r0, r1) {
+  const G = GUN_MATS.glove, n = pts.length - 1;
+  for (let i = 0; i < n; i++) {
+    const ra = r0 + (r1 - r0) * i / n, rb = r0 + (r1 - r0) * (i + 1) / n, b = pts[i + 1];
+    out.push(limbPart(pts[i], b, ra, rb, G, 8), SPH(rb, i === n - 1 ? GUN_MATS.gloveDark : G, b[0], b[1], b[2]));
+  }
+}
+function handSleeve(out, wristIn, wrist, elbow) {
+  const d = [elbow[0] - wrist[0], elbow[1] - wrist[1], elbow[2] - wrist[2]], L = Math.hypot(d[0], d[1], d[2]);
+  const at = s => [wrist[0] + d[0] * s / L, wrist[1] + d[1] * s / L, wrist[2] + d[2] * s / L];
+  out.push(limbPart(wristIn, at(0.012), 0.034, 0.037, GUN_MATS.glove, 12),   // Handschuh-Bündchen
+    limbPart(at(-0.004), at(0.034), 0.043, 0.046, TAC.fabric, 14),               // Ärmelbund
+    limbPart(at(0.034), at(L * 0.5), 0.044, 0.052, TAC.fabric, 14), limbPart(at(L * 0.5), elbow, 0.052, 0.058, TAC.fabric, 14),
+    limbPart(at(L * 0.47), at(L * 0.53), 0.055, 0.055, TAC.fabric, 14));        // Stofffalte
+}
+// Hand am Pistolengriff oder senkrechten Vordergriff. left = gespiegelt (linke Hand), wrap = weiter außen (Stützhand über der Schusshand)
+function gripHand(out, gr, ga, gw, trig, left, wrap, elbow) {
+  const cy = Math.cos(ga), sy = Math.sin(ga), mx = left ? -1 : 1, W = gw[0], D = gw[1], e = wrap, G = GUN_MATS.glove;
+  const L = (x, y, z) => [gr[0] + mx * x, gr[1] + y * cy + z * sy, gr[2] - y * sy + z * cy];   // y = entlang der Griffachse, z = nach hinten
+  const pc = L(W + 0.015 + e, -0.004, 0.004), hb = L(W * 0.3 + e * 0.6, 0.034, D + 0.015), kp = L(W + 0.031 + e, 0.014, -D + 0.018);
+  out.push(ELL(G, pc, [0.03, 0.104, 0.084], [-ga, 0, 0]), ELL(G, hb, [0.052, 0.05, 0.036], [-ga, 0, 0]), ELL(GUN_MATS.gloveDark, kp, [0.01, 0.07, 0.036], [-ga, 0, 0]));
+  const rows = trig ? [[0.022, 0.013], [-0.008, 0.0126], [-0.037, 0.0112]] : e ? [[0.033, 0.0128], [0.005, 0.013], [-0.023, 0.0126], [-0.05, 0.0112]] : [[0.05, 0.0128], [0.021, 0.013], [-0.008, 0.0126], [-0.036, 0.0112]];
+  for (const [yk, r] of rows) {   // Finger um die Griffvorderseite, Kuppen auf der anderen Seite
+    const o = r * 0.95 + e;
+    handFinger(out, [L(W + o * 0.7, yk, -D + 0.014), L(W * 0.5 + o * 0.6, yk, -D - o), L(-W * 0.5 - o * 0.6, yk, -D - o * 0.95), L(-W - o * 0.9, yk, -D + 0.014)], r, r * 0.88);
+  }
+  if (trig) {   // Zeigefinger durch den Abzugsbügel auf den Abzug
+    const K = L(W + 0.012, 0.052, -D + 0.006), T = [gr[0] + 0.001 * mx, trig[1] - 0.006, trig[0] - 0.009];
+    handFinger(out, [K, [(K[0] + T[0]) / 2 + 0.009 * mx, (K[1] + T[1]) / 2 + 0.002, (K[2] + T[2]) / 2], T, [T[0], T[1] - 0.01, T[2] + 0.005]], 0.0128, 0.0112);
+  }
+  if (e) handFinger(out, [L(W + 0.014 + e, 0.03, D - 0.004), L(W + 0.015 + e, 0.054, -D + 0.006), L(W + 0.013 + e, 0.06, -D - 0.03)], 0.0142, 0.0122);   // Stützdaumen nach vorne
+  else handFinger(out, [L(W * 0.2, 0.054, D + 0.008), L(-W - 0.007, 0.06, D - 0.006), L(-W - 0.013, 0.058, -D * 0.2), L(-W - 0.014, 0.054, -D + 0.004)], 0.0142, 0.012);   // Daumen über die andere Seite
+  handSleeve(out, L(W * 0.5 + e * 0.5, 0.01, D + 0.012), L(W * 0.5 + e * 0.5, 0.004, D + 0.045), elbow);
+}
+// Linke Hand von unten am Handschutz/Vorderschaft (Achse hg[0], Radius hg[1]): Finger um die rechte Seite, Daumen links nach vorne
+function underHand(out, fo, hg, roll, elbow) {
+  const cr = Math.cos(roll), sr = Math.sin(roll), R = hg[1], G = GUN_MATS.glove;
+  const A = (x, y, z) => [fo[0] + x * cr - y * sr, hg[0] + x * sr + y * cr, fo[2] + z];
+  const pc = A(-0.002, -R - 0.014, 0.004), kp = A(0.022, -R - 0.03, 0.0), th = A(-R * 0.72, -R * 0.75, 0.026);
+  out.push(ELL(G, pc, [0.074, 0.03, 0.104], [0, 0, roll + 0.3]), ELL(GUN_MATS.gloveDark, kp, [0.048, 0.01, 0.07], [0, 0, roll + 0.5]),
+    SPH(0.02, G, th[0], th[1], th[2], 0.9, 1, 1.7));   // Daumenballen
+  for (const [dz, r] of [[-0.039, 0.0128], [-0.013, 0.0132], [0.013, 0.0126], [0.038, 0.0112]]) {
+    const rho = R + r * 0.95, Pt = a => A(rho * Math.cos(a), rho * Math.sin(a), dz);
+    handFinger(out, [A(0.008, -R - 0.008, dz), Pt(-0.75), Pt(-0.1), Pt(0.55), Pt(0.95)], r, r * 0.86);
+  }
+  const rt = R + 0.012;
+  handFinger(out, [A(-R * 0.65, -R - 0.004, 0.034), A(-rt, -R * 0.35, 0.006), A(-rt - 0.001, R * 0.08, -0.024), A(-rt + 0.001, R * 0.28, -0.05)], 0.0145, 0.0122);
+  handSleeve(out, A(-0.018, -R - 0.02, 0.035), A(-0.03, -R - 0.032, 0.062), elbow);
+}
 // Waffe in der Hand: Hauptteil + bewegliche Teile (Magazin, Pumpe, Verschluss, linke Hand)
 const vm = { main: null, mag: null, pump: null, bolt: null, left: null, eject: null };
 function buildViewGun(w) {
   while (viewGun.children.length) viewGun.remove(viewGun.children[0]);
   gunInfo = makeGun(w);
-  const all = gunInfo.parts, gr = gunInfo.grip, fo = gunInfo.fore;
+  const gi = gunInfo, all = gi.parts, gr = gi.hgr || gi.grip, fo = gi.hfo || gi.fore;
   const main = all.filter(p => !p.mag && !p.pump && !p.bolt && !p.spin), left = [];
-  main.push(B(0.055, 0.08, 0.1, GUN_MATS.glove, gr[0] + 0.005, gr[1] - 0.005, gr[2] + 0.01, -0.3),
-    limbPart([gr[0] + 0.01, gr[1] - 0.02, gr[2] + 0.06], [0.16, -0.3, 0.5], 0.05, 0.065, TAC.fabric));
-  if (w === 3 || w === 5) {   // Pistole/Revolver: beide Hände am Griff
-    left.push(B(0.05, 0.07, 0.09, GUN_MATS.glove, fo[0], fo[1], fo[2], -0.3),
-      limbPart([fo[0] - 0.01, fo[1] - 0.02, fo[2] + 0.05], [-0.2, -0.32, 0.45], 0.05, 0.065, TAC.fabric));
-  } else {
-    left.push(B(0.085, 0.045, 0.11, GUN_MATS.glove, fo[0], fo[1] - 0.04, fo[2]),
-      limbPart([fo[0] - 0.02, fo[1] - 0.06, fo[2] + 0.04], [-0.42, -0.36, 0.12], 0.045, 0.06, TAC.fabric));
-  }
+  gripHand(main, gr, gi.ga, gi.gw, gi.trig, false, 0, [0.16, -0.3, 0.5]);   // Schusshand am Griff, Zeigefinger am Abzug
+  if (w === 3 || w === 5) gripHand(left, gr, gi.ga, gi.gw, null, true, 0.022, [-0.2, -0.32, 0.45]);   // Pistole/Revolver: Stützhand umfasst die Schusshand
+  else if (gi.vg) gripHand(left, fo, gi.vg[0], [gi.vg[1], gi.vg[2]], null, true, 0, [-0.42, -0.36, 0.12]);   // senkrechter Vordergriff
+  else underHand(left, fo, gi.hg || [fo[1] + 0.035, 0.03], gi.roll || 0, [-0.42, -0.36, 0.12]);
   vm.main = partsToGroup(main); viewGun.add(vm.main);
   vm.mag = partsToGroup(all.filter(p => p.mag)); viewGun.add(vm.mag);
   vm.pump = partsToGroup(all.filter(p => p.pump)); viewGun.add(vm.pump);
